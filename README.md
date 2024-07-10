@@ -1,3 +1,3 @@
 # sonder
 
-A language agnostic async runtime in Rust
+A shared stdlib between Rust and C

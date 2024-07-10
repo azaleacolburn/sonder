@@ -2,5 +2,7 @@
 name = "sonder"
 version = "0.1.0"
 edition = "2021"
+crate-type = ["cdylib"]
 
 [dependencies]
+cbindgen = "0.26.0"
