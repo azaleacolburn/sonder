@@ -53,12 +53,14 @@ pub unsafe fn memmove(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
 }
 
 #[allow(unused_assignments)]
-pub unsafe fn strcat(mut dest: *mut u8, mut src: *const u8) {
+pub unsafe fn strcat(mut dest: *mut u8, src: *const u8) {
     while !dest.is_null() {
         dest = dest.add(1)
     }
+    let mut i = 0;
     while !src.is_null() {
         *dest.add(i) = *src.add(i);
+        i += 1;
     }
 }
 
@@ -86,4 +88,13 @@ pub unsafe fn strchr(mut str: *const u8, c: u8) -> *mut u8 {
     return core::ptr::null::<u8>() as *mut u8;
 }
 
-pub unsafe fn strcmp()
+pub unsafe fn strcmp(mut str1: *const u8, mut str2: *const u8) -> bool {
+    while !str1.is_null() && !str2.is_null() {
+        if *str1 != *str2 {
+            return false;
+        }
+        str1 = str1.add(1);
+        str2 = str2.add(1);
+    }
+    return true;
+}
