@@ -1,6 +1,14 @@
 [package]
 name = "sonder"
-version = "0.1.0"
-edition = "2021"
+version = "0.0.1"
+authors = ["Azalea Colburn <azaleacolburn@gmail.com>"]
+
+[lib]
+name="sonder"
+test = true
+plugin = false
+proc-macro = true
 
 [dependencies]
+syn = { version = "1.0.57", features = [ "full", "fold" ] }
+quote = "1.0.8"
