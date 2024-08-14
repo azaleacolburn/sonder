@@ -2,7 +2,7 @@
 
 ## Scratch repo for potential science fair submission
 
-A inter-language connections with WASI as a shared compilation target.
+A macro system and linker that compiles c and rust to wasm and statically links them
 
 ## Plans
 
