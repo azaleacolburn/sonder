@@ -10,7 +10,8 @@ Cross language compilation and linking with wasm as a shared target
 
 - Use proc macros in rust to be able to call C functions exactly like rust functions (including getting lsp completions, etc)
 - Compile everything to wasm to avoid the issues of conforming rust code to the c_abi and deal with an ffi (or actually we're just inventing our own)
+- Fully compile check the imported c source and have some assurance of semi-safe interop at compile time
 
 ## Purpose
 
-- Allow rust code to seamlessly interop with old C(++) code as it incrementally replaces a codebase
+- Allow rust code to seamlessly interop with old C(++) code as it incrementally replaces a codebase, with static linking and code editor completions.
