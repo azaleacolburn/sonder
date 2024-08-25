@@ -1,7 +1,9 @@
+use core::panicking::panic;
 use proc_macro::{TokenStream, TokenTree};
 use regex::Regex;
 use std::num::ParseIntError;
 use std::{fs, str::FromStr};
+use syn::token::Token as RustToken;
 use syn::{parse_macro_input, LitStr};
 
 #[proc_macro]
@@ -46,7 +48,7 @@ fn c_string_to_tokens(buff: impl ToString) -> Result<Vec<Token>, ParseIntError> 
             'i' => {
                 if chars[i + 1] == 'n' && chars[i + 2] == 't' && chars[i + 3] == ' ' {
                     // split.push(String::from("int"));
-                    ret.push(Token::Type(RhTypes::Int));
+                    ret.push(Token::Int);
                     i += 2; // I think there's a problem with incrementing the iterator
                 } else {
                     for j in i..chars.len() {
@@ -67,7 +69,7 @@ fn c_string_to_tokens(buff: impl ToString) -> Result<Vec<Token>, ParseIntError> 
                     && chars[i + 4] == ' '
                 {
                     // split.push(String::from("char"));
-                    ret.push(Token::Type(RhTypes::Char));
+                    ret.push(Token::Char);
                     i += 3;
                 } else {
                     for j in i..chars.len() {
@@ -120,7 +122,7 @@ fn c_string_to_tokens(buff: impl ToString) -> Result<Vec<Token>, ParseIntError> 
                     && chars[i + 3] == 'd'
                     && (chars[i + 4] == ' ' || chars[i + 4] == '*')
                 {
-                    ret.push(Token::Type(RhTypes::Void));
+                    ret.push(Token::Void);
                     i += 3;
                 } else {
                     for j in i..chars.len() {
@@ -154,8 +156,6 @@ fn c_string_to_tokens(buff: impl ToString) -> Result<Vec<Token>, ParseIntError> 
 
 #[derive(Debug, PartialEq, Clone)]
 enum Token {
-    Fn,
-    Type(RhTypes),
     Struct,
     Star,
     Id(String),
@@ -166,16 +166,40 @@ enum Token {
     Dot,
     Comma,
     Dash,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-enum RhTypes {
     Char,
     Int,
     Void,
+    Unsigned,
 }
 
-fn parsed_c_declaration_to_rust(tokens: Vec<Tokens>) -> TokenStream {
-    let 
-    let parsed = format!("fn {}");
+fn parse_c_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
+    let token_stream = tokens.iter();
+    let return_type: String = match token_stream.next().unwrap() {
+        Token::Char => String::from(" -> i8"),
+        Token::Int => String::from(" -> i16"),
+        Token::Void => String::from(" "),
+        // TODO: Port over structs
+        _ => panic!("Invalid return type"),
+    };
+    let id: String = match token_stream.next().unwrap() {
+        Token::Id(id) => id.to_string(),
+        _ => panic!("Expected identifier"),
+    };
+    if *token_stream.next().unwrap() != Token::OParen {
+        panic!("Expected open parenthesis");
+    }
+    let mut t = token_stream.next().unwrap();
+    let args: Vec<String> = vec![];
+    while *t == Token::Char || *t == Token::Int || *t == Token::Void {
+        let mut next = token_stream.next().unwrap();
+        if *t == Token::Void && *next != Token::Star {
+            panic!("void arguments not allowed");
+        } else if *next == Token::Star {
+            args.push(String::new(format!("{}:{}")));
+            next = token_stream.next().unwrap();
+        }
+            
+        match next
+    }
+    let parsed = format!("fn {id} ({})", return_type);
 }
