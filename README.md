@@ -12,6 +12,19 @@ Cross language compilation and linking with wasm as a shared target
 - Compile everything to wasm to avoid the issues of conforming rust code to the c_abi and deal with an ffi (or actually we're just inventing our own)
 - Fully compile check the imported c source and have some assurance of semi-safe interop at compile time
 
+### Proc Macros
+
+- [x] Proc Macros for automatic extern "C" function declaration
+- [ ] Proc Macros for automatic extern "C" struct declaration
+- [ ] Proc Macros for automatic extern "C" static declaration
+
+### Linking
+
+- [ ] Get list of all involved files (maybe just start with all file in root dir)
+- [ ] Compile all relevent files to wasm
+- [ ] Insert "linking markers" to where things need to be linked
+- [ ] Inline into one "binary", or figure out how statically linked binaries work :P
+
 ## Purpose
 
 - Allow rust code to seamlessly interop with old C(++) code as it incrementally replaces a codebase, with static linking and code editor completions.

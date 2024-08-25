@@ -6,7 +6,28 @@ use syn::token::{self, Token as RustToken};
 use syn::{parse_macro_input, LitStr, Type};
 
 #[proc_macro]
-pub fn import_c(input: TokenStream) -> TokenStream {
+pub fn import_c_struct(input: TokenStream) -> TokenStream {
+    let parsed_input: Vec<String> = input
+        .to_string()
+        .split(", ")
+        .map(|n| n.to_owned())
+        .collect();
+    let raw_path = parsed_input[0].clone().parse().unwrap();
+    let raw_item = parsed_input[1].clone().parse().unwrap();
+    let path = parse_macro_input!(raw_path as LitStr).value();
+    let item = parse_macro_input!(raw_item as LitStr).value();
+
+    let fc = fs::read_to_string(path).unwrap();
+
+    let pattern = Regex::new(
+        r"struct\s+[a-zA-Z_][a-zA-Z0-9_]*\s*{(\s*((int|char)\**|void\*+)\s+[a-zA-Z_][a-zA-Z0-9_]*\s*;)*\s*}\s*;",
+    );
+
+    "println!(\"test\");".parse().unwrap()
+}
+
+#[proc_macro]
+pub fn import_c_function(input: TokenStream) -> TokenStream {
     let parsed_input: Vec<String> = input
         .to_string()
         .split(", ")
@@ -21,7 +42,7 @@ pub fn import_c(input: TokenStream) -> TokenStream {
 
     // TODO: Figure out how to allow typedefs, maybe preprocess c file first?
     let pattern = Regex::new(
-        format!(r"^ *(int|char|void)( \*|\*|\* | ){item} ?\(((int|char|void)( \*|\*|\* | )[a-zA-Z0-9_]+,? ?)*\)")
+        format!(r"((int|char)\s*(\**\s)*|void\s*\*+(\s*\*)*)\s*([a-zA-Z]*)\s*\((((int|char)\s*\**|void\s*\*+)\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,?\s*)*\s*\)")
             .as_str(),
     )
     .expect("Invalid regex");
@@ -31,8 +52,10 @@ pub fn import_c(input: TokenStream) -> TokenStream {
         .expect("No matches found")
         .as_str();
 
+    // It's fine that these functions panic because the regex only matches to valid function declarations
     let lexed = c_string_to_tokens(declaration).expect("Failed to lex declaration");
-    let parsed = parse_c_declaration_to_rust(lexed); // panics
+    let parsed = parse_c_function_declaration_to_rust(lexed);
+
     println!("{parsed}");
 
     parsed
@@ -173,7 +196,7 @@ enum Token {
     Unsigned,
 }
 
-fn parse_c_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
+fn parse_c_function_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
     let mut token_stream = tokens.iter();
     let return_type: String = match token_stream.next().unwrap() {
         Token::Char => String::from(" -> i8"),
@@ -228,6 +251,7 @@ fn parse_c_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
         }
     }
     let formatted_args = args.join(", ");
-    let parsed = format!("fn {id} ({formatted_args}){return_type};");
+    // This is just a trick to let us compile, the binaries will be statically linked dw
+    let parsed = format!("extern \"C\" {{\nfn {id} ({formatted_args}){return_type};\n}}");
     return parsed.parse().unwrap();
 }
