@@ -1,10 +1,9 @@
-use core::panicking::panic;
-use proc_macro::{TokenStream, TokenTree};
+use proc_macro::{token_stream, TokenStream, TokenTree};
 use regex::Regex;
 use std::num::ParseIntError;
 use std::{fs, str::FromStr};
-use syn::token::Token as RustToken;
-use syn::{parse_macro_input, LitStr};
+use syn::token::{self, Token as RustToken};
+use syn::{parse_macro_input, LitStr, Type};
 
 #[proc_macro]
 pub fn import_c(input: TokenStream) -> TokenStream {
@@ -31,10 +30,12 @@ pub fn import_c(input: TokenStream) -> TokenStream {
         .find(fc.as_str())
         .expect("No matches found")
         .as_str();
-    println!("{}", declaration);
 
-    let output = format!("println!(\"this macro needs to output something for now\");");
-    output.parse().unwrap()
+    let lexed = c_string_to_tokens(declaration).expect("Failed to lex declaration");
+    let parsed = parse_c_declaration_to_rust(lexed); // panics
+    println!("{parsed}");
+
+    parsed
 }
 /// This is where the lexical analysis happens
 fn c_string_to_tokens(buff: impl ToString) -> Result<Vec<Token>, ParseIntError> {
@@ -173,7 +174,7 @@ enum Token {
 }
 
 fn parse_c_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
-    let token_stream = tokens.iter();
+    let mut token_stream = tokens.iter();
     let return_type: String = match token_stream.next().unwrap() {
         Token::Char => String::from(" -> i8"),
         Token::Int => String::from(" -> i16"),
@@ -189,17 +190,44 @@ fn parse_c_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
         panic!("Expected open parenthesis");
     }
     let mut t = token_stream.next().unwrap();
-    let args: Vec<String> = vec![];
+    let mut args: Vec<String> = vec![];
     while *t == Token::Char || *t == Token::Int || *t == Token::Void {
         let mut next = token_stream.next().unwrap();
+        let mut symbol_type = String::new();
+
         if *t == Token::Void && *next != Token::Star {
             panic!("void arguments not allowed");
         } else if *next == Token::Star {
-            args.push(String::new(format!("{}:{}")));
+            symbol_type.push_str("&");
             next = token_stream.next().unwrap();
         }
-            
-        match next
+
+        let c_type = match t {
+            Token::Char => "i8",
+            Token::Int => "i16",
+            Token::Void => "()",
+            _ => panic!("Invalid type token"),
+        };
+
+        let id = match next {
+            Token::Id(id) => id,
+            _ => panic!("Expected identifier"),
+        };
+
+        symbol_type.push_str(c_type);
+        let arg = String::from(format!("{id}: {symbol_type}"));
+        args.push(arg);
+        match token_stream.next().unwrap() {
+            Token::Comma => {
+                t = token_stream.next().unwrap();
+            }
+            Token::CParen => {
+                break;
+            }
+            _ => panic!("expected comma or cparen"),
+        }
     }
-    let parsed = format!("fn {id} ({})", return_type);
+    let formatted_args = args.join(", ");
+    let parsed = format!("fn {id} ({formatted_args}){return_type};");
+    return parsed.parse().unwrap();
 }
