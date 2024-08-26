@@ -4,3 +4,5 @@ struct test_struct {
 };
 
 int test_func(int this) {}
+
+static const int test_static = 10;
