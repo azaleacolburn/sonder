@@ -1,9 +1,8 @@
-use proc_macro::{token_stream, TokenStream, TokenTree};
+use proc_macro::TokenStream;
 use regex::Regex;
+use std::fs;
 use std::num::ParseIntError;
-use std::{fs, str::FromStr};
-use syn::token::{self, Token as RustToken};
-use syn::{parse_macro_input, LitStr, Type};
+use syn::{parse_macro_input, LitStr};
 
 #[proc_macro]
 pub fn import_c_struct(input: TokenStream) -> TokenStream {
@@ -19,11 +18,21 @@ pub fn import_c_struct(input: TokenStream) -> TokenStream {
 
     let fc = fs::read_to_string(path).unwrap();
 
-    let pattern = Regex::new(
-        r"struct\s+[a-zA-Z_][a-zA-Z0-9_]*\s*{(\s*((int|char)\**|void\*+)\s+[a-zA-Z_][a-zA-Z0-9_]*\s*;)*\s*}\s*;",
-    );
+    let sub_pattern = "\\{(\\s*((int|char)\\**|void\\*+)\\s+[a-zA-Z_][a-zA-Z0-9_]*\\s*;)*\\s*\\}";
+    let pattern = Regex::new(format!(r"struct\s+{item}\s*{sub_pattern}\s*;",).as_str())
+        .expect("Invalid regex");
 
-    "println!(\"test\");".parse().unwrap()
+    let declaration = pattern
+        .find(fc.as_str())
+        .expect("No matches found")
+        .as_str();
+
+    // It's fine that these functions panic because the regex only matches to valid function declarations
+    let lexed = c_string_to_tokens(declaration).expect("Failed to lex declaration");
+    let parsed = parse_c_struct_to_rust(lexed);
+
+    println!("{parsed}");
+    parsed
 }
 
 #[proc_macro]
@@ -42,7 +51,7 @@ pub fn import_c_function(input: TokenStream) -> TokenStream {
 
     // TODO: Figure out how to allow typedefs, maybe preprocess c file first?
     let pattern = Regex::new(
-        format!(r"((int|char)\s*(\**\s)*|void\s*\*+(\s*\*)*)\s*([a-zA-Z]*)\s*\((((int|char)\s*\**|void\s*\*+)\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,?\s*)*\s*\)")
+        format!(r"((int|char)\s*(\**\s)*|void\s*\*+(\s*\*)*)\s*({item}*)\s*\((((int|char)\s*\**|void\s*\*+)\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,?\s*)*\s*\)")
             .as_str(),
     )
     .expect("Invalid regex");
@@ -57,7 +66,6 @@ pub fn import_c_function(input: TokenStream) -> TokenStream {
     let parsed = parse_c_function_declaration_to_rust(lexed);
 
     println!("{parsed}");
-
     parsed
 }
 /// This is where the lexical analysis happens
@@ -69,6 +77,8 @@ fn c_string_to_tokens(buff: impl ToString) -> Result<Vec<Token>, ParseIntError> 
     while i < chars.len() {
         match chars[i] {
             ' ' => {}
+            '\t' => {}
+            '\n' => {}
             'i' => {
                 if chars[i + 1] == 'n' && chars[i + 2] == 't' && chars[i + 3] == ' ' {
                     // split.push(String::from("int"));
@@ -118,28 +128,19 @@ fn c_string_to_tokens(buff: impl ToString) -> Result<Vec<Token>, ParseIntError> 
                     i += 5;
                 }
             }
-            '-' => {
-                ret.push(Token::Dash);
-            }
+            '-' => ret.push(Token::Dash),
 
-            '*' => {
-                // split.push(String::from("*"));
-                ret.push(Token::Star); // The lexer can probably determine whether this is a mul or deref
-            }
+            '*' => ret.push(Token::Star),
+
             // obviously none of this can be included in ids
-            '(' => {
-                ret.push(Token::OParen);
-            }
-            ')' => {
-                ret.push(Token::CParen);
-            }
+            '(' => ret.push(Token::OParen),
+            ')' => ret.push(Token::CParen),
             '[' => ret.push(Token::OSquare),
             ']' => ret.push(Token::CSquare),
-
-            ',' => {
-                // split.push(String::from(","));
-                ret.push(Token::Comma);
-            }
+            '{' => ret.push(Token::OCurl),
+            '}' => ret.push(Token::CCurl),
+            ',' => ret.push(Token::Comma),
+            ';' => ret.push(Token::Semi),
             'v' => {
                 if chars[i + 1] == 'o'
                     && chars[i + 2] == 'i'
@@ -181,12 +182,15 @@ fn c_string_to_tokens(buff: impl ToString) -> Result<Vec<Token>, ParseIntError> 
 #[derive(Debug, PartialEq, Clone)]
 enum Token {
     Struct,
+    Semi,
     Star,
     Id(String),
     OParen,
     CParen,
     OSquare,
     CSquare,
+    OCurl,
+    CCurl,
     Dot,
     Comma,
     Dash,
@@ -253,5 +257,58 @@ fn parse_c_function_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
     let formatted_args = args.join(", ");
     // This is just a trick to let us compile, the binaries will be statically linked dw
     let parsed = format!("extern \"C\" {{\nfn {id} ({formatted_args}){return_type};\n}}");
+    return parsed.parse().unwrap();
+}
+
+fn parse_c_struct_to_rust(tokens: Vec<Token>) -> TokenStream {
+    let mut token_stream = tokens.iter();
+    if *token_stream.next().unwrap() != Token::Struct {
+        panic!("Expected struct keyword");
+    }
+
+    let id = if let Token::Id(id) = token_stream.next().unwrap() {
+        id
+    } else {
+        panic!("expected id token");
+    };
+
+    if *token_stream.next().unwrap() != Token::OCurl {
+        panic!("Expected open curl");
+    }
+
+    let mut t = token_stream.next().unwrap();
+    let mut fields: Vec<String> = vec![];
+    while *t == Token::Int || *t == Token::Char || *t == Token::Void {
+        let mut field_type = String::new();
+        let mut symbol = token_stream.next().unwrap();
+        if *symbol == Token::Star {
+            field_type.push_str("&");
+            symbol = token_stream.next().unwrap();
+        }
+
+        let c_type = match t {
+            Token::Char => "i8",
+            Token::Int => "i16",
+            Token::Void => "()",
+            _ => panic!("Invalid type token"),
+        };
+
+        let id = match symbol {
+            Token::Id(id) => id,
+            _ => panic!("Expected identifier"),
+        };
+
+        fields.push(format!("{id}: {c_type}"));
+
+        match token_stream.next().unwrap() {
+            Token::Semi => t = token_stream.next().unwrap(),
+            Token::CCurl => break,
+            _ => panic!("expected ccurl or semi"),
+        }
+    }
+
+    let formatted_fields = fields.join(",\n");
+    let parsed = format!("struct {id} {{\n{formatted_fields}\n}}");
+
     return parsed.parse().unwrap();
 }
