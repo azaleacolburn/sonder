@@ -1,48 +1,48 @@
 use proc_macro::TokenStream;
-use regex::{bytes::Regex, Regex};
+use regex::Regex;
 use std::fs;
 use std::num::ParseIntError;
 use syn::{parse_macro_input, LitStr};
 
-#[proc_macro]
-pub fn import_c_static(input: TokenStream) -> TokenStream {
-    let parsed_input: Vec<String> = input
-        .to_string()
-        .split(", ")
-        .map(|n| n.to_owned())
-        .collect();
-    let raw_path = parsed_input[0].clone().parse().unwrap();
-    let raw_item = parsed_input[1].clone().parse().unwrap();
-    let path = parse_macro_input!(raw_path as LitStr).value();
-    let item = parse_macro_input!(raw_item as LitStr).value();
-
-    let fc = fs::read_to_string(path).unwrap();
-
-    let pattern = Regex::new(format!(
-        r#"static\s+const((int|char)\s+{item}*\s*=\s*([0-9]+|'([^'\\\n]|\\.))|char*\s+{item}*\s*=\s*(".*"));"#
-    ).as_str()).expect("Invalid regex");
-
-    let declaration = pattern
-        .find(fc.as_str())
-        .expect("No matches found")
-        .as_str();
-
-    let parsing_pattern = Regex::new(format!(r"(char*?\s*|int\s+)"))
-
-    static THIS: &str = "test";
-    // static const char*this="test";
-    // static char this="test";
-
-    let split: Vec<&str> = declaration.split("=").collect();
-    let mut first_half: Vec<&str> = split[0].split(" ").collect();
-    let type_name = first_half[2];
-
-    let lexed = c_string_to_tokens(declaration).expect("Failed to lex static");
-    let parsed = parse_c_static_to_rust(lexed);
-
-    println!("{parsed}");
-    "println!(\"test\")".parse().unwrap()
-}
+// #[proc_macro]
+// pub fn import_c_static(input: TokenStream) -> TokenStream {
+//     let parsed_input: Vec<String> = input
+//         .to_string()
+//         .split(", ")
+//         .map(|n| n.to_owned())
+//         .collect();
+//     let raw_path = parsed_input[0].clone().parse().unwrap();
+//     let raw_item = parsed_input[1].clone().parse().unwrap();
+//     let path = parse_macro_input!(raw_path as LitStr).value();
+//     let item = parse_macro_input!(raw_item as LitStr).value();
+//
+//     let fc = fs::read_to_string(path).unwrap();
+//
+//     let pattern = Regex::new(format!(
+//         r#"static\s+const((int|char)\s+{item}*\s*=\s*([0-9]+|'([^'\\\n]|\\.))|char*\s+{item}*\s*=\s*(".*"));"#
+//     ).as_str()).expect("Invalid regex");
+//
+//     let declaration = pattern
+//         .find(fc.as_str())
+//         .expect("No matches found")
+//         .as_str();
+//
+//     let parsing_pattern = Regex::new(format!(r"(char*?\s*|int\s+)"))
+//
+//     static THIS: &str = "test";
+//     // static const char*this="test";
+//     // static char this="test";
+//
+//     let split: Vec<&str> = declaration.split("=").collect();
+//     let mut first_half: Vec<&str> = split[0].split(" ").collect();
+//     let type_name = first_half[2];
+//
+//     let lexed = c_string_to_tokens(declaration).expect("Failed to lex static");
+//     let parsed = parse_c_static_to_rust(lexed);
+//
+//     println!("{parsed}");
+//     "println!(\"test\")".parse().unwrap()
+// }
 
 #[proc_macro]
 pub fn import_c_struct(input: TokenStream) -> TokenStream {
@@ -90,7 +90,7 @@ pub fn import_c_function(input: TokenStream) -> TokenStream {
 
     // TODO: Figure out how to allow typedefs, maybe preprocess c file first?
     let pattern = Regex::new(
-        format!(r"((int|char)\s*(\**\s)*|void\s*\*+(\s*\*)*)\s*({item}*)\s*\((((int|char)\s*\**|void\s*\*+)\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,?\s*)*\s*\)")
+        format!(r"((struct\s+[a-zA-Z0-9_]*|int|char)\s*(\**\s)*|void\s*\*+(\s*\*)*)\s*([a-zA-Z0-9_]*)\s*\((((struct\s+[a-zA-Z0-9_]+|int|char)\s*\**|void\s*\*+)\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,?\s*)*\s*\)")
             .as_str(),
     )
     .expect("Invalid regex");
@@ -273,6 +273,13 @@ fn parse_c_function_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
         Token::Char => String::from(" -> i8"),
         Token::Int => String::from(" -> i16"),
         Token::Void => String::from(" "),
+        Token::Struct => {
+            if let Token::Id(id) = token_stream.next().unwrap() {
+                format!(" -> {id}")
+            } else {
+                panic!("Expected id after struct keyword");
+            }
+        }
         // TODO: Port over structs
         _ => panic!("Invalid return type"),
     };
@@ -289,17 +296,31 @@ fn parse_c_function_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
         let mut next = token_stream.next().unwrap();
         let mut symbol_type = String::new();
 
-        if *t == Token::Void && *next != Token::Star {
-            panic!("void arguments not allowed");
-        } else if *next == Token::Star {
-            symbol_type.push_str("&");
-            next = token_stream.next().unwrap();
+        match (t, next) {
+            (Token::Struct, Token::Id(id)) => {
+                let next_tok = token_stream.next().unwrap();
+                if next_tok = 
+            }
+            (_, Token::Star) => {
+                symbol_type.push_str("&");
+                next = token_stream.next().unwrap();
+            }
+            (Token::Void, _) => {
+                panic!("Void type must be a void*")
+            }
         }
 
         let c_type = match t {
             Token::Char => "i8",
             Token::Int => "i16",
             Token::Void => "()",
+            Token::Struct => {
+                if let Token::Id(id) = token_stream.next().unwrap() {
+                    &format!(" -> {id}")
+                } else {
+                    panic!("Expected id after struct keyword");
+                }
+            }
             _ => panic!("Invalid type token"),
         };
 
@@ -370,7 +391,7 @@ fn parse_c_struct_to_rust(tokens: Vec<Token>) -> TokenStream {
         match token_stream.next().unwrap() {
             Token::Semi => t = token_stream.next().unwrap(),
             Token::CCurl => break,
-            _ => panic!("expected ccurl or semi"),
+            _ => panic!("expected closing curl or semi"),
         }
     }
 
@@ -380,25 +401,25 @@ fn parse_c_struct_to_rust(tokens: Vec<Token>) -> TokenStream {
     return parsed.parse().unwrap();
 }
 
-fn parse_c_static_to_rust(tokens: Vec<Token>) -> TokenStream {
-    let mut token_stream = tokens.iter();
-    if *token_stream.next().unwrap() != Token::Static {
-        panic!("Expected static keyword");
-    }
-
-    if *token_stream.next().unwrap() != Token::Const {
-        panic!("Expected const keyword");
-    }
-
-    let id = if let Token::Id(id) = token_stream.next().unwrap() {
-        id
-    } else {
-        panic!("Expected id");
-    };
-
-    if *token_stream.next().unwrap() != Token::Equals {
-        panic!("Expected equals sign");
-    }
-
-    todo!()
-}
+// fn parse_c_static_to_rust(tokens: Vec<Token>) -> TokenStream {
+//     let mut token_stream = tokens.iter();
+//     if *token_stream.next().unwrap() != Token::Static {
+//         panic!("Expected static keyword");
+//     }
+//
+//     if *token_stream.next().unwrap() != Token::Const {
+//         panic!("Expected const keyword");
+//     }
+//
+//     let id = if let Token::Id(id) = token_stream.next().unwrap() {
+//         id
+//     } else {
+//         panic!("Expected id");
+//     };
+//
+//     if *token_stream.next().unwrap() != Token::Equals {
+//         panic!("Expected equals sign");
+//     }
+//
+//     todo!()
+// }
