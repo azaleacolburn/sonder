@@ -51,19 +51,25 @@ pub fn import_c_struct(input: TokenStream) -> TokenStream {
         .split(", ")
         .map(|n| n.to_owned())
         .collect();
-    let raw_path = parsed_input[0].clone().parse().unwrap();
-    let raw_item = parsed_input[1].clone().parse().unwrap();
+    let raw_path = parsed_input[0]
+        .clone()
+        .parse()
+        .expect("Please provide a file import path in the form of a string");
+    let raw_item = parsed_input[1]
+        .clone()
+        .parse()
+        .expect("Please provide an item to be imported in the form of a string");
     let path = parse_macro_input!(raw_path as LitStr).value();
     let item = parse_macro_input!(raw_item as LitStr).value();
 
-    let fc = fs::read_to_string(path).unwrap();
+    let fc = fs::read_to_string(path).expect("C file not found");
 
     let pattern = Regex::new(format!(r#"struct\s+{item}\s*\{{(\s*((int|char)\**|void\*+)\s+[a-zA-Z_][a-zA-Z0-9_]*\s*;)*\s*\}}\s*;"#).as_str())
         .expect("Invalid regex");
 
     let declaration = pattern
         .find(fc.as_str())
-        .expect("No matches found")
+        .expect("Item not found in file. Did you mean to import a function?")
         .as_str();
 
     // It's fine that these functions panic because the regex only matches to valid function declarations
@@ -81,23 +87,29 @@ pub fn import_c_function(input: TokenStream) -> TokenStream {
         .split(", ")
         .map(|n| n.to_owned())
         .collect();
-    let raw_path = parsed_input[0].clone().parse().unwrap();
-    let raw_item = parsed_input[1].clone().parse().unwrap();
+    let raw_path = parsed_input[0]
+        .clone()
+        .parse()
+        .expect("Please provide a file import path in the form of a string");
+    let raw_item = parsed_input[1]
+        .clone()
+        .parse()
+        .expect("Please provide an item to be imported in the form of a string");
     let path = parse_macro_input!(raw_path as LitStr).value();
     let item = parse_macro_input!(raw_item as LitStr).value();
 
-    let fc = fs::read_to_string(path).unwrap();
+    let fc = fs::read_to_string(path).expect("C file not found");
 
     // TODO: Figure out how to allow typedefs, maybe preprocess c file first?
     let pattern = Regex::new(
-        format!(r"((struct\s+[a-zA-Z0-9_]*|int|char)\s*(\**\s)*|void\s*\*+(\s*\*)*)\s*([a-zA-Z0-9_]*)\s*\((((struct\s+[a-zA-Z0-9_]+|int|char)\s*\**|void\s*\*+)\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,?\s*)*\s*\)")
+        format!(r"((struct\s+{item}|int|char)\s*(\**\s)*|void\s*\*+(\s*\*)*)\s*([a-zA-Z0-9_]*)\s*\((((struct\s+[a-zA-Z0-9_]+|int|char)\s*\**|void\s*\*+)\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,?\s*)*\s*\)")
             .as_str(),
     )
     .expect("Invalid regex");
 
     let declaration = pattern
         .find(fc.as_str())
-        .expect("No matches found")
+        .expect("Item not found in file. Did you mean to import a struct?")
         .as_str();
 
     // It's fine that these functions panic because the regex only matches to valid function declarations
@@ -292,47 +304,53 @@ fn parse_c_function_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
     }
     let mut t = token_stream.next().unwrap();
     let mut args: Vec<String> = vec![];
-    while *t == Token::Char || *t == Token::Int || *t == Token::Void {
-        let mut next = token_stream.next().unwrap();
-        let mut symbol_type = String::new();
+    while *t == Token::Char || *t == Token::Int || *t == Token::Void || *t == Token::Struct {
+        let next = token_stream.next().unwrap();
+        let mut next_next = token_stream.next().unwrap();
 
-        match (t, next) {
-            (Token::Struct, Token::Id(id)) => {
-                let next_tok = token_stream.next().unwrap();
-                if next_tok = 
-            }
-            (_, Token::Star) => {
-                symbol_type.push_str("&");
-                next = token_stream.next().unwrap();
-            }
-            (Token::Void, _) => {
-                panic!("Void type must be a void*")
-            }
-        }
-
-        let c_type = match t {
-            Token::Char => "i8",
-            Token::Int => "i16",
-            Token::Void => "()",
-            Token::Struct => {
-                if let Token::Id(id) = token_stream.next().unwrap() {
-                    &format!(" -> {id}")
+        let arg: String = match (t, next, next_next) {
+            (Token::Struct, Token::Id(c_type_id), Token::Star) => {
+                let name = if let Token::Id(id) = token_stream.next().unwrap() {
+                    id
                 } else {
-                    panic!("Expected id after struct keyword");
-                }
+                    panic!("Expected id after for arg name");
+                };
+                next_next = token_stream.next().unwrap();
+                format!("{name}: &{c_type_id}")
             }
-            _ => panic!("Invalid type token"),
+            (Token::Struct, Token::Id(struct_id), Token::Id(arg_id)) => {
+                next_next = token_stream.next().unwrap();
+                format!("{arg_id}: {struct_id}")
+            }
+            (c_type, Token::Star, Token::Id(id)) => {
+                let rust_type = match c_type {
+                    Token::Int => "i16",
+                    Token::Char => "i8",
+                    Token::Void => "()",
+                    _ => panic!("Invalid primitive type"),
+                };
+                next_next = token_stream.next().unwrap();
+                format!("{id}: &{rust_type}")
+            }
+            (c_type, Token::Id(id), _after) => {
+                let rust_type = match c_type {
+                    Token::Int => "i16",
+                    Token::Char => "i8",
+                    Token::Void => "()",
+                    _ => panic!("Invalid primitive type"),
+                };
+                format!("{id}: {rust_type}")
+            }
+            (Token::Void, _, _) => {
+                panic!("Void type must be a void*");
+            }
+            (_, _, _) => {
+                panic!("Expected declaration");
+            }
         };
 
-        let id = match next {
-            Token::Id(id) => id,
-            _ => panic!("Expected identifier"),
-        };
-
-        symbol_type.push_str(c_type);
-        let arg = String::from(format!("{id}: {symbol_type}"));
         args.push(arg);
-        match token_stream.next().unwrap() {
+        match next_next {
             Token::Comma => {
                 t = token_stream.next().unwrap();
             }
