@@ -15,7 +15,7 @@ Cross language compilation and linking with wasm as a shared target
 ### Proc Macros
 
 - [x] Proc Macros for automatic extern "C" function declaration
-- [ ] Proc Macros for automatic extern "C" struct declaration
+- [x] Proc Macros for automatic extern "C" struct declaration
 - [ ] Proc Macros for automatic extern "C" static declaration
 
 ### Linking
@@ -23,7 +23,7 @@ Cross language compilation and linking with wasm as a shared target
 - [ ] Get list of all involved files (maybe just start with all file in root dir)
 - [ ] Compile all relevent files to wasm
 - [ ] Insert "linking markers" to where things need to be linked
-- [ ] Inline into one "binary", or figure out how statically linked binaries work :P
+- [ ] Inline into one "binary", or figure out how statically linked wasm binaries work :P
 
 ## Purpose
 
