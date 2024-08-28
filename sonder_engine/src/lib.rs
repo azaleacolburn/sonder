@@ -4,46 +4,6 @@ use std::fs;
 use std::num::ParseIntError;
 use syn::{parse_macro_input, LitStr};
 
-// #[proc_macro]
-// pub fn import_c_static(input: TokenStream) -> TokenStream {
-//     let parsed_input: Vec<String> = input
-//         .to_string()
-//         .split(", ")
-//         .map(|n| n.to_owned())
-//         .collect();
-//     let raw_path = parsed_input[0].clone().parse().unwrap();
-//     let raw_item = parsed_input[1].clone().parse().unwrap();
-//     let path = parse_macro_input!(raw_path as LitStr).value();
-//     let item = parse_macro_input!(raw_item as LitStr).value();
-//
-//     let fc = fs::read_to_string(path).unwrap();
-//
-//     let pattern = Regex::new(format!(
-//         r#"static\s+const((int|char)\s+{item}*\s*=\s*([0-9]+|'([^'\\\n]|\\.))|char*\s+{item}*\s*=\s*(".*"));"#
-//     ).as_str()).expect("Invalid regex");
-//
-//     let declaration = pattern
-//         .find(fc.as_str())
-//         .expect("No matches found")
-//         .as_str();
-//
-//     let parsing_pattern = Regex::new(format!(r"(char*?\s*|int\s+)"))
-//
-//     static THIS: &str = "test";
-//     // static const char*this="test";
-//     // static char this="test";
-//
-//     let split: Vec<&str> = declaration.split("=").collect();
-//     let mut first_half: Vec<&str> = split[0].split(" ").collect();
-//     let type_name = first_half[2];
-//
-//     let lexed = c_string_to_tokens(declaration).expect("Failed to lex static");
-//     let parsed = parse_c_static_to_rust(lexed);
-//
-//     println!("{parsed}");
-//     "println!(\"test\")".parse().unwrap()
-// }
-
 #[proc_macro]
 pub fn import_c_struct(input: TokenStream) -> TokenStream {
     let parsed_input: Vec<String> = input
@@ -62,6 +22,7 @@ pub fn import_c_struct(input: TokenStream) -> TokenStream {
     let path = parse_macro_input!(raw_path as LitStr).value();
     let item = parse_macro_input!(raw_item as LitStr).value();
 
+    println!("{path}");
     let fc = fs::read_to_string(path).expect("C file not found");
 
     let pattern = Regex::new(format!(r#"struct\s+{item}\s*\{{(\s*((int|char)\**|void\*+)\s+[a-zA-Z_][a-zA-Z0-9_]*\s*;)*\s*\}}\s*;"#).as_str())
@@ -204,19 +165,6 @@ fn c_string_to_tokens(buff: impl ToString) -> Result<Vec<Token>, ParseIntError> 
                     curr = String::from("");
                 }
             }
-            '-' => ret.push(Token::Dash),
-            '=' => ret.push(Token::Equals),
-            '*' => ret.push(Token::Star),
-
-            // obviously none of this can be included in ids
-            '(' => ret.push(Token::OParen),
-            ')' => ret.push(Token::CParen),
-            '[' => ret.push(Token::OSquare),
-            ']' => ret.push(Token::CSquare),
-            '{' => ret.push(Token::OCurl),
-            '}' => ret.push(Token::CCurl),
-            ',' => ret.push(Token::Comma),
-            ';' => ret.push(Token::Semi),
             'v' => {
                 if chars[i + 1] == 'o'
                     && chars[i + 2] == 'i'
@@ -237,6 +185,17 @@ fn c_string_to_tokens(buff: impl ToString) -> Result<Vec<Token>, ParseIntError> 
                     curr = String::from("");
                 }
             }
+            '-' => ret.push(Token::Dash),
+            '=' => ret.push(Token::Equals),
+            '*' => ret.push(Token::Star),
+            '(' => ret.push(Token::OParen),
+            ')' => ret.push(Token::CParen),
+            '[' => ret.push(Token::OSquare),
+            ']' => ret.push(Token::CSquare),
+            '{' => ret.push(Token::OCurl),
+            '}' => ret.push(Token::CCurl),
+            ',' => ret.push(Token::Comma),
+            ';' => ret.push(Token::Semi),
             _ => {
                 // if we'e here it's an identifier
                 for j in i..chars.len() {
@@ -333,30 +292,24 @@ fn parse_c_function_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
                 format!("{id}: &{rust_type}")
             }
             (c_type, Token::Id(id), _after) => {
-                let rust_type = match c_type {
-                    Token::Int => "i16",
-                    Token::Char => "i8",
-                    Token::Void => "()",
-                    _ => panic!("Invalid primitive type"),
-                };
-                format!("{id}: {rust_type}")
+                format!(
+                    "{id}: {}",
+                    match c_type {
+                        Token::Int => "i16",
+                        Token::Char => "i8",
+                        Token::Void => "()",
+                        _ => panic!("Invalid primitive type"),
+                    }
+                )
             }
-            (Token::Void, _, _) => {
-                panic!("Void type must be a void*");
-            }
-            (_, _, _) => {
-                panic!("Expected declaration");
-            }
+            (Token::Void, _, _) => panic!("Void type must be a void*"),
+            (_, _, _) => panic!("Expected declaration"),
         };
 
         args.push(arg);
         match next_next {
-            Token::Comma => {
-                t = token_stream.next().unwrap();
-            }
-            Token::CParen => {
-                break;
-            }
+            Token::Comma => t = token_stream.next().unwrap(),
+            Token::CParen => break,
             _ => panic!("expected comma or cparen"),
         }
     }
