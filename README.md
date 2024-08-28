@@ -28,3 +28,8 @@ Cross language compilation and linking with wasm as a shared target
 ## Purpose
 
 - Allow rust code to seamlessly interop with old C(++) code as it incrementally replaces a codebase, with static linking and code editor completions.
+
+### Notes
+
+- Compile Rust to wasm: `cargo build --target wasm32-unknown-unknown`
+- Compile C to wasm: `./wasi-sdk-24.0/bin/clang --sysroot wasi-sdk-24.0/share/wasi-sysroot/ hello.c -o hello.wasm`
