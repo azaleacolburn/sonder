@@ -9,3 +9,4 @@ proc-macro = true
 [dependencies]
 regex = "1.10.6"
 syn = "2.0.76"
+wasm-pack = "0.13.0"
