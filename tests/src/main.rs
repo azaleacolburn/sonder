@@ -2,6 +2,7 @@ use sonder_engine::{import_c_function, import_c_struct};
 
 import_c_struct!("import_src/test.c", "test_struct");
 import_c_function!("import_src/test.c", "test_func");
+import_c_function!("import_src/test.c", "another");
 
 fn main() {
     let test_s = test_struct { x: 10, y: 10 };

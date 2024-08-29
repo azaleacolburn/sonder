@@ -58,12 +58,13 @@ pub fn import_c_function(input: TokenStream) -> TokenStream {
         .expect("Please provide an item to be imported in the form of a string");
     let path = parse_macro_input!(raw_path as LitStr).value();
     let item = parse_macro_input!(raw_item as LitStr).value();
+    println!("{item}");
 
     let fc = fs::read_to_string(path).expect("C file not found");
 
     // TODO: Figure out how to allow typedefs, maybe preprocess c file first?
     let pattern = Regex::new(
-        format!(r"((struct\s+{item}|int|char)\s*(\**\s)*|void\s*\*+(\s*\*)*)\s*([a-zA-Z0-9_]*)\s*\((((struct\s+[a-zA-Z0-9_]+|int|char)\s*\**|void\s*\*+)\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,?\s*)*\s*\)")
+        format!(r"((struct\s+[a-zA-Z0-9_]|int|char)\s*(\**\s)*|void\s*\*+(\s*\*)*)\s*{item}\s*\((((struct\s+[a-zA-Z0-9_]+|int|char)\s*\**|void\s*\*+)\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,?\s*)*\s*\)")
             .as_str(),
     )
     .expect("Invalid regex");
@@ -72,6 +73,7 @@ pub fn import_c_function(input: TokenStream) -> TokenStream {
         .find(fc.as_str())
         .expect("Item not found in file. Did you mean to import a struct?")
         .as_str();
+    println!("{declaration}");
 
     // It's fine that these functions panic because the regex only matches to valid function declarations
     let lexed = c_string_to_tokens(declaration).expect("Failed to lex declaration");
@@ -256,7 +258,7 @@ fn parse_c_function_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
     };
     let id: String = match token_stream.next().unwrap() {
         Token::Id(id) => id.to_string(),
-        _ => panic!("Expected identifier"),
+        other => panic!("Expected identifier, found: {:?}", other),
     };
     if *token_stream.next().unwrap() != Token::OParen {
         panic!("Expected open parenthesis");
