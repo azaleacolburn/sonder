@@ -22,7 +22,6 @@ pub fn import_c_struct(input: TokenStream) -> TokenStream {
     let path = parse_macro_input!(raw_path as LitStr).value();
     let item = parse_macro_input!(raw_item as LitStr).value();
 
-    println!("{path}");
     let fc = fs::read_to_string(path).expect("C file not found");
 
     let pattern = Regex::new(format!(r#"struct\s+{item}\s*\{{(\s*((int|char)\**|void\*+)\s+[a-zA-Z_][a-zA-Z0-9_]*\s*;)*\s*\}}\s*;"#).as_str())
@@ -58,13 +57,12 @@ pub fn import_c_function(input: TokenStream) -> TokenStream {
         .expect("Please provide an item to be imported in the form of a string");
     let path = parse_macro_input!(raw_path as LitStr).value();
     let item = parse_macro_input!(raw_item as LitStr).value();
-    println!("{item}");
 
     let fc = fs::read_to_string(path).expect("C file not found");
 
     // TODO: Figure out how to allow typedefs, maybe preprocess c file first?
     let pattern = Regex::new(
-        format!(r"((struct\s+[a-zA-Z0-9_]|int|char)\s*(\**\s)*|void\s*\*+(\s*\*)*)\s*{item}\s*\((((struct\s+[a-zA-Z0-9_]+|int|char)\s*\**|void\s*\*+)\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,?\s*)*\s*\)")
+        format!(r"((struct\s+[a-zA-Z0-9_]|int|char)\s*(\**\s)*|void\s*\**(\s*\*)*)\s*{item}\s*\((((struct\s+[a-zA-Z0-9_]+|int|char)\s*\**|void\s*\*+)\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,?\s*)*\s*\)")
             .as_str(),
     )
     .expect("Invalid regex");
@@ -73,7 +71,6 @@ pub fn import_c_function(input: TokenStream) -> TokenStream {
         .find(fc.as_str())
         .expect("Item not found in file. Did you mean to import a struct?")
         .as_str();
-    println!("{declaration}");
 
     // It's fine that these functions panic because the regex only matches to valid function declarations
     let lexed = c_string_to_tokens(declaration).expect("Failed to lex declaration");
@@ -243,9 +240,9 @@ enum Token {
 fn parse_c_function_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
     let mut token_stream = tokens.iter();
     let return_type: String = match token_stream.next().unwrap() {
-        Token::Char => String::from(" -> i8"),
-        Token::Int => String::from(" -> i16"),
-        Token::Void => String::from(" "),
+        Token::Char => String::from("i8"),
+        Token::Int => String::from("i16"),
+        Token::Void => String::from("()"),
         Token::Struct => {
             if let Token::Id(id) = token_stream.next().unwrap() {
                 format!(" -> {id}")
@@ -256,7 +253,13 @@ fn parse_c_function_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
         // TODO: Port over structs
         _ => panic!("Invalid return type"),
     };
-    let id: String = match token_stream.next().unwrap() {
+    let mut return_refs_string = String::new();
+    let mut star_or_id = token_stream.next().unwrap();
+    while *star_or_id == Token::Star {
+        return_refs_string.push('&');
+        star_or_id = token_stream.next().unwrap();
+    }
+    let id: String = match star_or_id {
         Token::Id(id) => id.to_string(),
         other => panic!("Expected identifier, found: {:?}", other),
     };
@@ -266,50 +269,38 @@ fn parse_c_function_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
     let mut t = token_stream.next().unwrap();
     let mut args: Vec<String> = vec![];
     while *t == Token::Char || *t == Token::Int || *t == Token::Void || *t == Token::Struct {
-        let next = token_stream.next().unwrap();
-        let mut next_next = token_stream.next().unwrap();
+        let mut next = token_stream.next().unwrap();
 
-        let arg: String = match (t, next, next_next) {
-            (Token::Struct, Token::Id(c_type_id), Token::Star) => {
-                let name = if let Token::Id(id) = token_stream.next().unwrap() {
-                    id
-                } else {
-                    panic!("Expected id after for arg name");
-                };
-                next_next = token_stream.next().unwrap();
-                format!("{name}: &{c_type_id}")
+        let base_type: String = match (t, next) {
+            (Token::Char, _) => String::from("i8"),
+            (Token::Int, _) => String::from("i16"),
+            (Token::Void, Token::Star) => {
+                next = token_stream.next().unwrap();
+                String::from("&()")
             }
-            (Token::Struct, Token::Id(struct_id), Token::Id(arg_id)) => {
-                next_next = token_stream.next().unwrap();
-                format!("{arg_id}: {struct_id}")
+            (Token::Void, _) => panic!("Void type must be a pointer"),
+            (Token::Struct, Token::Id(id)) => {
+                next = token_stream.next().unwrap();
+                format!("{id}")
             }
-            (c_type, Token::Star, Token::Id(id)) => {
-                let rust_type = match c_type {
-                    Token::Int => "i16",
-                    Token::Char => "i8",
-                    Token::Void => "()",
-                    _ => panic!("Invalid primitive type"),
-                };
-                next_next = token_stream.next().unwrap();
-                format!("{id}: &{rust_type}")
-            }
-            (c_type, Token::Id(id), _after) => {
-                format!(
-                    "{id}: {}",
-                    match c_type {
-                        Token::Int => "i16",
-                        Token::Char => "i8",
-                        Token::Void => "()",
-                        _ => panic!("Invalid primitive type"),
-                    }
-                )
-            }
-            (Token::Void, _, _) => panic!("Void type must be a void*"),
-            (_, _, _) => panic!("Expected declaration"),
+            _ => panic!("Expected type"),
         };
 
+        let mut arg_stars = String::new();
+        while *next == Token::Star {
+            arg_stars.push('&');
+            next = token_stream.next().unwrap();
+        }
+
+        let arg_id = if let Token::Id(name) = next {
+            name
+        } else {
+            panic!("Expected identifier")
+        };
+
+        let arg = format!("{arg_id}: {arg_stars}{base_type}");
         args.push(arg);
-        match next_next {
+        match token_stream.next().unwrap() {
             Token::Comma => t = token_stream.next().unwrap(),
             Token::CParen => break,
             _ => panic!("expected comma or cparen"),
@@ -317,7 +308,9 @@ fn parse_c_function_declaration_to_rust(tokens: Vec<Token>) -> TokenStream {
     }
     let formatted_args = args.join(", ");
     // This is just a trick to let us compile, the binaries will be statically linked dw
-    let parsed = format!("extern \"C\" {{\nfn {id} ({formatted_args}){return_type};\n}}");
+    let parsed = format!(
+        "extern \"C\" {{\nfn {id} ({formatted_args}) -> {return_refs_string}{return_type};\n}}"
+    );
     return parsed.parse().unwrap();
 }
 
