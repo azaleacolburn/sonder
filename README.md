@@ -2,21 +2,37 @@
 
 ## Scratch repo for potential science fair submission
 
-A macro system and linker that compiles c and rust to wasm and statically links them
-or
-Cross language compilation and linking with wasm as a shared target
+Cross language compilation and linking with wasm as a shared target.
+Recently, there has been an outpour of new, compiled, imperative languages without a garbage collector. Sonder aims to make interop between any of these new languages and Rust (on the Rust end) trivial.
 
 ## Plans
 
-- Use proc macros in rust to be able to call C functions exactly like rust functions (including getting lsp completions, etc)
-- Compile everything to wasm to avoid the issues of conforming rust code to the c_abi and deal with an ffi (or actually we're just inventing our own)
-- Fully compile check the imported c source and have some assurance of semi-safe interop at compile time
+### Preliminary work
 
-### Proc Macros
+- Use proc macros in rust to be able to call C functions exactly like rust functions (including getting lsp completions, etc)
+- Compile and link everything together.
+
+### Main project
+
+- Create a proc macro or build tool for defining the header/declaration grammar of a new language.
+  - Generate regex for grepping these declarations
+  - Create macros that understand this and can seamlessly import functions, statics, and structs from any of there languages into Rust.
+  - Track all involved files and compile them each to WASM
+  - Link all the WASM files in the needed places
+
+### If we really pop off this year
+
+- Fully compile check the imported c source and have some assurance of semi-safe interop at compile time, without creating additional rust abstractions.
+- Put the rhododendron parser into a macro and 
+
+### Basic Bindgen
 
 - [x] Proc Macros for automatic extern "C" function declaration
 - [x] Proc Macros for automatic extern "C" struct declaration
 - [ ] Proc Macros for automatic extern "C" static declaration
+
+- [ ] Proc Macro to parse grammar and cache a novel regex for how to grep declarations in the header file of that language.
+      - Note that header files can just be 
 
 ### Linking
 
@@ -27,9 +43,9 @@ Cross language compilation and linking with wasm as a shared target
 
 ## Purpose
 
-- Allow rust code to seamlessly interop with old C(++) code as it incrementally replaces a codebase, with static linking and code editor completions.
+- Allow Rust code to interop with any language given a header file grammar (and a compiler that supports either the C ABI or wasm as a target) with static linking and code editor completions in Rust.
 
-### Notes
+## Notes
 
 - Compile Rust to wasm: `cargo build --target wasm32-unknown-unknown`
 - Compile C to wasm: `./wasi-sdk-24.0/bin/clang --sysroot wasi-sdk-24.0/share/wasi-sysroot/ hello.c -o hello.wasm`
