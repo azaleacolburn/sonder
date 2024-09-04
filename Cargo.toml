@@ -2,6 +2,6 @@
 resolver = "2"
 
 members = [
-    "sonder_engine",
+    "engine",
     "tests"
 ]
