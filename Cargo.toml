@@ -1,7 +1,6 @@
-[workspace]
-resolver = "2"
+[package]
+name = "sonder"
+version = "0.1.0"
+edition = "2021"
 
-members = [
-    "engine",
-    "tests"
-]
+[dependencies]
