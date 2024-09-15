@@ -1,9 +1,9 @@
-use crate::error::{RhErr, ET};
-use crate::lexer::{LineNumHandler, RhTypes, Token};
+use crate::error::{ErrType as ET, RhErr};
+use crate::lexer::{LineNumHandler, RhType, Token};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ScopeType {
-    Function(RhTypes),
+    Function(RhType),
     While,
     Program,
     If,
@@ -43,15 +43,15 @@ pub enum NodeType {
     _Loop,
     Break,
     FunctionCall(String),
-    Scope(Option<RhTypes>), // <-- anything that has {} is a scope, scope is how we're handling multiple statements, scopes return the last statement's result or void
+    Scope(Option<RhType>), // <-- anything that has {} is a scope, scope is how we're handling multiple statements, scopes return the last statement's result or void
     Assignment(AssignmentOpType),
-    Declaration((String, RhTypes)),
+    Declaration((String, usize, usize)), // id, literal_size, additional_reserved_size (for arrays)
     Asm(String),
     Adr(String),
     DeRef,
-    Array(i32),
-    FunctionDecaration((String, RhTypes)),
-    Type(RhTypes),
+    ArrayDeclaration((String, usize)), // id, array_size
+    FunctionDecaration((String, RhType)),
+    Type(RhType),
     Assert,
     Return,
     PutChar,
@@ -240,13 +240,13 @@ pub fn scope(token_handler: &mut TokenHandler, scope_type: ScopeType) -> Result<
         // println!("here\n");
         // if token_handler.len() == token_handler.curr_token + 1 {
         // if *token_handler.get_token() != Token::Semi {
-        // scope_node.token = NodeType::Scope(Some(RhTypes::Int)) // TODO: Chane this to evaluate the type of the last statement
+        // scope_node.token = NodeType::Scope(Some(RhType::Int)) // TODO: Chane this to evaluate the type of the last statement
         // }
         // if *token_handler.get_token() == Token::CCurl { break; }
         // }
     }
     if *token_handler.get_prev_token() == Token::Semi {
-        scope_node.token = NodeType::Scope(Some(RhTypes::Int)) // TODO: Change this to evaluate the  type of the last statement
+        scope_node.token = NodeType::Scope(Some(RhType::Int)) // TODO: Change this to evaluate the  type of the last statement
     }
     Ok(scope_node)
 }
@@ -285,26 +285,51 @@ pub fn statement(
     }
 }
 
-fn declaration(token_handler: &mut TokenHandler, t: RhTypes) -> Result<TokenNode, RhErr> {
+fn declaration(token_handler: &mut TokenHandler, t: RhType) -> Result<TokenNode, RhErr> {
     token_handler.next_token();
-    match token_handler.get_token() {
-        Token::Id(id) => {
+    let id_token = token_handler.get_token().clone();
+    token_handler.next_token();
+    let next_token = token_handler.get_token();
+    match (id_token, next_token) {
+        (Token::Id(id), Token::Eq) => {
             let mut node = TokenNode::new(NodeType::Declaration((id.to_string(), t)), Some(vec![]));
+            node.children
+                .as_mut()
+                .expect("node to have children")
+                .push(condition_expr(token_handler)?);
+
+            Ok(node.clone())
+        }
+        // Array Declaration
+        (Token::Id(id), Token::OSquare) => {
+            let mut node = TokenNode::new(NodeType::Declaration((id.to_string(), t)), Some(vec![]));
+
+            token_handler.next_token();
+            let size = if let Token::NumLiteral(size) = token_handler.get_token() {
+                size
+            } else {
+                return Err(token_handler.new_err(ET::ExpectedNumLiteral));
+            };
+            token_handler.next_token();
+            if *token_handler.get_token() != Token::CSquare {
+                return Err(token_handler.new_err(ET::ExpectedCSquare));
+            }
+
             token_handler.next_token();
             if *token_handler.get_token() == Token::Eq {
-                token_handler.next_token();
                 node.children
                     .as_mut()
                     .expect("node to have children")
                     .push(condition_expr(token_handler)?);
             }
+
             Ok(node.clone())
         }
-        _ => Err(token_handler.new_err(ET::ExpectedId)),
+        (_, _) => Err(token_handler.new_err(ET::ExpectedId)),
     }
 }
 
-fn declaration_statement(token_handler: &mut TokenHandler, t: RhTypes) -> Result<TokenNode, RhErr> {
+fn declaration_statement(token_handler: &mut TokenHandler, t: RhType) -> Result<TokenNode, RhErr> {
     let declare = declaration(token_handler, t);
     if *token_handler.get_token() != Token::Semi {
         return Err(token_handler.new_err(ET::ExpectedSemi));
@@ -395,13 +420,7 @@ fn arithmetic_factor(token_handler: &mut TokenHandler) -> Result<TokenNode, RhEr
         Token::OSquare => {
             token_handler.next_token();
 
-            let n = if let Token::NumLiteral(n) = token_handler.get_token() {
-                n
-            } else {
-                panic!("no empty arrays allowed");
-            };
-
-            let mut node = TokenNode::new(NodeType::Array(*n), vec![].into());
+            let mut node = TokenNode::new(NodeType::Array, vec![].into());
 
             println!("Array: {:?}", token_handler.get_token());
 
@@ -576,14 +595,12 @@ fn if_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
     Ok(if_node)
 }
 
-fn function_declare_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
+fn function_declare_statement(
+    token_handler: &mut TokenHandler,
+    t: RhType,
+) -> Result<TokenNode, RhErr> {
     println!("Function Declaration");
     println!("Function Return Type: {:?}", token_handler.get_token());
-    let t = if let Token::Type(t) = token_handler.get_token().clone() {
-        t
-    } else {
-        panic!("Expected type");
-    };
     token_handler.next_token();
     let token = token_handler.get_token();
     println!("Token: {:?}", token);
@@ -661,7 +678,7 @@ fn function_call_statement(
 
 fn function_call(token_handler: &mut TokenHandler, name: String) -> Result<TokenNode, RhErr> {
     let mut function_call_node = TokenNode::new(NodeType::FunctionCall(name), Some(vec![]));
-    println!("Fucntion call node: {:?}", token_handler.get_token());
+    println!("Function call node: {:?}", token_handler.get_token());
     token_handler.next_token();
     if *token_handler.get_token() != Token::OParen {
         return Err(token_handler.new_err(ET::ExpectedOParen));
@@ -694,11 +711,71 @@ fn id_statement(token_handler: &mut TokenHandler, id: String) -> Result<TokenNod
     }
 }
 
-fn type_statement(token_handler: &mut TokenHandler, t: RhTypes) -> Result<TokenNode, RhErr> {
+fn type_statement(token_handler: &mut TokenHandler, t: RhType) -> Result<TokenNode, RhErr> {
     match token_handler.peek(2) {
-        Token::OParen => function_declare_statement(token_handler),
+        Token::OParen => function_declare_statement(token_handler, t),
+        Token::OSquare => array_declare_statement(token_handler, t),
         _ => declaration_statement(token_handler, t),
     }
+}
+
+fn array_declare_statement(
+    token_handler: &mut TokenHandler,
+    t: RhType,
+) -> Result<TokenNode, RhErr> {
+    token_handler.next_token();
+    let id = if let Token::Id(id) = token_handler.get_token() {
+        *id
+    } else {
+        return Err(token_handler.new_err(ET::ExpectedId));
+    };
+    token_handler.next_token(); // Already checked open square bracket
+    token_handler.next_token();
+    let size = if let Token::NumLiteral(n) = token_handler.get_token() {
+        *n as usize
+    } else {
+        return Err(token_handler.new_err(ET::ExpectedNumLiteral));
+    };
+
+    token_handler.next_token();
+    if *token_handler.get_token() != Token::Eq {
+        if *token_handler.get_token() != Token::Semi {
+            return Err(token_handler.new_err(ET::ExpectedSemi));
+        }
+        return Ok(TokenNode::new(
+            NodeType::ArrayDeclaration((id, size)),
+            Some(vec![]),
+        ));
+    }
+
+    token_handler.next_token();
+    if *token_handler.get_token() != Token::OSquare {
+        return Err(token_handler.new_err(ET::ExpectedOSquare));
+    }
+
+    token_handler.next_token();
+    let mut items: Vec<TokenNode> = vec![];
+    while let Token::NumLiteral(n) = *token_handler.get_token() {
+        let item_node = TokenNode::new(NodeType::NumLiteral(n), None);
+        items.push(item_node);
+        token_handler.next_token(); // NOTE: Does not check for comma, fix later
+        token_handler.next_token();
+    }
+
+    if *token_handler.get_token() != Token::CSquare {
+        return Err(token_handler.new_err(ET::ExpectedCSquare));
+    }
+
+    token_handler.next_token();
+
+    if *token_handler.get_token() != Token::Semi {
+        return Err(token_handler.new_err(ET::ExpectedSemi));
+    }
+
+    Ok(TokenNode::new(
+        NodeType::ArrayDeclaration((id, size)),
+        Some(items),
+    ))
 }
 
 fn condition(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
