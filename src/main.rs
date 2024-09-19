@@ -1,5 +1,8 @@
 use std::{fs::read_to_string, path::Path};
 
+use parser::TokenNode;
+
+#[allow(dead_code)]
 mod analyzer;
 mod error;
 mod lexer;
@@ -10,7 +13,7 @@ fn main() {
     let parsed = parse_c(path);
 }
 
-fn parse_c(file: &Path) -> Node {
+fn parse_c(file: &Path) -> TokenNode {
     let contents = read_to_string(file).expect("Please provide a valid file for parsing");
     let (tokens, line_numbers) = lexer::string_to_tokens(contents)
         .expect("Failed to lex tokens, please provide valid C code");
