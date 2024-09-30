@@ -1,4 +1,4 @@
-use std::num::ParseIntError;
+use std::{fmt, num::ParseIntError};
 
 /// each index is a new line, the value is the token_i that starts that line
 pub struct LineNumHandler {
@@ -729,4 +729,19 @@ pub enum RhType {
     Char,
     Int,
     Void,
+}
+
+impl fmt::Display for RhType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Write strictly the first element into the supplied output
+        // stream: `f`. Returns `fmt::Result` which indicates whether the
+        // operation succeeded or failed. Note that `write!` uses syntax which
+        // is very similar to `println!`.
+        let p = match self {
+            RhType::Char => "u8",
+            RhType::Int => "u16",
+            RhType::Void => "()",
+        };
+        write!(f, "{}", p)
+    }
 }

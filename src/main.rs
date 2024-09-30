@@ -4,9 +4,11 @@ use parser::TokenNode;
 
 #[allow(dead_code)]
 mod analyzer;
+mod converter;
 mod error;
 mod lexer;
 mod parser;
+mod test;
 
 fn main() {
     let path = Path::new("test");

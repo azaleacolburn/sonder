@@ -2,8 +2,8 @@
 
 ```c
 int t = 0;
-int ptr_t = &t;
-void set_four(int* ptr_t) -> {
+int* ptr_t = &t;
+void set_four(int* ptr_t) {
     *ptr_t = 4;
 }
 ```
