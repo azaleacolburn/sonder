@@ -724,7 +724,7 @@ pub enum Token {
             // FuncCall(String, Vec<String>), // function name, args
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum RhType {
     Char,
     Int,
