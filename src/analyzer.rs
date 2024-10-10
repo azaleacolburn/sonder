@@ -35,7 +35,7 @@ struct Arena {
 
 /// Returns a vector of all pointers pointing to this id
 /// Note: It only returns explicit pointers
-fn get_all_pointers(var_name: &String, root: &Node) -> Vec<Ptr> {
+fn get_all_pointers(var_name: &String, root: &Node, is_assignment: bool) -> Vec<Ptr> {
     root.children
         .as_ref()
         .unwrap()
@@ -44,14 +44,19 @@ fn get_all_pointers(var_name: &String, root: &Node) -> Vec<Ptr> {
             // TODO: Figure out how to check what pointers point to what, since some have names and
             // some don't
             // There's a difference between dereferencing and referencing that needs to be resolved
-            let mut sub_ptrs = get_all_pointers(var_name, child);
+            let this_is_assignment = if let NodeType::Assignment(_) = &child.token {
+                true
+            } else {
+                is_assignment
+            };
+            let mut sub_ptrs = get_all_pointers(var_name, child, this_is_assignment);
             if child.token == NodeType::Adr(var_name.clone()) {
-                // TODO: We actually want to traverse the tree upwards here
+                // FIXME: We actually want to traverse the tree upwards here for an assignment node
                 let is_mut = if std::mem::discriminant(&root.token)
                     == std::mem::discriminant(&NodeType::Assignment(AssignmentOpType::Eq))
                 {
                     match &root.children.as_ref().unwrap()[0].token {
-                        // TODO: Should look start with the parent node of root instead
+                        // FIXME: Should look start with the parent node of root instead
                         NodeType::Id(id) => is_mut(&id, root),
                         _ => panic!("Expected first assignment child to be id"),
                     }
