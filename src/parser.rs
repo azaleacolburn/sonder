@@ -255,7 +255,6 @@ pub fn statement(
     token_handler: &mut TokenHandler,
     scope_type: ScopeType,
 ) -> Result<TokenNode, RhErr> {
-    // let mut node: TokenNode = TokenNode::new(NodeType::Program, Some(vec![])); // todo: add default type
     let statement_token = token_handler.get_token();
     println!("Statement Token: {:?}", statement_token);
     match statement_token {
@@ -291,13 +290,19 @@ fn scalar_declaration(token_handler: &mut TokenHandler, t: RhType) -> Result<Tok
         RhType::Char => 1,
         RhType::Void => panic!("Illegal void declaration"),
     };
-    token_handler.next_token();
+    token_handler.next_token(); // T -> id
     let id_token = token_handler.get_token().clone();
     let id = if let Token::Id(id) = id_token {
         id
     } else {
         return Err(token_handler.new_err(ET::ExpectedId));
     };
+    token_handler.next_token(); // we don't need info about eq since we know it's a scalar declaration
+    if *token_handler.get_token() != Token::Eq {
+        return Err(token_handler.new_err(ET::ExpectedEq));
+    }
+    token_handler.next_token();
+
     let mut node = TokenNode::new(
         NodeType::Declaration((id.to_string(), size, 0)),
         Some(vec![]),

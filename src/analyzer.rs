@@ -1,6 +1,6 @@
-use crate::error::ErrType as ET;
 use crate::parser::{AssignmentOpType, NodeType, TokenNode as Node};
 
+#[derive(Debug)]
 enum PtrType {
     TrueRaw,
 
@@ -13,8 +13,9 @@ enum PtrType {
     MutRef,
 }
 
-struct Ptr {
-    name: String,
+#[derive(Debug)]
+pub struct Ptr {
+    points_to: String,
     t: PtrType,
     is_mut: bool,
 }
@@ -33,39 +34,38 @@ struct Arena {
     data: Vec<StackData>,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum AssignmentBool {
+    IsAssignment(bool), // id being assigned to, is_mut
+    NotAssignment,
+}
+
 /// Returns a vector of all pointers pointing to this id
 /// Note: It only returns explicit pointers
-fn get_all_pointers(var_name: &String, root: &Node, is_assignment: bool) -> Vec<Ptr> {
+/// TODO: Make pointer grabbing and mut checking for every variable a single sweep over the tree
+pub fn get_all_pointers(var_name: &String, root: &Node, is_assignment: AssignmentBool) -> Vec<Ptr> {
     root.children
         .as_ref()
         .unwrap()
         .iter()
         .flat_map(|child| {
-            // TODO: Figure out how to check what pointers point to what, since some have names and
-            // some don't
-            // There's a difference between dereferencing and referencing that needs to be resolved
             let this_is_assignment = if let NodeType::Assignment(_) = &child.token {
-                true
+                let is_mut = match &child.children.as_ref().unwrap()[0].token {
+                    NodeType::Id(id) => is_mut(&id, root),
+                    _ => panic!("Expeceter first assignment child to be id"),
+                };
+                AssignmentBool::IsAssignment(is_mut)
             } else {
                 is_assignment
             };
             let mut sub_ptrs = get_all_pointers(var_name, child, this_is_assignment);
             if child.token == NodeType::Adr(var_name.clone()) {
-                // FIXME: We actually want to traverse the tree upwards here for an assignment node
-                let is_mut = if std::mem::discriminant(&root.token)
-                    == std::mem::discriminant(&NodeType::Assignment(AssignmentOpType::Eq))
-                {
-                    match &root.children.as_ref().unwrap()[0].token {
-                        // FIXME: Should look start with the parent node of root instead
-                        NodeType::Id(id) => is_mut(&id, root),
-                        _ => panic!("Expected first assignment child to be id"),
-                    }
-                } else {
-                    false
+                let is_mut = match &is_assignment {
+                    AssignmentBool::IsAssignment(is_mut) => *is_mut,
+                    AssignmentBool::NotAssignment => false,
                 };
-                // let is_mut = is_mut();
                 let ptr = Ptr {
-                    name: var_name.clone(),
+                    points_to: var_name.clone(),
                     t: PtrType::TrueRaw,
                     is_mut,
                 };
@@ -77,7 +77,7 @@ fn get_all_pointers(var_name: &String, root: &Node, is_assignment: bool) -> Vec<
 }
 
 /// Checks if a pointer is ever defererenced and modified
-fn is_mut(ptr_name: &String, root: &Node) -> bool {
+pub fn is_mut(ptr_name: &String, root: &Node) -> bool {
     for child in root.children.as_ref().unwrap().iter() {
         if is_mut(ptr_name, &child) {
             return true;
