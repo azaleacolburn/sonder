@@ -15,6 +15,7 @@ enum PtrType {
 
 #[derive(Debug)]
 pub struct Ptr {
+    name: String,
     points_to: String,
     t: PtrType,
     is_mut: bool,
@@ -46,21 +47,20 @@ pub enum AssignmentBool {
 /// Returns a vector of all pointers pointing to this id
 /// Note: It only returns explicit pointers
 /// TODO: Make pointer grabbing and mut checking for every variable a single sweep over the tree
-pub fn get_all_pointers(var_name: &String, root: &Node, is_assignment: AssignmentBool) -> Vec<Ptr> {
+pub fn get_all_pointers(var_name: &String, root: &Node, ptrs: Vec<Ptr>) -> Vec<Ptr> {
     println!("root: {:?}\n", root);
-    let mut ptrs: Vec<Ptr> = vec![];
+    let mut new_ptrs: Vec<Ptr> = vec![];
 
-    let this_is_assignment = match &root.token {
-        NodeType::Assignment(_) => {
-            let deref = &root.children.as_ref().unwrap()[0];
-            let is_mut = match &deref.children.as_ref().unwrap()[0].token {
-                // FIXME: This should start searching in root's parent
-                NodeType::Id(id) => is_mut(&id, root),
-                _ => panic!("Expected first assignment child to be id"),
-            };
-            AssignmentBool::IsAssignment(is_mut)
+    let first_child = &root.children.as_ref().unwrap()[0];
+    let this_is_assignment = match (&root.token, &first_child.token) {
+        (_, NodeType::Id(_)) => AssignmentBool::IsAssignment(false),
+        (NodeType::Assignment(_), NodeType::DeRef) => {
+            match ptrs.iter().map(|ptr| ptr.name).position(ptr_name) {
+                Some(i) => ptrs[i].is_mut = true,
+                None => 
+            }
         }
-        NodeType::Adr(adr_name) => {
+        (NodeType::Adr(adr_name), _) => {
             if adr_name == var_name {
                 let is_mut = match &is_assignment {
                     AssignmentBool::IsAssignment(is_mut) => *is_mut,
@@ -71,7 +71,7 @@ pub fn get_all_pointers(var_name: &String, root: &Node, is_assignment: Assignmen
                     t: PtrType::TrueRaw,
                     is_mut,
                 };
-                ptrs.push(ptr);
+                new_ptrs.push(ptr);
             }
 
             is_assignment
@@ -84,10 +84,10 @@ pub fn get_all_pointers(var_name: &String, root: &Node, is_assignment: Assignmen
             .iter()
             .flat_map(|child| get_all_pointers(var_name, child, this_is_assignment))
             .collect::<Vec<Ptr>>();
-        ptrs.append(&mut sub_pointers);
+        new_ptrs.append(&mut sub_pointers);
     }
 
-    ptrs
+    new_ptrs
 }
 
 /// Checks if a pointer is ever defererenced and modified
