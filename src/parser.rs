@@ -45,12 +45,12 @@ pub enum NodeType {
     FunctionCall(String),
     Scope(Option<RhType>), // <-- anything that has {} is a scope, scope is how we're handling multiple statements, scopes return the last statement's result or void
     Assignment(AssignmentOpType),
-    Declaration((String, usize, usize)), // id, literal_size, additional_reserved_size (for arrays)
+    Declaration((String, RhType, usize)), // id, literal_size, additional_reserved_size (for arrays)
     PtrDeclaration((String, RhType)),
     Asm(String),
     Adr(String),
     DeRef,
-    ArrayDeclaration((String, usize)), // id, array_size
+    ArrayDeclaration((String, RhType, usize)), // id, type, count
     FunctionDecaration((String, RhType)),
     Type(RhType),
     Assert,
@@ -285,43 +285,28 @@ pub fn statement(
     }
 }
 
-fn scalar_declaration(token_handler: &mut TokenHandler, t: RhType) -> Result<TokenNode, RhErr> {
-    let size = match t {
-        RhType::Int => 4,
-        RhType::Char => 1,
-        RhType::Void => panic!("Illegal void declaration"),
-    };
-    token_handler.next_token(); // T -> id
-    let id_token = token_handler.get_token().clone();
-    let id = if let Token::Id(id) = id_token {
-        id
-    } else {
-        return Err(token_handler.new_err(ET::ExpectedId));
-    };
-    token_handler.next_token(); // we don't need info about eq since we know it's a scalar declaration
+fn scalar_declaration_statement(
+    token_handler: &mut TokenHandler,
+    t: RhType,
+    id: String,
+    ptr_cnt: u8,
+) -> Result<TokenNode, RhErr> {
     if *token_handler.get_token() != Token::Eq {
         return Err(token_handler.new_err(ET::ExpectedEq));
     }
     token_handler.next_token();
-
-    let mut node = TokenNode::new(
-        NodeType::Declaration((id.to_string(), size, 0)),
-        Some(vec![]),
-    );
-    node.children
-        .as_mut()
-        .expect("node to have children")
-        .push(condition_expr(token_handler)?);
-
-    Ok(node.clone())
-}
-
-fn declaration_statement(token_handler: &mut TokenHandler, t: RhType) -> Result<TokenNode, RhErr> {
-    let declare = scalar_declaration(token_handler, t);
+    let expr = if ptr_cnt > 0 {
+        arithmetic_expression(token_handler)?
+    } else {
+        condition_expr(token_handler)?
+    };
     if *token_handler.get_token() != Token::Semi {
         return Err(token_handler.new_err(ET::ExpectedSemi));
     }
-    declare
+    Ok(TokenNode::new(
+        NodeType::Declaration((id, t, 0)),
+        Some(vec![expr]),
+    ))
 }
 
 fn arithmetic_expression(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
@@ -567,27 +552,28 @@ fn function_declare_statement(
     token_handler.next_token();
     loop {
         let t = match token_handler.get_token() {
-            Token::Type(t) => t,
+            Token::Type(t) => t.clone(),
             _ => break,
         };
-        let declaration_node = scalar_declaration(token_handler, t.clone())?;
-        function_node
-            .children
-            .as_mut()
-            .unwrap()
-            .push(declaration_node);
-        println!("Should be comma: {:?}", token_handler.get_token());
+        token_handler.next_token();
+        let id = match token_handler.get_token() {
+            Token::Id(id) => id.clone(),
+            _ => return Err(token_handler.new_err(ET::ExpectedId)),
+        };
+        let arg_node = TokenNode::new(NodeType::Declaration((id, t, 0)), None);
+        function_node.children.as_mut().unwrap().push(arg_node);
+        println!("Comma or CParen: {:?}", token_handler.get_token());
         if *token_handler.get_token() != Token::Comma {
             break;
         }
         token_handler.next_token();
     }
-    println!("Cparent: {:?}", token_handler.get_token());
+    println!("CParen: {:?}", token_handler.get_token());
     if *token_handler.get_token() != Token::CParen {
         return Err(token_handler.new_err(ET::ExpectedCParen));
     }
     token_handler.next_token();
-    println!("Pre Scope Token: {:?}", token_handler.get_token());
+    println!("OCurl: {:?}", token_handler.get_token());
     token_handler.next_token();
     let scope_node = scope(token_handler, ScopeType::Function(t.clone()))?;
     function_node.children.as_mut().unwrap().push(scope_node);
@@ -648,44 +634,32 @@ fn id_statement(token_handler: &mut TokenHandler, id: String) -> Result<TokenNod
 }
 
 fn type_statement(token_handler: &mut TokenHandler, t: RhType) -> Result<TokenNode, RhErr> {
+    // let id = if let Token::Id(id) = token_handler.get_token() {
+    //     id
+    // } else {
+    //     return Err(token_handler.new_err(ET::ExpectedId));
+    // };
+    token_handler.next_token();
+    let mut ptr_cnt = 0;
+    let mut ptr_tok = token_handler.get_token();
+    while *ptr_tok == Token::Star {
+        ptr_cnt += 1;
+        token_handler.next_token();
+        ptr_tok = token_handler.get_token();
+    }
+
     let id = if let Token::Id(id) = token_handler.get_token() {
-        id
+        id.clone()
     } else {
         return Err(token_handler.new_err(ET::ExpectedId));
     };
-    token_handler.next_token();
-    if *token_handler.get_token() == Token::Star {
-        token_handler.next_token();
-        return ptr_declaration_statement(token_handler, t, id.clone());
-    }
 
+    token_handler.next_token();
     match token_handler.get_token() {
         Token::OParen => function_declare_statement(token_handler, t, id.clone()),
-        Token::OSquare => array_declare_statement(token_handler, t, id),
-        _ => declaration_statement(token_handler, t, id),
+        Token::OSquare => array_declare_statement(token_handler, t, id.clone()),
+        _ => scalar_declaration_statement(token_handler, t, id.clone(), ptr_cnt),
     }
-}
-
-fn ptr_declaration_statement(
-    token_handler: &mut TokenHandler,
-    t: RhType,
-    id: String,
-) -> Result<TokenNode, RhErr> {
-    token_handler.next_token();
-    if *token_handler.get_token() != Token::Eq {
-        return Err(token_handler.new_err(ET::ExpectedEq));
-    }
-
-    let expr = arithmetic_expression(token_handler)?;
-
-    if *token_handler.get_token() != Token::Semi {
-        return Err(token_handler.new_err(ET::ExpectedSemi));
-    }
-
-    Ok(TokenNode::new(
-        NodeType::PtrDeclaration((id, t)),
-        Some(vec![expr]),
-    ))
 }
 
 fn array_declare_statement(
@@ -694,19 +668,23 @@ fn array_declare_statement(
     id: String,
 ) -> Result<TokenNode, RhErr> {
     token_handler.next_token(); // Already checked open square bracket
-    let size = match token_handler.get_token() {
+    let alloc_count = match token_handler.get_token() {
         Token::NumLiteral(n) => *n as usize,
         _ => return Err(token_handler.new_err(ET::ExpectedNumLiteral)),
     };
 
     token_handler.next_token();
+    if *token_handler.get_token() != Token::CSquare {
+        return Err(token_handler.new_err(ET::ExpectedCSquare));
+    }
+
     if *token_handler.get_token() != Token::Eq {
         if *token_handler.get_token() != Token::Semi {
             return Err(token_handler.new_err(ET::ExpectedSemi));
         }
         return Ok(TokenNode::new(
-            NodeType::ArrayDeclaration((id.to_string(), size)),
-            Some(vec![]),
+            NodeType::ArrayDeclaration((id.clone(), t, alloc_count)),
+            None,
         ));
     }
 
@@ -720,9 +698,9 @@ fn array_declare_statement(
     while let Token::NumLiteral(n) = *token_handler.get_token() {
         let item_node = TokenNode::new(NodeType::NumLiteral(n), None);
         items.push(item_node);
-        token_handler.next_token(); // NOTE: Does not check for comma, fix later
-        let tok = *token_handler.get_token();
-        if tok != Token::Comma && tok != Token::CCurl {
+        token_handler.next_token();
+        let tok = token_handler.get_token();
+        if *tok != Token::Comma && *tok != Token::CCurl {
             return Err(token_handler.new_err(ET::ExpectedCCurl));
         }
 
@@ -734,13 +712,12 @@ fn array_declare_statement(
     }
 
     token_handler.next_token();
-
     if *token_handler.get_token() != Token::Semi {
         return Err(token_handler.new_err(ET::ExpectedSemi));
     }
 
     Ok(TokenNode::new(
-        NodeType::ArrayDeclaration((id, size)),
+        NodeType::ArrayDeclaration((id, t, alloc_count)),
         Some(items),
     ))
 }
@@ -855,36 +832,48 @@ fn asm_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
     }
 }
 
-/// TODO: Make this function check for semi-colonons
 fn for_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
-    let mut for_node = TokenNode::new(NodeType::If, Some(vec![]));
-    let t = match token_handler.get_token() {
-        Token::Type(t) => t,
-        _ => return Err(token_handler.new_err(ET::ExpectedType)),
+    token_handler.next_token();
+    if *token_handler.get_token() != Token::OParen {
+        return Err(token_handler.new_err(ET::ExpectedOParen));
+    }
+
+    token_handler.next_token();
+    let iterator_init = match token_handler.get_token().clone() {
+        Token::Type(t) => {
+            token_handler.next_token();
+            let id = match token_handler.get_token() {
+                Token::Id(id) => id.clone(),
+                _ => return Err(token_handler.new_err(ET::ExpectedId)),
+            };
+            Some(TokenNode::new(NodeType::Declaration((id, t, 0)), None))
+        }
+        Token::Semi => None,
+        _ => return Err(token_handler.new_err(ET::ExpectedSemi)),
     };
-    let declare_node = scalar_declaration(token_handler, t.clone())?;
-    for_node
-        .children
-        .as_mut()
-        .expect("vec to be some")
-        .push(declare_node);
-    println!("token: {:?}, should be ;", token_handler.get_token());
-    token_handler.next_token(); // might make semi handled by the called functions instead
-    let condition_node = condition(token_handler)?;
-    for_node
-        .children
-        .as_mut()
-        .expect("vec to be some")
-        .push(condition_node);
     token_handler.next_token();
-    let statement_node = statement(token_handler, ScopeType::For)?;
-    for_node
-        .children
-        .as_mut()
-        .expect("vec to be some")
-        .push(statement_node);
-    token_handler.next_token();
-    Ok(for_node)
+    let condition_expr = match token_handler.get_token().clone() {
+        Token::Semi => None,
+        _ => Some(condition_expr(token_handler)?),
+    };
+    let assignment_token = match token_handler.get_token().clone() {
+        Token::Semi => None,
+        // TODO: Check what exactly is allowed in the third slot
+        Token::Id(id) => Some(assignment(token_handler, id)?),
+        _ => return Err(token_handler.new_err(ET::ExpectedSemi)),
+    };
+    let mut children = Vec::with_capacity(3);
+    if iterator_init.is_some() {
+        children.push(iterator_init.unwrap());
+    }
+    if condition_expr.is_some() {
+        children.push(condition_expr.unwrap());
+    }
+    if assignment_token.is_some() {
+        children.push(assignment_token.unwrap());
+    }
+
+    Ok(TokenNode::new(NodeType::For, Some(children)))
 }
 
 pub fn assert_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
@@ -964,10 +953,20 @@ pub fn struct_declaration_handler(token_handler: &mut TokenHandler) -> Result<To
 
     let mut field_definitions = vec![];
     token_handler.next_token();
-    while let Token::Type(t) = token_handler.get_token() {
-        let declaration = declaration_statement(token_handler, t.clone())?;
+    while let Token::Type(t) = token_handler.get_token().clone() {
+        token_handler.next_token();
+        let id = match token_handler.get_token() {
+            Token::Id(id) => id,
+            _ => return Err(token_handler.new_err(ET::ExpectedId)),
+        };
+        let declaration = TokenNode::new(NodeType::Declaration((id.clone(), t.clone(), 0)), None);
         field_definitions.push(declaration);
         token_handler.next_token();
+        if *token_handler.get_token() != Token::Comma && *token_handler.get_token() != Token::CParen
+        {
+            return Err(token_handler.new_err(ET::ExpectedSemi));
+        }
+        token_handler
     }
 
     let struct_declaration_node =
