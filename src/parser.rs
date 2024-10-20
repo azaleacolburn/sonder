@@ -45,7 +45,7 @@ pub enum NodeType {
     FunctionCall(String),
     Scope(Option<RhType>), // <-- anything that has {} is a scope, scope is how we're handling multiple statements, scopes return the last statement's result or void
     Assignment(AssignmentOpType),
-    Declaration((String, RhType, usize)), // id, literal_size, additional_reserved_size (for arrays)
+    Declaration((String, RhType, usize)), // id, type, additional_reserved_size (for arrays)
     PtrDeclaration((String, RhType)),
     Asm(String),
     Adr(String),

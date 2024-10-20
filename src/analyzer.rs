@@ -38,6 +38,7 @@ struct Arena {
     data: Vec<StackData>,
 }
 
+/// We need this to check if pointer values are being reassigned
 #[derive(Clone, Copy, Debug)]
 pub enum AssignmentBool {
     IsAssignment(bool), // id being assigned to, is_mut
@@ -47,37 +48,29 @@ pub enum AssignmentBool {
 /// Returns a vector of all pointers pointing to this id
 /// Note: It only returns explicit pointers
 /// TODO: Make pointer grabbing and mut checking for every variable a single sweep over the tree
-pub fn get_all_pointers(var_name: &String, root: &Node, ptrs: Vec<Ptr>) -> Vec<Ptr> {
+pub fn get_all_pointers(root: &Node, ptrs: Vec<Ptr>) -> Vec<Ptr> {
     println!("root: {:?}\n", root);
     let mut new_ptrs: Vec<Ptr> = vec![];
 
     let first_child = &root.children.as_ref().unwrap()[0];
-    let this_is_assignment = match (&root.token, &first_child.token) {
-        (_, NodeType::Id(_)) => AssignmentBool::IsAssignment(false),
+    match (&root.token, &first_child.token) {
         (NodeType::Assignment(_), NodeType::DeRef) => {
-            match ptrs.iter().map(|ptr| ptr.name).position(ptr_name) {
-                Some(i) => ptrs[i].is_mut = true,
-                None => 
-            }
+            let dereferenced_ptrs: Vec<Ptr> = get_all_pointers(first_child, new_ptrs);
         }
         (NodeType::Adr(adr_name), _) => {
-            if adr_name == var_name {
-                let is_mut = match &is_assignment {
-                    AssignmentBool::IsAssignment(is_mut) => *is_mut,
-                    AssignmentBool::NotAssignment => false,
-                };
-                let ptr = Ptr {
-                    points_to: var_name.clone(),
-                    t: PtrType::TrueRaw,
-                    is_mut,
-                };
-                new_ptrs.push(ptr);
-            }
-
-            is_assignment
+            let is_mut = match &is_assignment {
+                AssignmentBool::IsAssignment(is_mut) => *is_mut,
+                AssignmentBool::NotAssignment => false,
+            };
+            let ptr = Ptr {
+                points_to: adr_name.clone(),
+                t: PtrType::TrueRaw,
+                is_mut,
+            };
+            new_ptrs.push(ptr);
         }
-        _ => is_assignment,
-    };
+        _ => {}
+    }
 
     if let Some(children) = &root.children {
         let mut sub_pointers = children
