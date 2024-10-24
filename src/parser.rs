@@ -44,7 +44,8 @@ pub enum NodeType {
     Break,
     FunctionCall(String),
     Scope(Option<RhType>), // <-- anything that has {} is a scope, scope is how we're handling multiple statements, scopes return the last statement's result or void
-    Assignment(AssignmentOpType),
+    Assignment(AssignmentOpType, String), // id
+    DerefAssignment(AssignmentOpType, TokenNode), // deref_node
     Declaration((String, RhType, usize)), // id, type, additional_reserved_size (for arrays)
     PtrDeclaration((String, RhType)),
     Asm(String),
@@ -419,10 +420,9 @@ fn assignment(token_handler: &mut TokenHandler, name: String) -> Result<TokenNod
     let assignment_tok = AssignmentOpType::from_token(token_handler.get_token()).unwrap();
 
     token_handler.next_token();
-    let name_token = TokenNode::new(NodeType::Id(name.clone()), None);
     let token = TokenNode::new(
-        NodeType::Assignment(assignment_tok),
-        Some(vec![name_token, arithmetic_expression(token_handler)?]),
+        NodeType::Assignment(assignment_tok, name.clone()),
+        Some(vec![arithmetic_expression(token_handler)?]),
     );
     if *token_handler.get_token() != Token::Semi {
         return Err(token_handler.new_err(ET::ExpectedSemi));
@@ -480,7 +480,7 @@ fn deref_assignment(
     let assignment_tok = AssignmentOpType::from_token(token_handler.get_token()).unwrap();
     token_handler.next_token();
     let token = TokenNode::new(
-        NodeType::Assignment(assignment_tok),
+        NodeType::DerefAssignment(assignment_tok, deref_token),
         vec![deref_token, arithmetic_expression(token_handler)?].into(),
     );
     if *token_handler.get_token() != Token::Semi {

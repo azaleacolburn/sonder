@@ -1,6 +1,6 @@
 use crate::parser::{AssignmentOpType, NodeType, TokenNode as Node};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum PtrType {
     TrueRaw,
 
@@ -13,29 +13,42 @@ enum PtrType {
     MutRef,
 }
 
-#[derive(Debug)]
-pub struct Ptr {
+#[derive(Debug, Clone)]
+enum PtrUsage {
+    DerefL,
+    DerefR,
+    AssignL,
+    AssignR,
+}
+
+#[derive(Debug, Clone)]
+pub struct Ptr<'a> {
     name: String,
     points_to: String,
     t: PtrType,
     is_mut: bool,
+    deref_instances: Vec<Usage<'a>>,
 }
 
-#[derive(Debug)]
-struct StackData {
-    occurences: Vec<Node>,
-    refs: Vec<Ptr>, // type_t: we don't care about how large data is
+#[derive(Debug, Clone)]
+pub struct Usage<'a> {
+    usage_type: PtrUsage,
+    lvalue: &'a Node,
+    rvalue: &'a Node,
 }
 
-#[derive(Debug)]
-struct Function<'a> {
-    ptr_params: Vec<&'a StackData>,
-    owned_params: Vec<&'a StackData>,
+#[derive(Debug, Clone)]
+pub struct Deref<'a> {
+    ptr_name: String,
+    deref_type: DerefType,
+    lvalue: &'a Node,
+    rvalue: &'a Node,
 }
 
-#[derive(Debug)]
-struct Arena {
-    data: Vec<StackData>,
+#[derive(Debug, Clone)]
+pub enum DerefType {
+    Left,
+    Right,
 }
 
 /// We need this to check if pointer values are being reassigned
@@ -45,42 +58,69 @@ pub enum AssignmentBool {
     NotAssignment,
 }
 
-/// Returns a vector of all pointers pointing to this id
+/// Returns a vector of all pointers and derefts
 /// Note: It only returns explicit pointers
 /// TODO: Make pointer grabbing and mut checking for every variable a single sweep over the tree
-pub fn get_all_pointers(root: &Node, ptrs: Vec<Ptr>) -> Vec<Ptr> {
+///
+pub fn get_all_pointers_and_derefs<'a>(
+    root: &Node,
+    ptrs: Vec<Ptr<'a>>,
+    derefs: Vec<Deref<'a>>,
+) -> (Vec<Ptr<'a>>, Vec<Deref<'a>>) {
     println!("root: {:?}\n", root);
-    let mut new_ptrs: Vec<Ptr> = vec![];
 
-    let first_child = &root.children.as_ref().unwrap()[0];
-    match (&root.token, &first_child.token) {
-        (NodeType::Assignment(_), NodeType::DeRef) => {
-            let dereferenced_ptrs: Vec<Ptr> = get_all_pointers(first_child, new_ptrs);
+    let (sub_ptrs, sub_derefs): (Vec<Ptr>, Vec<Deref>) = match &root.children {
+        Some(children) => children
+            .iter()
+            .map(|child| get_all_pointers_and_derefs(child)),
+        None => (vec![], vec![]),
+    };
+
+    match &root.token {
+        NodeType::Assignment(_, id) => {
+            if sub_ptrs.len() > 1 {
+                println!("More than one dereferenced pointer in R-value no non-deref assignment");
+            }
         }
-        (NodeType::Adr(adr_name), _) => {
-            let is_mut = match &is_assignment {
-                AssignmentBool::IsAssignment(is_mut) => *is_mut,
-                AssignmentBool::NotAssignment => false,
-            };
-            let ptr = Ptr {
-                points_to: adr_name.clone(),
-                t: PtrType::TrueRaw,
-                is_mut,
-            };
-            new_ptrs.push(ptr);
+        NodeType::DerefAssignment(_, deref_node) => {
+            // FIXME: This doesn't support things like
+            // int g = 0;
+            // int y = 9;
+            // int* j = &g;
+            // *(j + y) = 7;
+            //
+            // Where there are two variables being dereferenced together
+
+            let deref_ids: Vec<NodeType> = deref_node
+                .children
+                .as_ref()
+                .unwrap()
+                .iter()
+                .filter(|node| {
+                    std::mem::discriminant(&node.token) == std::mem::discriminant(&NodeType::Id)
+                })
+                .collect();
+
+            println!("deref_ids: {:?}", deref_ids);
+
+            if deref_ids.len() > 1 {
+                println!("Multiple ptrs deref assigned at once, all things here are raw pointers");
+            } else {
+                if let NodeType::Id(id) = deref_ids[0] {
+                    let dereffed_ptr = sub_ptrs
+                        .iter()
+                        // () => {}
+                        .find(|ptr| ptr.name == id)
+                        .expect("only id in deref assignment wasn't a pointer");
+                    dereffed_ptr.is_mut = true;
+                }
+                panic!("Id made it through filtering out non-ids")
+            }
         }
         _ => {}
     }
 
-    if let Some(children) = &root.children {
-        let mut sub_pointers = children
-            .iter()
-            .flat_map(|child| get_all_pointers(var_name, child, this_is_assignment))
-            .collect::<Vec<Ptr>>();
-        new_ptrs.append(&mut sub_pointers);
-    }
-
-    new_ptrs
+    (sub_ptrs, sub_derefs)
 }
 
 /// Checks if a pointer is ever defererenced and modified
@@ -92,7 +132,10 @@ pub fn is_mut(ptr_name: &String, root: &Node) -> bool {
             return true;
         }
         if std::mem::discriminant(&child.token)
-            != std::mem::discriminant(&NodeType::Assignment(AssignmentOpType::Eq))
+            != std::mem::discriminant(&NodeType::Assignment(
+                AssignmentOpType::Eq,
+                ptr_name.to_string(),
+            ))
         {
             continue;
         }
