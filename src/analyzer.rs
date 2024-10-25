@@ -64,22 +64,33 @@ pub enum AssignmentBool {
 ///
 pub fn get_all_pointers_and_derefs<'a>(
     root: &Node,
-    ptrs: Vec<Ptr<'a>>,
-    derefs: Vec<Deref<'a>>,
+    ptrs: &Vec<Ptr<'a>>,
+    derefs: &Vec<Deref<'a>>,
 ) -> (Vec<Ptr<'a>>, Vec<Deref<'a>>) {
     println!("root: {:?}\n", root);
 
-    let (sub_ptrs, sub_derefs): (Vec<Ptr>, Vec<Deref>) = match &root.children {
+    let sub_ptrs_and_derefs: Vec<(Vec<Ptr>, Vec<Deref>)> = match &root.children {
         Some(children) => children
             .iter()
-            .map(|child| get_all_pointers_and_derefs(child)),
-        None => (vec![], vec![]),
+            .map(|child| get_all_pointers_and_derefs(child, &ptrs, &derefs))
+            .collect(),
+        None => vec![],
     };
+
+    let mut sub_ptrs: Vec<Ptr> = sub_ptrs_and_derefs
+        .clone()
+        .into_iter()
+        .flat_map(|pair| pair.0)
+        .collect();
+    let mut sub_derefs: Vec<Deref> = sub_ptrs_and_derefs
+        .into_iter()
+        .flat_map(|pair| pair.1)
+        .collect();
 
     match &root.token {
         NodeType::Assignment(_, id) => {
             if sub_ptrs.len() > 1 {
-                println!("More than one dereferenced pointer in R-value no non-deref assignment");
+                println!("More than one dereferenced pointer in R-value no non-deref assignment on id: {id}");
             }
         }
         NodeType::DerefAssignment(_, deref_node) => {
@@ -91,26 +102,29 @@ pub fn get_all_pointers_and_derefs<'a>(
             //
             // Where there are two variables being dereferenced together
 
-            let deref_ids: Vec<NodeType> = deref_node
+            // L-side deref ids
+            let deref_ids: Vec<Node> = deref_node
                 .children
                 .as_ref()
                 .unwrap()
                 .iter()
                 .filter(|node| {
-                    std::mem::discriminant(&node.token) == std::mem::discriminant(&NodeType::Id)
+                    std::mem::discriminant(&node.token)
+                        == std::mem::discriminant(&NodeType::Id(String::new()))
                 })
+                .map(|node| node.clone())
                 .collect();
 
-            println!("deref_ids: {:?}", deref_ids);
+            println!("l-side deref ids: {:?}", deref_ids);
 
             if deref_ids.len() > 1 {
                 println!("Multiple ptrs deref assigned at once, all things here are raw pointers");
             } else {
-                if let NodeType::Id(id) = deref_ids[0] {
+                if let NodeType::Id(id) = &deref_ids[0].token {
                     let dereffed_ptr = sub_ptrs
-                        .iter()
+                        .iter_mut()
                         // () => {}
-                        .find(|ptr| ptr.name == id)
+                        .find(|ptr| ptr.name == *id)
                         .expect("only id in deref assignment wasn't a pointer");
                     dereffed_ptr.is_mut = true;
                 }

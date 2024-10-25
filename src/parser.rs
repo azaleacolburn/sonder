@@ -45,7 +45,7 @@ pub enum NodeType {
     FunctionCall(String),
     Scope(Option<RhType>), // <-- anything that has {} is a scope, scope is how we're handling multiple statements, scopes return the last statement's result or void
     Assignment(AssignmentOpType, String), // id
-    DerefAssignment(AssignmentOpType, TokenNode), // deref_node
+    DerefAssignment(AssignmentOpType, Box<TokenNode>), // deref_node
     Declaration((String, RhType, usize)), // id, type, additional_reserved_size (for arrays)
     PtrDeclaration((String, RhType)),
     Asm(String),
@@ -176,7 +176,7 @@ impl TokenHandler {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TokenNode {
     pub token: NodeType,
     pub children: Option<Vec<TokenNode>>,
@@ -480,8 +480,8 @@ fn deref_assignment(
     let assignment_tok = AssignmentOpType::from_token(token_handler.get_token()).unwrap();
     token_handler.next_token();
     let token = TokenNode::new(
-        NodeType::DerefAssignment(assignment_tok, deref_token),
-        vec![deref_token, arithmetic_expression(token_handler)?].into(),
+        NodeType::DerefAssignment(assignment_tok, Box::new(deref_token)),
+        vec![arithmetic_expression(token_handler)?].into(),
     );
     if *token_handler.get_token() != Token::Semi {
         return Err(token_handler.new_err(ET::ExpectedSemi));
@@ -966,7 +966,6 @@ pub fn struct_declaration_handler(token_handler: &mut TokenHandler) -> Result<To
         {
             return Err(token_handler.new_err(ET::ExpectedSemi));
         }
-        token_handler
     }
 
     let struct_declaration_node =
