@@ -24,7 +24,7 @@ enum PtrUsage {
 #[derive(Debug, Clone)]
 pub struct Ptr<'a> {
     name: String,
-    points_to: String,
+    points_to: &'a Node,
     t: PtrType,
     is_mut: bool,
     deref_instances: Vec<Usage<'a>>,
@@ -63,8 +63,8 @@ pub enum AssignmentBool {
 /// TODO: Make pointer grabbing and mut checking for every variable a single sweep over the tree
 ///
 pub fn get_all_pointers_and_derefs<'a>(
-    root: &Node,
-    ptrs: &Vec<Ptr<'a>>,
+    root: &'a Node,
+    ptrs: &mut Vec<Ptr<'a>>,
     derefs: &Vec<Deref<'a>>,
 ) -> (Vec<Ptr<'a>>, Vec<Deref<'a>>) {
     println!("root: {:?}\n", root);
@@ -72,7 +72,7 @@ pub fn get_all_pointers_and_derefs<'a>(
     let sub_ptrs_and_derefs: Vec<(Vec<Ptr>, Vec<Deref>)> = match &root.children {
         Some(children) => children
             .iter()
-            .map(|child| get_all_pointers_and_derefs(child, &ptrs, &derefs))
+            .map(|child| get_all_pointers_and_derefs(child, ptrs, derefs))
             .collect(),
         None => vec![],
     };
@@ -82,7 +82,7 @@ pub fn get_all_pointers_and_derefs<'a>(
         .into_iter()
         .flat_map(|pair| pair.0)
         .collect();
-    let mut sub_derefs: Vec<Deref> = sub_ptrs_and_derefs
+    let sub_derefs: Vec<Deref> = sub_ptrs_and_derefs
         .into_iter()
         .flat_map(|pair| pair.1)
         .collect();
@@ -121,18 +121,36 @@ pub fn get_all_pointers_and_derefs<'a>(
                 println!("Multiple ptrs deref assigned at once, all things here are raw pointers");
             } else {
                 if let NodeType::Id(id) = &deref_ids[0].token {
-                    let dereffed_ptr = sub_ptrs
+                    // Write handler later
+                    println!("ptrs: {:?}", ptrs);
+                    let dereffed_ptr = ptrs
                         .iter_mut()
-                        // () => {}
                         .find(|ptr| ptr.name == *id)
-                        .expect("only id in deref assignment wasn't a pointer");
+                        .expect("None of the ids in deref assignment are ptrs");
                     dereffed_ptr.is_mut = true;
                 }
                 panic!("Id made it through filtering out non-ids")
             }
         }
-        _ => {}
+        NodeType::PtrDeclaration(name, _ptr_type, points_to) => {
+            let ptr = Ptr {
+                name: name.clone(),
+                points_to: &*points_to,
+                deref_instances: vec![],
+                t: PtrType::TrueRaw,
+                is_mut: false,
+            };
+            println!("test: {:?}", ptr);
+            sub_ptrs.push(ptr);
+        }
+        _ => {
+            println!("Not that");
+        }
     }
+
+    println!("sub_ptrs {:?}", sub_ptrs);
+
+    ptrs.append(&mut (sub_ptrs.clone()));
 
     (sub_ptrs, sub_derefs)
 }

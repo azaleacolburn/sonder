@@ -130,7 +130,7 @@ pub fn string_to_tokens(
                 }
             }
             'i' => {
-                if chars[i + 1] == 'n' && chars[i + 2] == 't' && chars[i + 3] == ' ' {
+                if chars[i + 1] == 'n' && chars[i + 2] == 't' && !chars[i + 3].is_alphanumeric() {
                     // split.push(String::from("int"));
                     ret.push(Token::Type(RhType::Int));
                     i += 2; // I think there's a problem with incrementing the iterator

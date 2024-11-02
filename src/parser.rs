@@ -46,8 +46,8 @@ pub enum NodeType {
     Scope(Option<RhType>), // <-- anything that has {} is a scope, scope is how we're handling multiple statements, scopes return the last statement's result or void
     Assignment(AssignmentOpType, String), // id
     DerefAssignment(AssignmentOpType, Box<TokenNode>), // deref_node
-    Declaration((String, RhType, usize)), // id, type, additional_reserved_size (for arrays)
-    PtrDeclaration((String, RhType)),
+    Declaration(String, RhType, usize), // id, type, additional_reserved_size (for arrays)
+    PtrDeclaration(String, RhType, Box<TokenNode>),
     Asm(String),
     Adr(String),
     DeRef,
@@ -304,10 +304,13 @@ fn scalar_declaration_statement(
     if *token_handler.get_token() != Token::Semi {
         return Err(token_handler.new_err(ET::ExpectedSemi));
     }
-    Ok(TokenNode::new(
-        NodeType::Declaration((id, t, 0)),
-        Some(vec![expr]),
-    ))
+    Ok(if ptr_cnt > 0 {
+        TokenNode::new(node_type, NodeType::PtrDeclaration(id, t, Box::new(expr.clone())) )
+       
+    } else {
+        TokenNode::new(node_type, Some(vec![expr]))
+        NodeType::Declaration(id, t, 0)
+    })
 }
 
 fn arithmetic_expression(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
@@ -560,7 +563,7 @@ fn function_declare_statement(
             Token::Id(id) => id.clone(),
             _ => return Err(token_handler.new_err(ET::ExpectedId)),
         };
-        let arg_node = TokenNode::new(NodeType::Declaration((id, t, 0)), None);
+        let arg_node = TokenNode::new(NodeType::Declaration(id, t, 0), None);
         function_node.children.as_mut().unwrap().push(arg_node);
         println!("Comma or CParen: {:?}", token_handler.get_token());
         if *token_handler.get_token() != Token::Comma {
@@ -642,6 +645,7 @@ fn type_statement(token_handler: &mut TokenHandler, t: RhType) -> Result<TokenNo
     token_handler.next_token();
     let mut ptr_cnt = 0;
     let mut ptr_tok = token_handler.get_token();
+    println!("tok: {:?}", ptr_tok);
     while *ptr_tok == Token::Star {
         ptr_cnt += 1;
         token_handler.next_token();
@@ -846,7 +850,7 @@ fn for_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
                 Token::Id(id) => id.clone(),
                 _ => return Err(token_handler.new_err(ET::ExpectedId)),
             };
-            Some(TokenNode::new(NodeType::Declaration((id, t, 0)), None))
+            Some(TokenNode::new(NodeType::Declaration(id, t, 0), None))
         }
         Token::Semi => None,
         _ => return Err(token_handler.new_err(ET::ExpectedSemi)),
@@ -959,7 +963,7 @@ pub fn struct_declaration_handler(token_handler: &mut TokenHandler) -> Result<To
             Token::Id(id) => id,
             _ => return Err(token_handler.new_err(ET::ExpectedId)),
         };
-        let declaration = TokenNode::new(NodeType::Declaration((id.clone(), t.clone(), 0)), None);
+        let declaration = TokenNode::new(NodeType::Declaration(id.clone(), t.clone(), 0), None);
         field_definitions.push(declaration);
         token_handler.next_token();
         if *token_handler.get_token() != Token::Comma && *token_handler.get_token() != Token::CParen
