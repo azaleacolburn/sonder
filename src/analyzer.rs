@@ -67,8 +67,6 @@ pub fn get_all_pointers_and_derefs<'a>(
     ptrs: &mut Vec<Ptr<'a>>,
     derefs: &Vec<Deref<'a>>,
 ) -> (Vec<Ptr<'a>>, Vec<Deref<'a>>) {
-    println!("root: {:?}\n", root);
-
     let sub_ptrs_and_derefs: Vec<(Vec<Ptr>, Vec<Deref>)> = match &root.children {
         Some(children) => children
             .iter()
@@ -91,6 +89,33 @@ pub fn get_all_pointers_and_derefs<'a>(
         NodeType::Assignment(_, id) => {
             if sub_ptrs.len() > 1 {
                 println!("More than one dereferenced pointer in R-value no non-deref assignment on id: {id}");
+            }
+        }
+        NodeType::DeRef(node) => {
+            let deref_id_node = node
+                .children
+                .as_ref()
+                .unwrap()
+                .iter()
+                .find(|node| {
+                    std::mem::discriminant(&node.token)
+                        == std::mem::discriminant(&NodeType::Id(String::new()))
+                })
+                .expect("No id in deref");
+            if let NodeType::Id(id) = &deref_id_node.token {
+                // FIXME: This doesn't support: *(t + f)
+                let usage = Usage {
+                    usage_type: PtrUsage::DerefR,
+                    lvalue: &'a 
+
+                };
+                ptrs.iter_mut()
+                    .find(|ptr| ptr.name == *id)
+                    .expect("Non-ptr")
+                    .deref_instances
+                    .push();
+            } else {
+                panic!("Non-Id made it through filtering out non-ids");
             }
         }
         NodeType::DerefAssignment(_, deref_node) => {
@@ -128,8 +153,9 @@ pub fn get_all_pointers_and_derefs<'a>(
                         .find(|ptr| ptr.name == *id)
                         .expect("None of the ids in deref assignment are ptrs");
                     dereffed_ptr.is_mut = true;
+                } else {
+                    panic!("Non-Id made it through filtering out non-ids")
                 }
-                panic!("Id made it through filtering out non-ids")
             }
         }
         NodeType::PtrDeclaration(name, _ptr_type, points_to) => {
@@ -140,15 +166,12 @@ pub fn get_all_pointers_and_derefs<'a>(
                 t: PtrType::TrueRaw,
                 is_mut: false,
             };
-            println!("test: {:?}", ptr);
             sub_ptrs.push(ptr);
         }
         _ => {
-            println!("Not that");
+            println!("Not semantically important token for grabbing ptrs");
         }
     }
-
-    println!("sub_ptrs {:?}", sub_ptrs);
 
     ptrs.append(&mut (sub_ptrs.clone()));
 

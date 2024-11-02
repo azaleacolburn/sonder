@@ -386,7 +386,7 @@ pub fn string_to_tokens(
                 }
             }
             '*' => {
-                if chars[i + 1] == '*' {
+                if chars[i + 1] == '=' {
                     // split.push(String::from("*="));
                     ret.push(Token::MulEq);
                     i += 1;

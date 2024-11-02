@@ -50,7 +50,7 @@ pub enum NodeType {
     PtrDeclaration(String, RhType, Box<TokenNode>),
     Asm(String),
     Adr(String),
-    DeRef,
+    DeRef(Box<TokenNode>),
     ArrayDeclaration((String, RhType, usize)), // id, type, count
     FunctionDecaration((String, RhType)),
     Type(RhType),
@@ -305,11 +305,12 @@ fn scalar_declaration_statement(
         return Err(token_handler.new_err(ET::ExpectedSemi));
     }
     Ok(if ptr_cnt > 0 {
-        TokenNode::new(node_type, NodeType::PtrDeclaration(id, t, Box::new(expr.clone())) )
-       
+        TokenNode::new(
+            NodeType::PtrDeclaration(id, t, Box::new(expr.clone())),
+            None,
+        )
     } else {
-        TokenNode::new(node_type, Some(vec![expr]))
-        NodeType::Declaration(id, t, 0)
+        TokenNode::new(NodeType::Declaration(id, t, 0), Some(vec![expr]))
     })
 }
 
@@ -370,7 +371,7 @@ fn arithmetic_factor(token_handler: &mut TokenHandler) -> Result<TokenNode, RhEr
                 if *token_handler.get_token() != Token::CSquare {
                     return Err(token_handler.new_err(ET::ExpectedCSquare));
                 }
-                Ok(TokenNode::new(NodeType::DeRef, vec![post_add].into()))
+                Ok(TokenNode::new(NodeType::DeRef(Box::new(post_add)), None))
             } else {
                 Ok(TokenNode::new(NodeType::Id(id.to_string()), None))
             }
@@ -390,7 +391,7 @@ fn arithmetic_factor(token_handler: &mut TokenHandler) -> Result<TokenNode, RhEr
             token_handler.next_token();
             let factor = arithmetic_factor(token_handler)?;
             token_handler.prev_token();
-            Ok(TokenNode::new(NodeType::DeRef, vec![factor].into()))
+            Ok(TokenNode::new(NodeType::DeRef(Box::new(factor)), None))
         }
 
         Token::OParen => {
@@ -479,7 +480,7 @@ fn deref_assignment(
         _ => arithmetic_expression(token_handler)?,
     };
 
-    let deref_token = TokenNode::new(NodeType::DeRef, vec![token].into());
+    let deref_token = TokenNode::new(NodeType::DeRef(Box::new(token)), None);
     let assignment_tok = AssignmentOpType::from_token(token_handler.get_token()).unwrap();
     token_handler.next_token();
     let token = TokenNode::new(
