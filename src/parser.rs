@@ -480,11 +480,10 @@ fn deref_assignment(
         _ => arithmetic_expression(token_handler)?,
     };
 
-    let deref_token = TokenNode::new(NodeType::DeRef(Box::new(token)), None);
     let assignment_tok = AssignmentOpType::from_token(token_handler.get_token()).unwrap();
     token_handler.next_token();
     let token = TokenNode::new(
-        NodeType::DerefAssignment(assignment_tok, Box::new(deref_token)),
+        NodeType::DerefAssignment(assignment_tok, Box::new(token)),
         vec![arithmetic_expression(token_handler)?].into(),
     );
     if *token_handler.get_token() != Token::Semi {
