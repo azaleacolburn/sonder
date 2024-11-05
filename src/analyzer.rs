@@ -133,6 +133,7 @@ pub fn get_all_pointers_and_derefs<'a>(root: &'a Node, ptrs: &mut Vec<Ptr<'a>>) 
                     }
                 }
             };
+            let usage = PtrUsage::DerefL { lvalue: deref_node, rvalue: }
             let dereffed_ptr = ptrs
                 .iter_mut()
                 .find(|ptr| ptr.name == deref_id)

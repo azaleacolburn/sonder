@@ -13,17 +13,13 @@ pub enum ScopeType {
 
 // Valid Node Types
 #[derive(Debug, Clone, PartialEq)]
-pub enum NodeType {
-    Program,
-    Sub,
-    Div,
-    Eq,
-    Id(String), // figure out if we want this here
-    EqCmp,
-    NeqCmp,
-    BOr,
-    BAnd,
-    BXor,
+pub enum StatementNode {
+    Program(Vec<TokenNode>),
+    Operator(OpNode, Box, Box),
+    UnaryOperator(OpNode, Box),
+
+    Eq(String, Box<TokenNode>),
+
     BOrEq,
     BAndEq,
     BXorEq,
@@ -58,6 +54,36 @@ pub enum NodeType {
     Return,
     PutChar,
     StructDeclaration(String),
+}
+
+pub enum TermNode {
+    Factor(FactorNode),
+    Op(OpNode),
+}
+
+pub enum FactorNode {
+    Id(String),
+    NumLiteral(usize),
+    ExpressionNode(Box<TokenNode>),
+}
+
+pub enum OpNode {
+    Unary(UnaryOpNode),
+    Binary(BinaryOpNode),
+}
+
+pub enum UnaryOpNode {}
+
+pub enum BinaryOpNode {
+    Sub(Box<(FactorNode, FactorNode)>),
+    Div(Box<(FactorNode, FactorNode)>),
+    Add(Box<(FactorNode, FactorNode)>),
+    Mul(Box<(FactorNode, FactorNode)>),
+    EqCmp(Box<(FactorNode, FactorNode)>),
+    NeqCmp,
+    BOr,
+    BAnd,
+    BXor,
 }
 
 #[derive(Debug, Clone, PartialEq)]
