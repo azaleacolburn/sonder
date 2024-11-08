@@ -1,9 +1,9 @@
 use crate::error::{ErrType as ET, RhErr};
-use crate::lexer::{LineNumHandler, RhType, Token};
+use crate::lexer::{CType, LineNumHandler, Token};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ScopeType {
-    Function(RhType),
+    Function(CType),
     While,
     Program,
     If,
@@ -15,71 +15,59 @@ pub enum ScopeType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StatementNode {
     Program(Vec<TokenNode>),
-    Operator(OpNode, Box, Box),
-    UnaryOperator(OpNode, Box),
-
-    Eq(String, Box<TokenNode>),
-
-    BOrEq,
-    BAndEq,
-    BXorEq,
-    SubEq,
-    AddEq,
-    DivEq,
-    MulEq,
-    Mul,
-    MNeg,
-    AndCmp,
-    OrCmp,
     NumLiteral(i32),
-    Add,
-    If,
-    For,
-    While,
-    _Loop,
-    Break,
-    FunctionCall(String),
-    Scope(Option<RhType>), // <-- anything that has {} is a scope, scope is how we're handling multiple statements, scopes return the last statement's result or void
-    Assignment(AssignmentOpType, String), // id
-    DerefAssignment(AssignmentOpType, Box<TokenNode>), // deref_node
-    Declaration(String, RhType, usize), // id, type, additional_reserved_size (for arrays)
-    PtrDeclaration(String, RhType, Box<TokenNode>),
+    If(Box<(TokenNode, TokenNode, TokenNode, TokenNode)>),
+    For(Box<(TokenNode, TokenNode, TokenNode, TokenNode)>),
+    While(Box<(TokenNode, TokenNode, TokenNode, TokenNode)>),
+    FunctionCall(String, Box<TokenNode>),
+    Assignment(AssignmentOpType, String, Box<TokenNode>), // id
+    DerefAssignment(AssignmentOpType, Box<TokenNode>),    // deref_node
+    Declaration(String, CType, Box<TokenNode>), // id, type, additional_reserved_size (for arrays)
+    PtrDeclaration(String, CType, Box<TokenNode>),
     Asm(String),
-    Adr(String),
-    DeRef(Box<TokenNode>),
-    ArrayDeclaration((String, RhType, usize)), // id, type, count
-    FunctionDecaration((String, RhType)),
-    Type(RhType),
+    ArrayDeclaration(String, CType, usize), // id, type, count
+    FunctionDecaration(String, CType, Box<TokenNode>),
     Assert,
     Return,
     PutChar,
-    StructDeclaration(String),
+    StructDeclaration(String, Vec<TokenNode>),
+    Break,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum TermNode {
     Factor(FactorNode),
     Op(OpNode),
 }
 
+#[derive(Debug, PartialEq)]
 pub enum FactorNode {
     Id(String),
     NumLiteral(usize),
+    Adr(String),
+    DeRef(Box<TokenNode>),
     ExpressionNode(Box<TokenNode>),
 }
 
+#[derive(Debug, PartialEq)]
 pub enum OpNode {
-    Unary(UnaryOpNode),
-    Binary(BinaryOpNode),
+    Unary(UnaryOpNode, Box<FactorNode>),
+    Binary(BinaryOpNode, Box<(FactorNode, FactorNode)>),
 }
 
-pub enum UnaryOpNode {}
+#[derive(Debug, PartialEq)]
+pub enum UnaryOpNode {
+    BNot,
+    Not,
+}
 
+#[derive(Debug, PartialEq)]
 pub enum BinaryOpNode {
-    Sub(Box<(FactorNode, FactorNode)>),
-    Div(Box<(FactorNode, FactorNode)>),
-    Add(Box<(FactorNode, FactorNode)>),
-    Mul(Box<(FactorNode, FactorNode)>),
-    EqCmp(Box<(FactorNode, FactorNode)>),
+    Sub,
+    Div,
+    Add,
+    Mul,
+    EqCmp,
     NeqCmp,
     BOr,
     BAnd,
@@ -96,6 +84,18 @@ pub enum AssignmentOpType {
     BOrEq,
     BAndEq,
     BXorEq,
+
+    BOrEq,
+    BAndEq,
+    BXorEq,
+    SubEq,
+    AddEq,
+    DivEq,
+    MulEq,
+    Mul,
+    MNeg,
+    AndCmp,
+    OrCmp,
 }
 
 impl AssignmentOpType {
@@ -268,13 +268,13 @@ pub fn scope(token_handler: &mut TokenHandler, scope_type: ScopeType) -> Result<
         // println!("here\n");
         // if token_handler.len() == token_handler.curr_token + 1 {
         // if *token_handler.get_token() != Token::Semi {
-        // scope_node.token = NodeType::Scope(Some(RhType::Int)) // TODO: Chane this to evaluate the type of the last statement
+        // scope_node.token = NodeType::Scope(Some(CType::Int)) // TODO: Chane this to evaluate the type of the last statement
         // }
         // if *token_handler.get_token() == Token::CCurl { break; }
         // }
     }
     if *token_handler.get_prev_token() == Token::Semi {
-        scope_node.token = NodeType::Scope(Some(RhType::Int)) // TODO: Change this to evaluate the  type of the last statement
+        scope_node.token = NodeType::Scope(Some(CType::Int)) // TODO: Change this to evaluate the  type of the last statement
     }
     Ok(scope_node)
 }
@@ -314,7 +314,7 @@ pub fn statement(
 
 fn scalar_declaration_statement(
     token_handler: &mut TokenHandler,
-    t: RhType,
+    t: CType,
     id: String,
     ptr_cnt: u8,
 ) -> Result<TokenNode, RhErr> {
@@ -566,7 +566,7 @@ fn if_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
 
 fn function_declare_statement(
     token_handler: &mut TokenHandler,
-    t: RhType,
+    t: CType,
     id: String,
 ) -> Result<TokenNode, RhErr> {
     println!(
@@ -662,7 +662,7 @@ fn id_statement(token_handler: &mut TokenHandler, id: String) -> Result<TokenNod
     }
 }
 
-fn type_statement(token_handler: &mut TokenHandler, t: RhType) -> Result<TokenNode, RhErr> {
+fn type_statement(token_handler: &mut TokenHandler, t: CType) -> Result<TokenNode, RhErr> {
     // let id = if let Token::Id(id) = token_handler.get_token() {
     //     id
     // } else {
@@ -694,7 +694,7 @@ fn type_statement(token_handler: &mut TokenHandler, t: RhType) -> Result<TokenNo
 
 fn array_declare_statement(
     token_handler: &mut TokenHandler,
-    t: RhType,
+    t: CType,
     id: String,
 ) -> Result<TokenNode, RhErr> {
     token_handler.next_token(); // Already checked open square bracket

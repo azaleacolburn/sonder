@@ -725,13 +725,13 @@ pub enum Token {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum RhType {
+pub enum CType {
     Char,
     Int,
     Void,
 }
 
-impl fmt::Display for RhType {
+impl fmt::Display for CType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // Write strictly the first element into the supplied output
         // stream: `f`. Returns `fmt::Result` which indicates whether the
