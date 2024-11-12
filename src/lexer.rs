@@ -723,25 +723,3 @@ pub enum Token {
             // FuncDeclare((String, Vec<String>, RhType)), // function name, args, return type
             // FuncCall(String, Vec<String>), // function name, args
 }
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum CType {
-    Char,
-    Int,
-    Void,
-}
-
-impl fmt::Display for CType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Write strictly the first element into the supplied output
-        // stream: `f`. Returns `fmt::Result` which indicates whether the
-        // operation succeeded or failed. Note that `write!` uses syntax which
-        // is very similar to `println!`.
-        let p = match self {
-            RhType::Char => "u8",
-            RhType::Int => "u16",
-            RhType::Void => "()",
-        };
-        write!(f, "{}", p)
-    }
-}
