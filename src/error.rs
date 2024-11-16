@@ -18,6 +18,10 @@ pub enum ErrType {
     ExpectedSemi,
     ExpectedEq,
     ExpectedNumLiteral,
+    ExpectedCondExprOp,
+    ExpectedCondTermOp,
+    ExpectedArithExprOp,
+    ExpectedArithTermOp,
 }
 
 #[derive(Debug, Clone)]

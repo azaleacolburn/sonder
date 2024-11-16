@@ -1,5 +1,7 @@
 use std::{fmt, num::ParseIntError};
 
+use crate::ast::CType;
+
 /// each index is a new line, the value is the token_i that starts that line
 pub struct LineNumHandler {
     pub token_lines: Vec<i32>,
@@ -661,11 +663,11 @@ pub enum Token {
     While,
     Loop,
     Fn,
-    Type(RhType),
+    Type(CType),
     // Assign(String),
     Star,
     // Var(String),
-    NumLiteral(i32),
+    NumLiteral(usize),
     StrLiteral(String),
     Add,
     AddO,

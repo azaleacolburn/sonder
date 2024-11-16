@@ -1,4 +1,10 @@
-#[derive(Debug, PartialEq, Clone)]
+use crate::{
+    error::{ErrType, RhErr},
+    lexer::Token,
+    parser::TokenHandler,
+};
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ScopeType {
     Function(CType),
     While,
@@ -12,29 +18,27 @@ pub enum ScopeType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StatementNode {
     Program(Vec<StatementNode>),
+    Scope(Vec<StatementNode>),
     // Control Flow
-    If(Box<(StatementNode, StatementNode, StatementNode, StatementNode)>),
+    If(Box<CondExprNode>, Vec<StatementNode>),
     For(
-        Box<(
-            (String, CType, Box<ExprNode>), // Declaration
-            StatementNode,                  // Can be anything
-            StatementNode,                  // Can be anything
-        )>,
+        // Declaration, Anything, Anything
+        Box<(StatementNode, StatementNode, StatementNode)>,
         Vec<StatementNode>,
     ),
-    While(Box<ExprNode>, Vec<StatementNode>),
+    While(Box<CondExprNode>, Vec<StatementNode>),
     Break,
 
     // Functions
-    FunctionCall(String, Vec<ExprNode>),
-    FunctionDecaration(String, CType, Vec<(String, CType)>),
+    FunctionCall(String, Vec<CondExprNode>),
+    FunctionDecaration(String, CType, Vec<StatementNode>, Vec<StatementNode>),
     Return,
 
     // Variables
-    Assignment(OpNode, String, Box<CondExprNode>),
-    Declaration(String, CType, Box<CondExprNode>),
+    Assignment(AssignmentOpType, String, Box<CondExprNode>),
+    Declaration(String, CType, Option<Box<CondExprNode>>),
     // Ptrs
-    DerefAssignment(OpNode, Box<CondExprNode>),
+    DerefAssignment(AssignmentOpType, Box<ArithExprNode>, Box<CondExprNode>),
     PtrDeclaration(String, CType, Box<CondExprNode>),
     ArrayDeclaration(String, CType, usize, Vec<CondExprNode>), // id, type, count
 
@@ -44,91 +48,86 @@ pub enum StatementNode {
     // Misc
     Asm(String),
     Assert(Box<(CondExprNode, CondExprNode)>),
-    PutChar(Box<StatementNode>),
+    PutChar(Box<CondExprNode>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CondExprNode {
-    Term(CondTermNode),
     Op(CondExprOpNode),
+    Term(CondTermNode),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum CondExprOpNode {
+    And(Box<(CondTermNode, CondTermNode)>),
+    Or(Box<(CondTermNode, CondTermNode)>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum CondTermNode {
-    Factor(CondFactorNode),
+    Factor(ArithExprNode),
     Op(CondTermOpNode),
 }
 
-#[derive(Debug, PartialEq)]
-pub enum CondFactorNode {
-    ComparisonLiteral,
+#[derive(Debug, Clone, PartialEq)]
+pub enum CondTermOpNode {
+    NEq(Box<(CondTermNode, CondTermNode)>),
+    Eq,
+    LT,
+    GT,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ArithExprNode {
     Term(ArithTermNode),
     Op(ArithExprOpNode),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ArithTermNode {
     Factor(ArithFactorNode),
     Op(ArithTermOpNode),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ArithFactorNode {
+    Unary(UnaryOpNode, Box<ArithFactorNode>),
     Id(String),
     NumLiteral(usize),
     Adr(String),
     DeRef(Box<CondExprNode>),
-    Expr(Box<CondExprNode>),
+    CondExpr(Box<CondExprNode>), // Used normally
+    ArithExpr(Box<ArithExprNode>),
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum OpNode {
     Unary(UnaryOpNode, Box<ArithFactorNode>),
     Term(ArithTermOpNode),
     Expr(ArithExprOpNode),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ArithTermOpNode {
-    Mul,
-    Div,
-    Mod,
+    Mul(Box<(ArithFactorNode, ArithFactorNode)>),
+    Div(Box<(ArithFactorNode, ArithFactorNode)>),
+    Mod(Box<(ArithFactorNode, ArithFactorNode)>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ArithExprOpNode {
-    Add,
-    Sub,
+    Add(Box<(ArithTermNode, ArithTermNode)>),
+    Sub(Box<(ArithTermNode, ArithTermNode)>),
 }
 
 /// Unary Operators Come before value
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOpNode {
-    Positive,
-    Negative,
-    Not,
-    BNot,
-    PlusPlus,
-    MinusMinus,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum CondExprOpNode {
-    Eq,
-    NEq,
-    Greater,
-    Less,
-    GreaterEq,
-    LessEq,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum CondTermOpNode {
-    Or,
-    And,
+    Negative(Box<ArithFactorNode>),
+    Not(Box<ArithFactorNode>),
+    BNot(Box<ArithFactorNode>),
+    PlusPlus(Box<ArithFactorNode>),
+    MinusMinus(Box<ArithFactorNode>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -150,79 +149,24 @@ pub enum AssignmentOpType {
 }
 
 impl AssignmentOpType {
-    fn from_token(tok: &Token) -> Result<AssignmentOpType, ()> {
-        match tok {
+    pub fn from_token(token_handler: &mut TokenHandler) -> Result<AssignmentOpType, RhErr> {
+        match token_handler.get_token() {
             Token::Eq => Ok(AssignmentOpType::Eq),
-            Token::SubEq => Ok(AssignmentOpType::SubEq),
-            Token::AddEq => Ok(AssignmentOpType::AddEq),
-            Token::DivEq => Ok(AssignmentOpType::DivEq),
-            Token::MulEq => Ok(AssignmentOpType::MulEq),
-            Token::BOrEq => Ok(AssignmentOpType::BOrEq),
-            Token::BAndEq => Ok(AssignmentOpType::BAndEq),
-            Token::BXorEq => Ok(AssignmentOpType::BXorEq),
-            _ => {
-                println!("Oh God No, Not A Valid OpEq Token");
-                return Err(());
-            }
+            Token::SubEq => Ok(AssignmentOpType::Sub),
+            Token::AddEq => Ok(AssignmentOpType::Add),
+            Token::DivEq => Ok(AssignmentOpType::Div),
+            Token::MulEq => Ok(AssignmentOpType::Mul),
+            Token::BOrEq => Ok(AssignmentOpType::BOr),
+            Token::BAndEq => Ok(AssignmentOpType::BAnd),
+            Token::BXor => Ok(AssignmentOpType::BXor),
+            _ => Err(token_handler.new_err(ErrType::ExpectedAssignment)),
         }
     }
 }
 
-impl NodeType {
-    fn from_token(tok: &Token) -> Result<NodeType, ()> {
-        println!("tok: {:?}", tok);
-        match tok {
-            Token::Sub => Ok(NodeType::Sub),
-            Token::Div => Ok(NodeType::Div),
-            Token::Eq => Ok(NodeType::Eq),
-            Token::Id(str) => Ok(NodeType::Id(str.to_string())),
-            Token::EqCmp => Ok(NodeType::EqCmp),
-            Token::NeqCmp => Ok(NodeType::NeqCmp),
-            Token::OrCmp => Ok(NodeType::OrCmp),
-            Token::AndCmp => Ok(NodeType::AndCmp),
-            Token::BOr => Ok(NodeType::BOr),
-            Token::BAnd => Ok(NodeType::BAnd),
-            Token::BXor => Ok(NodeType::BXor),
-            Token::BOrEq => Ok(NodeType::BOrEq),
-            Token::BAndEq => Ok(NodeType::BAndEq),
-            Token::BXorEq => Ok(NodeType::BXorEq),
-            Token::SubEq => Ok(NodeType::SubEq),
-            Token::AddEq => Ok(NodeType::AddEq),
-            Token::DivEq => Ok(NodeType::DivEq),
-            Token::MulEq => Ok(NodeType::MulEq),
-            Token::Star => Ok(NodeType::Mul), // exception for pointer
-            Token::NumLiteral(i) => Ok(NodeType::NumLiteral(*i)),
-            Token::Add => Ok(NodeType::Add),
-            Token::For => Ok(NodeType::For),
-            Token::While => Ok(NodeType::While),
-            Token::If => Ok(NodeType::If),
-            Token::Break => Ok(NodeType::Break),
-            _ => {
-                println!("Oh God No, Not A Valid Token");
-                return Err(());
-            }
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CType {
-    Char,
-    Int,
     Void,
-}
-
-impl fmt::Display for CType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Write strictly the first element into the supplied output
-        // stream: `f`. Returns `fmt::Result` which indicates whether the
-        // operation succeeded or failed. Note that `write!` uses syntax which
-        // is very similar to `println!`.
-        let p = match self {
-            RhType::Char => "u8",
-            RhType::Int => "u16",
-            RhType::Void => "()",
-        };
-        write!(f, "{}", p)
-    }
+    Int,
+    Char,
 }
