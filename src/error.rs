@@ -22,6 +22,7 @@ pub enum ErrType {
     ExpectedCondTermOp,
     ExpectedArithExprOp,
     ExpectedArithTermOp,
+    ExpectedComma,
 }
 
 #[derive(Debug, Clone)]

@@ -406,24 +406,20 @@ fn array_declare_statement(
     let mut items: Vec<CondExprNode> = vec![];
 
     loop {
-        if token_handler.get_token() == Token::CParen {
+        if *token_handler.get_token() == Token::CCurl {
             break;
-        } else if token
-    }
-
-
-    while let Token::NumLiteral(n) = *token_handler.get_token() {
-        let item_node = ArithFactorNode::NumLiteral(n);
-        items.push(item_node); // Figure out wrapping here
-        token_handler.next_token();
-        let tok = token_handler.get_token();
-        if *tok != Token::Comma && *tok != Token::CCurl {
-            return Err(token_handler.new_err(ET::ExpectedCCurl));
         }
+        token_handler.next_token();
+        let expr = condition_expr(token_handler)?;
+        items.push(expr);
 
+        if *token_handler.get_token() != Token::Comma {
+            return Err(token_handler.new_err(ET::ExpectedComma));
+        }
         token_handler.next_token();
     }
 
+    // TODO: Check if this is needed
     if *token_handler.get_token() != Token::CCurl {
         return Err(token_handler.new_err(ET::ExpectedCCurl));
     }
@@ -460,7 +456,7 @@ fn condition(token_handler: &mut TokenHandler) -> Result<CondExprNode, RhErr> {
 }
 
 fn condition_expr(token_handler: &mut TokenHandler) -> Result<CondExprNode, RhErr> {
-    let mut left = condition_term(token_handler)?;
+    let mut left = CondExprNode::Term(condition_term(token_handler)?);
     println!("Condition Expr Left: {:?}", left);
     let mut curr = token_handler.get_token().clone();
     println!("cond expr curr: {:?}", curr);
@@ -476,11 +472,11 @@ fn condition_expr(token_handler: &mut TokenHandler) -> Result<CondExprNode, RhEr
             token_handler.next_token();
             expr
         } else {
-            condition_term(token_handler)?
+            CondExprNode::Term(condition_term(token_handler)?)
         };
         left = match token_handler.get_token() {
-            Token::AndCmp => CondExprOpNode::Or(Box::new((left, right))),
-            Token::OrCmp => CondExprOpNode::And(Box::new((left, right))),
+            Token::AndCmp => CondExprNode::Op(CondExprOpNode::And(Box::new((left, right)))),
+            Token::OrCmp => CondExprNode::Op(CondExprOpNode::Or(Box::new((left, right)))),
             _ => return token_handler.new_err(ET::ExpectedCondExprOp),
         };
         curr = token_handler.get_token().clone();
