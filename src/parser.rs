@@ -456,6 +456,10 @@ fn condition(token_handler: &mut TokenHandler) -> Result<CondExprNode, RhErr> {
 }
 
 fn condition_expr(token_handler: &mut TokenHandler) -> Result<CondExprNode, RhErr> {
+    // TODO: Each side of the equation needs to hold two CondTermNodes, but they're likely actually
+    // cond-expr nodes
+    // The grammar is very round-about and allows multiple expression ops through a variant of
+    // Factor, but this is really ugly to put in the AST
     let mut left = CondExprNode::Term(condition_term(token_handler)?);
     println!("Condition Expr Left: {:?}", left);
     let mut curr = token_handler.get_token().clone();
