@@ -82,7 +82,6 @@ pub fn scope(
         }
 
         children.push(statement(token_handler, scope_type.clone())?);
-        println!();
         token_handler.next_token();
     }
     Ok(children)
@@ -131,7 +130,7 @@ fn scalar_declaration_statement(
     }
     token_handler.next_token();
     let expr = if ptr_cnt > 0 {
-        CondExprNode::Factor(CondTermNode::Factor(arithmetic_expression(token_handler)?))
+        CondExprNode::Term(CondTermNode::Factor(arithmetic_expression(token_handler)?))
     } else {
         condition_expr(token_handler)?
     };
@@ -466,9 +465,9 @@ fn condition_expr(token_handler: &mut TokenHandler) -> Result<CondExprNode, RhEr
     println!("cond expr curr: {:?}", curr);
     while curr == Token::AndCmp || curr == Token::OrCmp {
         token_handler.next_token();
-        let right = if *token_handler.get_token() == Token::OParen {
+        let right: CondTermNode = if *token_handler.get_token() == Token::OParen {
             token_handler.next_token();
-            let expr = condition_expr(token_handler)?;
+            let expr = condition_term(token_handler)?;
             if *token_handler.get_token() != Token::CParen {
                 return Err(token_handler.new_err(ET::ExpectedCParen));
             }
@@ -476,13 +475,13 @@ fn condition_expr(token_handler: &mut TokenHandler) -> Result<CondExprNode, RhEr
             token_handler.next_token();
             expr
         } else {
-            CondExprNode::Term(condition_term(token_handler)?)
+            condition_term(token_handler)?
         };
-        left = match token_handler.get_token() {
-            Token::AndCmp => CondExprNode::Op(CondExprOpNode::And(Box::new((left, right)))),
-            Token::OrCmp => CondExprNode::Op(CondExprOpNode::Or(Box::new((left, right)))),
-            _ => return token_handler.new_err(ET::ExpectedCondExprOp),
-        };
+        left = CondExprNode::Op(match token_handler.get_token() {
+            Token::AndCmp => CondExprOpNode::And(Box::new((left, right))),
+            Token::OrCmp => CondExprOpNode::Or(Box::new((left, right))),
+            _ => return Err(token_handler.new_err(ET::ExpectedCondExprOp)),
+        });
         curr = token_handler.get_token().clone();
         println!("\nCondition expr curr: {:?}", curr);
     }
@@ -490,18 +489,18 @@ fn condition_expr(token_handler: &mut TokenHandler) -> Result<CondExprNode, RhEr
 }
 
 fn condition_term(token_handler: &mut TokenHandler) -> Result<CondTermNode, RhErr> {
-    let mut left = arithmetic_expression(token_handler)?;
+    let mut left = CondTermNode::Factor(arithmetic_expression(token_handler)?);
     println!("Left factor: {:?}", left);
     let mut curr = token_handler.get_token().clone();
     while curr == Token::NeqCmp || curr == Token::EqCmp {
         token_handler.next_token();
         let right = condition_factor(token_handler)?;
         println!("Right factor: {:?}", right);
-        left = match token_handler.get_token() {
+        left = CondTermNode::Op(match token_handler.get_token() {
             Token::NeqCmp => CondTermOpNode::NEq(Box::new((left, right))),
             Token::EqCmp => CondTermOpNode::Eq(Box::new((left, right))),
-            _ => return token_handler.new_err(ET::ExpectedCondTermOp),
-        };
+            _ => return Err(token_handler.new_err(ET::ExpectedCondTermOp)),
+        });
 
         curr = token_handler.get_token().clone();
         println!("curr: {:?}", curr);
@@ -514,12 +513,12 @@ fn condition_factor(token_handler: &mut TokenHandler) -> Result<ArithExprNode, R
     match token_handler.get_token() {
         Token::OParen => {
             token_handler.next_token();
-            let expr = condition_expr(token_handler);
+            let expr = condition_expr(token_handler)?;
             println!("Post arith token: {:?}", token_handler.get_token());
             if *token_handler.get_token() != Token::CParen {
                 return Err(token_handler.new_err(ET::ExpectedCParen));
             }
-            expr
+            Ok(expr)
         }
         _ => arithmetic_expression(token_handler),
     }

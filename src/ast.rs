@@ -59,8 +59,8 @@ pub enum CondExprNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CondExprOpNode {
-    And(Box<(CondTermNode, CondTermNode)>),
-    Or(Box<(CondTermNode, CondTermNode)>),
+    And(Box<(CondExprNode, CondTermNode)>),
+    Or(Box<(CondExprNode, CondTermNode)>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,10 +71,10 @@ pub enum CondTermNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CondTermOpNode {
-    NEq(Box<(CondTermNode, CondTermNode)>),
-    Eq,
-    LT,
-    GT,
+    NEq(Box<(CondTermNode, ArithExprNode)>),
+    Eq(Box<(CondTermNode, ArithExprNode)>),
+    LT(Box<(CondTermNode, ArithExprNode)>),
+    GT(Box<(CondTermNode, ArithExprNode)>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
