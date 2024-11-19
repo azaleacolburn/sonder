@@ -494,7 +494,7 @@ fn condition_term(token_handler: &mut TokenHandler) -> Result<CondTermNode, RhEr
     let mut curr = token_handler.get_token().clone();
     while curr == Token::NeqCmp || curr == Token::EqCmp {
         token_handler.next_token();
-        let right = condition_factor(token_handler)?;
+        let right = arithmetic_expression(token_handler)?;
         println!("Right factor: {:?}", right);
         left = CondTermNode::Op(match token_handler.get_token() {
             Token::NeqCmp => CondTermOpNode::NEq(Box::new((left, right))),
@@ -508,34 +508,18 @@ fn condition_term(token_handler: &mut TokenHandler) -> Result<CondTermNode, RhEr
     Ok(left)
 }
 
-fn condition_factor(token_handler: &mut TokenHandler) -> Result<ArithExprNode, RhErr> {
-    println!("Condition factor token: {:?}", token_handler.get_token());
-    match token_handler.get_token() {
-        Token::OParen => {
-            token_handler.next_token();
-            let expr = condition_expr(token_handler)?;
-            println!("Post arith token: {:?}", token_handler.get_token());
-            if *token_handler.get_token() != Token::CParen {
-                return Err(token_handler.new_err(ET::ExpectedCParen));
-            }
-            Ok(expr)
-        }
-        _ => arithmetic_expression(token_handler),
-    }
-}
-
 fn arithmetic_expression(token_handler: &mut TokenHandler) -> Result<ArithExprNode, RhErr> {
-    let mut left = arithmetic_term(token_handler)?;
+    let mut left = ArithExprNode::Term(arithmetic_term(token_handler)?);
     let mut curr = token_handler.get_token().clone();
     println!("Expression curr: {:?}", curr);
     while curr == Token::Add || curr == Token::Sub {
         token_handler.next_token();
         let right = arithmetic_term(token_handler)?;
-        left = match token_handler.get_token() {
+        left = ArithExprNode::Op(match token_handler.get_token() {
             Token::Add => ArithExprOpNode::Add(Box::new((left, right))),
             Token::Sub => ArithExprOpNode::Sub(Box::new((left, right))),
-            _ => return token_handler.new_err(ET::ExpectedArithExprOp),
-        };
+            _ => return Err(token_handler.new_err(ET::ExpectedArithExprOp)),
+        });
 
         curr = token_handler.get_token().clone();
     }
@@ -543,17 +527,17 @@ fn arithmetic_expression(token_handler: &mut TokenHandler) -> Result<ArithExprNo
 }
 
 fn arithmetic_term(token_handler: &mut TokenHandler) -> Result<ArithTermNode, RhErr> {
-    let mut left = arithmetic_factor(token_handler)?;
+    let mut left = ArithTermNode::Factor(arithmetic_factor(token_handler)?);
     let mut curr = token_handler.get_token().clone();
     println!("Term curr: {:?}", curr);
     while curr == Token::Star || curr == Token::Div {
         token_handler.next_token();
         let right = arithmetic_factor(token_handler)?;
-        left = match token_handler.get_token() {
+        left = ArithTermNode::Op(match token_handler.get_token() {
             Token::Star => ArithTermOpNode::Mul(Box::new((left, right))),
             Token::Div => ArithTermOpNode::Div(Box::new((left, right))),
-            _ => return token_handler.new_err(ET::ExpectedArithTermOp),
-        };
+            _ => return Err(token_handler.new_err(ET::ExpectedArithTermOp)),
+        });
         curr = token_handler.get_token().clone();
     }
     Ok(left)
@@ -561,47 +545,47 @@ fn arithmetic_term(token_handler: &mut TokenHandler) -> Result<ArithTermNode, Rh
 
 fn arithmetic_factor(token_handler: &mut TokenHandler) -> Result<ArithFactorNode, RhErr> {
     let token = token_handler.get_token().clone();
-    let ret = match token {
-        Token::NumLiteral(num) => Ok(ArithFactorNode::NumLiteral(num)),
-        Token::Id(id) => {
-            if *token_handler.peek(1) == Token::OParen {
-                Ok(function_call(token_handler, id.to_string())?)
-            } else if *token_handler.peek(1) == Token::OSquare {
-                token_handler.next_token();
-                token_handler.next_token();
-                let post_mul = ArithTermOpNode::Mul(Box::new((
-                    arithmetic_expression(token_handler),
-                    ArithFactorNode::NumLiteral(8),
-                )));
-                let post_add =
-                    ArithExprOpNode::Sub(Box::new((ArithFactorNode::Id(id.to_string()), post_mul)));
-                if *token_handler.get_token() != Token::CSquare {
-                    return Err(token_handler.new_err(ET::ExpectedCSquare));
-                }
-                Ok(ArithFactorNode::DeRef(Box::new(post_add)))
-            } else {
-                Ok(ArithFactorNode::Id(id.to_string()))
+    let next = *token_handler.peek(1);
+    let ret: Result<ArithFactorNode, RhErr> = match (token, next) {
+        (Token::NumLiteral(num), _) => Ok(ArithFactorNode::NumLiteral(num)),
+        (Token::Id(id), Token::OParen) => Ok(ArithFactorNode::FunctionCall(function_call(
+            token_handler,
+            id.to_string(),
+        )?)),
+        (Token::Id(id), Token::OSquare) => {
+            token_handler.next_token();
+            token_handler.next_token();
+            let post_mul = ArithTermOpNode::Mul(Box::new((
+                ArithTermNode::Factor(ArithFactorNode::ArithExpr(Box::new(arithmetic_expression(
+                    token_handler,
+                )?))),
+                ArithFactorNode::NumLiteral(8),
+            )));
+            let post_add = ArithExprOpNode::Sub(Box::new(
+                (ArithTermNode::Factor(ArithFactorNode::Id(id.to_string()), post_mul)),
+            ));
+            if *token_handler.get_token() != Token::CSquare {
+                return Err(token_handler.new_err(ET::ExpectedCSquare));
             }
+            Ok(ArithFactorNode::DeRef(Box::new(post_add)))
         }
+        (Token::Id(id), _) => Ok(ArithFactorNode::Id(id.to_string())),
 
         // Address of a variable
-        Token::BAnd => {
+        (Token::BAnd, Token::Id(id)) => {
             token_handler.next_token();
-            if let Token::Id(id) = token_handler.get_token() {
-                Ok(ArithFactorNode::Adr(id.to_string()))
-            } else {
-                Err(token_handler.new_err(ET::ExpectedId))
-            }
+            Ok(ArithFactorNode::Adr(id.to_string()))
         }
+        (Token::BAnd, _) => Err(token_handler.new_err(ET::ExpectedId)),
 
-        Token::Star => {
+        (Token::Star, _) => {
             token_handler.next_token();
             let factor = arithmetic_factor(token_handler)?;
             token_handler.prev_token();
             Ok(ArithFactorNode::DeRef(Box::new(factor)))
         }
 
-        Token::OParen => {
+        (Token::OParen, _) => {
             token_handler.next_token();
             match arithmetic_expression(token_handler) {
                 Ok(node) => {

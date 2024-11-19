@@ -96,6 +96,7 @@ pub enum ArithFactorNode {
     NumLiteral(usize),
     Adr(String),
     DeRef(Box<CondExprNode>),
+    FunctionCall(StatementNode),
     CondExpr(Box<CondExprNode>), // Used normally
     ArithExpr(Box<ArithExprNode>),
 }
@@ -109,15 +110,15 @@ pub enum OpNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ArithTermOpNode {
-    Mul(Box<(ArithFactorNode, ArithFactorNode)>),
-    Div(Box<(ArithFactorNode, ArithFactorNode)>),
-    Mod(Box<(ArithFactorNode, ArithFactorNode)>),
+    Mul(Box<(ArithTermNode, ArithFactorNode)>),
+    Div(Box<(ArithTermNode, ArithFactorNode)>),
+    Mod(Box<(ArithTermNode, ArithFactorNode)>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ArithExprOpNode {
-    Add(Box<(ArithTermNode, ArithTermNode)>),
-    Sub(Box<(ArithTermNode, ArithTermNode)>),
+    Add(Box<(ArithExprNode, ArithTermNode)>),
+    Sub(Box<(ArithExprNode, ArithTermNode)>),
 }
 
 /// Unary Operators Come before value
