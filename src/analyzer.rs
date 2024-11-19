@@ -1,4 +1,4 @@
-use crate::parser::{NodeType, TokenNode as Node};
+use crate::parser::{StatementNode};
 
 #[derive(Debug, Clone)]
 enum PtrType {
@@ -41,8 +41,8 @@ pub enum AssignmentBool {
 /// Note: It only returns explicit pointers
 /// TODO: Make pointer grabbing and mut checking for every variable a single sweep over the tree
 ///
-pub fn get_all_pointers_and_derefs<'a>(root: &'a Node, ptrs: &mut Vec<Ptr<'a>>) -> Vec<Ptr<'a>> {
-    let mut sub_ptrs: Vec<Ptr> = match &root.children {
+pub fn get_all_pointers_and_derefs<T, 'a>(root: T, ptrs: &mut Vec<Ptr<'a>>) -> Vec<Ptr<'a>> where T: Node {
+    let mut sub_ptrs: Vec<Ptr> = match &root.children() {
         Some(children) => children
             .iter()
             .flat_map(|child| get_all_pointers_and_derefs(child, ptrs))

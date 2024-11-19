@@ -79,7 +79,7 @@ pub fn string_to_tokens(
                     }
                 }
                 if radix != 0 {
-                    match i32::from_str_radix(&num, radix) {
+                    match usize::from_str_radix(&num, radix) {
                         Ok(value) => {
                             ret.push(Token::NumLiteral(value));
                         }
@@ -92,7 +92,7 @@ pub fn string_to_tokens(
                 }
             }
             if is_dec {
-                ret.push(Token::NumLiteral(num.parse::<i32>().unwrap()));
+                ret.push(Token::NumLiteral(num.parse::<usize>().unwrap()));
                 i += num.len();
                 continue;
             }
@@ -134,7 +134,7 @@ pub fn string_to_tokens(
             'i' => {
                 if chars[i + 1] == 'n' && chars[i + 2] == 't' && !chars[i + 3].is_alphanumeric() {
                     // split.push(String::from("int"));
-                    ret.push(Token::Type(RhType::Int));
+                    ret.push(Token::Type(CType::Int));
                     i += 2; // I think there's a problem with incrementing the iterator
                 } else if chars[i + 1] == 'f' && (chars[i + 2] == ' ' || chars[i + 2] == '(') {
                     // split.push(String::from("if"));
@@ -182,7 +182,7 @@ pub fn string_to_tokens(
                     && chars[i + 4] == ' '
                 {
                     // split.push(String::from("char"));
-                    ret.push(Token::Type(RhType::Char));
+                    ret.push(Token::Type(CType::Char));
                     i += 3;
                 } else {
                     for j in i..chars.len() {
@@ -350,7 +350,7 @@ pub fn string_to_tokens(
                             }
                         }
                         if radix != 0 {
-                            match i32::from_str_radix(&num, radix) {
+                            match usize::from_str_radix(&num, radix) {
                                 Ok(value) => {
                                     ret.push(Token::NumLiteral(value));
                                 }
@@ -363,7 +363,7 @@ pub fn string_to_tokens(
                         }
                     }
                     if is_dec {
-                        ret.push(Token::NumLiteral(num.parse::<i32>().unwrap()));
+                        ret.push(Token::NumLiteral(num.parse::<usize>().unwrap()));
                         i += num.len();
                         continue;
                     }
@@ -598,7 +598,7 @@ pub fn string_to_tokens(
                     && chars[i + 3] == 'd'
                     && (chars[i + 4] == ' ' || chars[i + 4] == '*')
                 {
-                    ret.push(Token::Type(RhType::Void));
+                    ret.push(Token::Type(CType::Void));
                     i += 3;
                 } else {
                     for j in i..chars.len() {
@@ -617,10 +617,11 @@ pub fn string_to_tokens(
             }
             '\'' => {
                 if chars[i + 1].is_ascii() {
-                    let mut val: i32 = 0;
+                    let mut val: usize = 0;
                     if chars[i + 1] == '\\' {
                         if chars[i + 2].is_ascii_digit() {
-                            val = chars[i + 2].to_digit(10).expect("Invalid literal digit") as i32;
+                            val =
+                                chars[i + 2].to_digit(10).expect("Invalid literal digit") as usize;
                         } else {
                             val = match chars[i + 2] {
                                 'n' => 10,
@@ -630,7 +631,7 @@ pub fn string_to_tokens(
                         }
                         i += 1
                     } else {
-                        val = chars[i + 1] as i32;
+                        val = chars[i + 1] as usize;
                     }
                     ret.push(Token::NumLiteral(val));
                     i += 2;
@@ -722,6 +723,6 @@ pub enum Token {
     Return,
     PutChar,
     Assert, // this might be to much for the lexer to do
-            // FuncDeclare((String, Vec<String>, RhType)), // function name, args, return type
+            // FuncDeclare((String, Vec<String>, CType)), // function name, args, return type
             // FuncCall(String, Vec<String>), // function name, args
 }

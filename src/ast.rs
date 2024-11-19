@@ -4,14 +4,10 @@ use crate::{
     parser::TokenHandler,
 };
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum ScopeType {
-    Function(CType),
-    While,
-    Program,
-    If,
-    Loop,
-    For,
+pub trait Node {
+    fn children(&self) -> Vec<impl Node> {
+        todo!()
+    }
 }
 
 // Valid Node Types
@@ -153,6 +149,26 @@ pub enum AssignmentOpType {
     BXor,
 }
 
+impl Node for StatementNode {
+    fn children(&self) -> Vec<impl Node> {
+        match self {
+            StatementNode::If(_, children) => children.to_vec(),
+            StatementNode::For(_, children) => children.to_vec()
+            StatementNode::Asm(_) => vec![],
+            StatementNode::Scope(children) => children.to_vec(),
+            StatementNode::While(_, children) => children.to_vec(),
+                    StatementNode::Break => vec![],
+                    StatementNode::Return(expr) => vec![**expr],
+                    StatementNode::Assert(expr) => vec![**expr],
+            StatementNode::Program(children) => children.to_vec(),
+            StatementNode::PutChar(expr) => vec![**expr],
+            StatementNode::Assignment(_, _, expr) => vec![**expr],
+            StatementNode::Declaration(_, _, expr)=> vec![*expr],
+            StatementNode::FunctionCall(_, children) => children,
+        }
+    }
+}
+
 impl AssignmentOpType {
     pub fn from_token(token_handler: &mut TokenHandler) -> Result<AssignmentOpType, RhErr> {
         match token_handler.get_token() {
@@ -174,4 +190,13 @@ pub enum CType {
     Void,
     Int,
     Char,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub enum ScopeType {
+    Function(CType),
+    While,
+    Program,
+    If,
+    Loop,
+    For,
 }
