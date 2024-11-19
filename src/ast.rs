@@ -22,8 +22,12 @@ pub enum StatementNode {
     // Control Flow
     If(Box<CondExprNode>, Vec<StatementNode>),
     For(
-        // Declaration, Anything, Anything
-        Box<(StatementNode, StatementNode, StatementNode)>,
+        // Declaration, Condition, Anything
+        Box<(
+            Option<StatementNode>,
+            Option<CondExprNode>,
+            Option<StatementNode>,
+        )>,
         Vec<StatementNode>,
     ),
     While(Box<CondExprNode>, Vec<StatementNode>),
@@ -32,7 +36,7 @@ pub enum StatementNode {
     // Functions
     FunctionCall(String, Vec<CondExprNode>),
     FunctionDecaration(String, CType, Vec<StatementNode>, Vec<StatementNode>),
-    Return,
+    Return(Box<CondExprNode>),
 
     // Variables
     Assignment(AssignmentOpType, String, Box<CondExprNode>),
@@ -47,7 +51,7 @@ pub enum StatementNode {
 
     // Misc
     Asm(String),
-    Assert(Box<(CondExprNode, CondExprNode)>),
+    Assert(Box<CondExprNode>),
     PutChar(Box<CondExprNode>),
 }
 
@@ -95,7 +99,7 @@ pub enum ArithFactorNode {
     Id(String),
     NumLiteral(usize),
     Adr(String),
-    DeRef(Box<CondExprNode>),
+    DeRef(Box<ArithExprNode>),
     FunctionCall(StatementNode),
     CondExpr(Box<CondExprNode>), // Used normally
     ArithExpr(Box<ArithExprNode>),

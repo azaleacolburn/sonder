@@ -178,15 +178,17 @@ fn deref_assignment(
         Token::OSquare => {
             token_handler.next_token();
             let post_mul = ArithTermOpNode::Mul(Box::new((
-                ArithFactorNode::ArithExpr(Box::new(arithmetic_expression(token_handler)?)),
+                ArithTermNode::Factor(ArithFactorNode::ArithExpr(Box::new(arithmetic_expression(
+                    token_handler,
+                )?))),
                 ArithFactorNode::NumLiteral(8),
             )));
             let post_sub = ArithExprOpNode::Sub(Box::new((
+                ArithExprNode::Term(ArithTermNode::Op(post_mul)),
                 ArithTermNode::Factor(ArithFactorNode::Id(
                     name.expect("Array assignments must have ids with names")
                         .clone(),
                 )),
-                ArithTermNode::Op(post_mul),
             )));
             if *token_handler.get_token() != Token::CSquare {
                 return Err(token_handler.new_err(ET::ExpectedCSquare));
@@ -545,7 +547,7 @@ fn arithmetic_term(token_handler: &mut TokenHandler) -> Result<ArithTermNode, Rh
 
 fn arithmetic_factor(token_handler: &mut TokenHandler) -> Result<ArithFactorNode, RhErr> {
     let token = token_handler.get_token().clone();
-    let next = *token_handler.peek(1);
+    let next = token_handler.peek(1).clone();
     let ret: Result<ArithFactorNode, RhErr> = match (token, next) {
         (Token::NumLiteral(num), _) => Ok(ArithFactorNode::NumLiteral(num)),
         (Token::Id(id), Token::OParen) => Ok(ArithFactorNode::FunctionCall(function_call(
@@ -555,42 +557,42 @@ fn arithmetic_factor(token_handler: &mut TokenHandler) -> Result<ArithFactorNode
         (Token::Id(id), Token::OSquare) => {
             token_handler.next_token();
             token_handler.next_token();
-            let post_mul = ArithTermOpNode::Mul(Box::new((
-                ArithTermNode::Factor(ArithFactorNode::ArithExpr(Box::new(arithmetic_expression(
-                    token_handler,
-                )?))),
-                ArithFactorNode::NumLiteral(8),
-            )));
-            let post_add = ArithExprOpNode::Sub(Box::new(
-                (ArithTermNode::Factor(ArithFactorNode::Id(id.to_string()), post_mul)),
-            ));
+            let post_mul =
+                ArithExprNode::Term(ArithTermNode::Op(ArithTermOpNode::Mul(Box::new((
+                    ArithTermNode::Factor(ArithFactorNode::ArithExpr(Box::new(
+                        arithmetic_expression(token_handler)?,
+                    ))),
+                    ArithFactorNode::NumLiteral(8),
+                )))));
+            let post_add = ArithExprNode::Op(ArithExprOpNode::Sub(Box::new((
+                post_mul,
+                ArithTermNode::Factor(ArithFactorNode::Id(id.to_string())),
+            ))));
             if *token_handler.get_token() != Token::CSquare {
                 return Err(token_handler.new_err(ET::ExpectedCSquare));
             }
             Ok(ArithFactorNode::DeRef(Box::new(post_add)))
         }
         (Token::Id(id), _) => Ok(ArithFactorNode::Id(id.to_string())),
-
         // Address of a variable
         (Token::BAnd, Token::Id(id)) => {
             token_handler.next_token();
             Ok(ArithFactorNode::Adr(id.to_string()))
         }
         (Token::BAnd, _) => Err(token_handler.new_err(ET::ExpectedId)),
-
         (Token::Star, _) => {
             token_handler.next_token();
-            let factor = arithmetic_factor(token_handler)?;
+            let factor =
+                ArithExprNode::Term(ArithTermNode::Factor(arithmetic_factor(token_handler)?));
             token_handler.prev_token();
             Ok(ArithFactorNode::DeRef(Box::new(factor)))
         }
-
         (Token::OParen, _) => {
             token_handler.next_token();
             match arithmetic_expression(token_handler) {
                 Ok(node) => {
                     if *token_handler.get_token() == Token::CParen {
-                        Ok(node)
+                        Ok(ArithFactorNode::ArithExpr(Box::new(node)))
                     } else {
                         Err(token_handler.new_err(ET::ExpectedCParen))
                     }
@@ -644,12 +646,12 @@ fn for_statement(token_handler: &mut TokenHandler) -> Result<StatementNode, RhEr
             };
             token_handler.next_token();
             let expr = match token_handler.get_token() {
-                Token::Semi => Some(StatementNode::Declaration(id, t, None)),
-                Token::Eq => Some(condition_expr(token_handler)),
+                Token::Semi => None,
+                Token::Eq => Some(Box::new(condition_expr(token_handler)?)),
                 _ => return Err(token_handler.new_err(ET::ExpectedEq)),
             };
 
-            Some(StatementNode::Declaration(id, t, Some(Box::new(expr))))
+            Some(StatementNode::Declaration(id, t, expr))
         }
         Token::Semi => None,
         _ => return Err(token_handler.new_err(ET::ExpectedSemi)),
@@ -702,7 +704,7 @@ pub fn putchar_statement(token_handler: &mut TokenHandler) -> Result<StatementNo
     }
 
     token_handler.next_token();
-    let expr_node = arithmetic_expression(token_handler)?;
+    let expr_node = condition_expr(token_handler)?;
 
     if *token_handler.get_token() != Token::CParen {
         return Err(token_handler.new_err(ET::ExpectedCParen));
@@ -757,8 +759,7 @@ pub fn struct_declaration_handler(
             Token::Id(id) => id,
             _ => return Err(token_handler.new_err(ET::ExpectedId)),
         };
-        let declaration = StatementNode::Declaration(id.clone(), t, None);
-        field_definitions.push(declaration);
+        field_definitions.push((id.clone(), t));
         token_handler.next_token();
         if *token_handler.get_token() != Token::Comma && *token_handler.get_token() != Token::CParen
         {
