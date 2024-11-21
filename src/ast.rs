@@ -3,9 +3,10 @@ use crate::{
     lexer::Token,
     parser::TokenHandler,
 };
+use std::fmt::Debug;
 
-pub trait Node {
-    fn children(&self) -> Vec<impl Node> {
+pub trait Node: Debug {
+    fn children(&self) -> Vec<&'static dyn Node> {
         todo!()
     }
 }
@@ -43,7 +44,7 @@ pub enum StatementNode {
     ArrayDeclaration(String, CType, usize, Vec<CondExprNode>), // id, type, count
 
     // Types
-    StructDeclaration(String, Vec<(String, CType)>),
+    StructDeclaration(String, Vec<StatementNode>),
 
     // Misc
     Asm(String),
@@ -53,40 +54,40 @@ pub enum StatementNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CondExprNode {
-    Op(CondExprOpNode),
+    Op(CondExprOp, Box<(CondExprNode, CondTermNode)>),
     Term(CondTermNode),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum CondExprOpNode {
-    And(Box<(CondExprNode, CondTermNode)>),
-    Or(Box<(CondExprNode, CondTermNode)>),
+pub enum CondExprOp {
+    And,
+    Or,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CondTermNode {
     Factor(ArithExprNode),
-    Op(CondTermOpNode),
+    Op(CondTermOpNode, Box<(CondTermNode, ArithExprNode)>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CondTermOpNode {
-    NEq(Box<(CondTermNode, ArithExprNode)>),
-    Eq(Box<(CondTermNode, ArithExprNode)>),
-    LT(Box<(CondTermNode, ArithExprNode)>),
-    GT(Box<(CondTermNode, ArithExprNode)>),
+    NEq,
+    Eq,
+    LT,
+    GT,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ArithExprNode {
     Term(ArithTermNode),
-    Op(ArithExprOpNode),
+    Op(ArithExprOpNode, Box<(ArithExprNode, ArithTermNode)>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ArithTermNode {
     Factor(ArithFactorNode),
-    Op(ArithTermOpNode),
+    Op(ArithTermOpNode, Box<(ArithTermNode, ArithFactorNode)>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -110,15 +111,15 @@ pub enum OpNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ArithTermOpNode {
-    Mul(Box<(ArithTermNode, ArithFactorNode)>),
-    Div(Box<(ArithTermNode, ArithFactorNode)>),
-    Mod(Box<(ArithTermNode, ArithFactorNode)>),
+    Mul,
+    Div,
+    Mod,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ArithExprOpNode {
-    Add(Box<(ArithExprNode, ArithTermNode)>),
-    Sub(Box<(ArithExprNode, ArithTermNode)>),
+    Add,
+    Sub,
 }
 
 /// Unary Operators Come before value
@@ -150,21 +151,75 @@ pub enum AssignmentOpType {
 }
 
 impl Node for StatementNode {
-    fn children(&self) -> Vec<impl Node> {
+    fn children(&self) -> Vec<&'static dyn Node> {
         match self {
             StatementNode::If(_, children) => children.to_vec(),
-            StatementNode::For(_, children) => children.to_vec()
+            StatementNode::For(_, children) => children.to_vec(),
             StatementNode::Asm(_) => vec![],
             StatementNode::Scope(children) => children.to_vec(),
             StatementNode::While(_, children) => children.to_vec(),
-                    StatementNode::Break => vec![],
-                    StatementNode::Return(expr) => vec![**expr],
-                    StatementNode::Assert(expr) => vec![**expr],
+            StatementNode::Break => vec![],
+            StatementNode::Return(expr) => vec![*expr],
+            StatementNode::Assert(expr) => vec![*expr],
             StatementNode::Program(children) => children.to_vec(),
-            StatementNode::PutChar(expr) => vec![**expr],
-            StatementNode::Assignment(_, _, expr) => vec![**expr],
-            StatementNode::Declaration(_, _, expr)=> vec![*expr],
-            StatementNode::FunctionCall(_, children) => children,
+            StatementNode::PutChar(expr) => vec![*expr],
+            StatementNode::Assignment(_, _, expr) => vec![*expr],
+            StatementNode::Declaration(_, _, expr) => vec![expr.unwrap()],
+            StatementNode::FunctionCall(_, children) => *children,
+            StatementNode::PtrDeclaration(_, _, expr) => vec![expr],
+            StatementNode::DerefAssignment(_, _, expr) => vec![expr],
+            StatementNode::ArrayDeclaration(_, _, _, items) => items,
+            StatementNode::StructDeclaration(_, fields) => fields,
+            StatementNode::FunctionDecaration(_, _, args, statements) => {
+                args.iter().chain(statements.iter())
+            }
+        }
+    }
+}
+
+impl Node for CondExprNode {
+    fn children(&self) -> Vec<&'static dyn Node> {
+        match self {
+            CondExprNode::Op(_, exprs) => exprs,
+            CondExprNode::Term(term) => term.children(),
+        }
+    }
+}
+
+impl Node for CondTermNode {
+    fn children(&self) -> Vec<&'static dyn Node> {
+        match self {
+            CondTermNode::Op(_, exprs) => exprs,
+            CondTermNode::Factor(factor) => factor.children(),
+        }
+    }
+}
+
+impl Node for ArithExprNode {
+    fn children(&self) -> Vec<&'static dyn Node> {
+        match self {
+            ArithExprNode::Op(_, expr) => expr,
+            ArithExprNode::Term(term) => term.children(),
+        }
+    }
+}
+
+impl Node for ArithTermNode {
+    fn children(&self) -> Vec<&'static dyn Node> {
+        match self {
+            ArithTermNode::Op(_, term) => term,
+            ArithTermNode::Factor(factor) => factor.children(),
+        }
+    }
+}
+
+impl Node for ArithFactorNode {
+    fn children(&self) -> Vec<&'static dyn Node> {
+        match self {
+            ArithFactorNode::ArithExpr(expr) => expr.children(),
+            ArithFactorNode::CondExpr(expr) => expr.children(),
+            ArithFactorNode::FunctionCall(call) => call.children(),
+            _ => vec![],
         }
     }
 }
