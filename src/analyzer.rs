@@ -1,4 +1,4 @@
-use crate::parser::{NodeType, TokenNode as Node};
+use crate::ast::{Node, StatementNode};
 
 #[derive(Debug, Clone)]
 enum PtrType {
@@ -15,7 +15,7 @@ enum PtrType {
 
 #[derive(Debug, Clone)]
 enum PtrUsage<'a> {
-    DerefL { lvalue: &'a Node, rvalue: &'a Node }, // deref is on the left side of the statement
+    DerefL { lvalue: &'static dyn Node, rvalue: &'static dyn Node }, // deref is on the left side of the statement
     DerefR { rvalue: &'a Node },                   // deref is on the right side of statement
     AssignL { lvalue: &'a Node, rvalue: &'a Node }, // ptr is on the left side of assignment
     AssignR { rvalue: &'a Node },                  // ptr is on the right side of assignment
@@ -41,8 +41,8 @@ pub enum AssignmentBool {
 /// Note: It only returns explicit pointers
 /// TODO: Make pointer grabbing and mut checking for every variable a single sweep over the tree
 ///
-pub fn get_all_pointers_and_derefs<'a>(root: &'a Node, ptrs: &mut Vec<Ptr<'a>>) -> Vec<Ptr<'a>> {
-    let mut sub_ptrs: Vec<Ptr> = match &root.children {
+pub fn get_all_pointers_and_derefs(root: &'static dyn Node, ptrs: &mut Vec<Ptr<'a>>) -> Vec<Ptr<'a>> {
+    let mut sub_ptrs: Vec<Ptr> = match &root.children() {
         Some(children) => children
             .iter()
             .flat_map(|child| get_all_pointers_and_derefs(child, ptrs))
@@ -133,6 +133,7 @@ pub fn get_all_pointers_and_derefs<'a>(root: &'a Node, ptrs: &mut Vec<Ptr<'a>>) 
                     }
                 }
             };
+            let usage = PtrUsage::DerefL { lvalue: deref_node, rvalue: }
             let dereffed_ptr = ptrs
                 .iter_mut()
                 .find(|ptr| ptr.name == deref_id)
