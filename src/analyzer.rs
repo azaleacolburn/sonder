@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 use crate::parser::{AssignmentOpType, NodeType, TokenNode as Node};
+=======
+use crate::parser::{NodeType, TokenNode as Node};
+>>>>>>> parent of 866aac8 (chore: revert to pre-refactor)
 
 #[derive(Debug, Clone)]
 enum PtrType {
@@ -14,11 +18,19 @@ enum PtrType {
 }
 
 #[derive(Debug, Clone)]
+<<<<<<< HEAD
 enum PtrUsage {
     DerefL,
     DerefR,
     AssignL,
     AssignR,
+=======
+enum PtrUsage<'a> {
+    DerefL { lvalue: &'a Node, rvalue: &'a Node }, // deref is on the left side of the statement
+    DerefR { rvalue: &'a Node },                   // deref is on the right side of statement
+    AssignL { lvalue: &'a Node, rvalue: &'a Node }, // ptr is on the left side of assignment
+    AssignR { rvalue: &'a Node },                  // ptr is on the right side of assignment
+>>>>>>> parent of 866aac8 (chore: revert to pre-refactor)
 }
 
 #[derive(Debug, Clone)]
@@ -62,12 +74,17 @@ pub enum AssignmentBool {
 /// Note: It only returns explicit pointers
 /// TODO: Make pointer grabbing and mut checking for every variable a single sweep over the tree
 ///
+<<<<<<< HEAD
 pub fn get_all_pointers_and_derefs<'a>(
     root: &'a Node,
     ptrs: &mut Vec<Ptr<'a>>,
     derefs: &Vec<Deref<'a>>,
 ) -> (Vec<Ptr<'a>>, Vec<Deref<'a>>) {
     let sub_ptrs_and_derefs: Vec<(Vec<Ptr>, Vec<Deref>)> = match &root.children {
+=======
+pub fn get_all_pointers_and_derefs<'a>(root: &'a Node, ptrs: &mut Vec<Ptr<'a>>) -> Vec<Ptr<'a>> {
+    let mut sub_ptrs: Vec<Ptr> = match &root.children {
+>>>>>>> parent of 866aac8 (chore: revert to pre-refactor)
         Some(children) => children
             .iter()
             .map(|child| get_all_pointers_and_derefs(child, ptrs, derefs))
@@ -156,7 +173,16 @@ pub fn get_all_pointers_and_derefs<'a>(
                 } else {
                     panic!("Non-Id made it through filtering out non-ids")
                 }
+<<<<<<< HEAD
             }
+=======
+            };
+            let dereffed_ptr = ptrs
+                .iter_mut()
+                .find(|ptr| ptr.name == deref_id)
+                .expect("None of the ids in deref assignment are ptrs");
+            dereffed_ptr.is_mut = true;
+>>>>>>> parent of 866aac8 (chore: revert to pre-refactor)
         }
         NodeType::PtrDeclaration(name, _ptr_type, points_to) => {
             let ptr = Ptr {

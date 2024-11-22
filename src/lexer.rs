@@ -1,7 +1,5 @@
 use std::{fmt, num::ParseIntError};
 
-use crate::ast::CType;
-
 /// each index is a new line, the value is the token_i that starts that line
 pub struct LineNumHandler {
     pub token_lines: Vec<i32>,
@@ -79,7 +77,7 @@ pub fn string_to_tokens(
                     }
                 }
                 if radix != 0 {
-                    match usize::from_str_radix(&num, radix) {
+                    match i32::from_str_radix(&num, radix) {
                         Ok(value) => {
                             ret.push(Token::NumLiteral(value));
                         }
@@ -92,7 +90,7 @@ pub fn string_to_tokens(
                 }
             }
             if is_dec {
-                ret.push(Token::NumLiteral(num.parse::<usize>().unwrap()));
+                ret.push(Token::NumLiteral(num.parse::<i32>().unwrap()));
                 i += num.len();
                 continue;
             }
@@ -134,7 +132,7 @@ pub fn string_to_tokens(
             'i' => {
                 if chars[i + 1] == 'n' && chars[i + 2] == 't' && !chars[i + 3].is_alphanumeric() {
                     // split.push(String::from("int"));
-                    ret.push(Token::Type(CType::Int));
+                    ret.push(Token::Type(RhType::Int));
                     i += 2; // I think there's a problem with incrementing the iterator
                 } else if chars[i + 1] == 'f' && (chars[i + 2] == ' ' || chars[i + 2] == '(') {
                     // split.push(String::from("if"));
@@ -182,7 +180,7 @@ pub fn string_to_tokens(
                     && chars[i + 4] == ' '
                 {
                     // split.push(String::from("char"));
-                    ret.push(Token::Type(CType::Char));
+                    ret.push(Token::Type(RhType::Char));
                     i += 3;
                 } else {
                     for j in i..chars.len() {
@@ -350,7 +348,7 @@ pub fn string_to_tokens(
                             }
                         }
                         if radix != 0 {
-                            match usize::from_str_radix(&num, radix) {
+                            match i32::from_str_radix(&num, radix) {
                                 Ok(value) => {
                                     ret.push(Token::NumLiteral(value));
                                 }
@@ -363,7 +361,7 @@ pub fn string_to_tokens(
                         }
                     }
                     if is_dec {
-                        ret.push(Token::NumLiteral(num.parse::<usize>().unwrap()));
+                        ret.push(Token::NumLiteral(num.parse::<i32>().unwrap()));
                         i += num.len();
                         continue;
                     }
@@ -598,7 +596,7 @@ pub fn string_to_tokens(
                     && chars[i + 3] == 'd'
                     && (chars[i + 4] == ' ' || chars[i + 4] == '*')
                 {
-                    ret.push(Token::Type(CType::Void));
+                    ret.push(Token::Type(RhType::Void));
                     i += 3;
                 } else {
                     for j in i..chars.len() {
@@ -617,11 +615,10 @@ pub fn string_to_tokens(
             }
             '\'' => {
                 if chars[i + 1].is_ascii() {
-                    let mut val: usize = 0;
+                    let mut val: i32 = 0;
                     if chars[i + 1] == '\\' {
                         if chars[i + 2].is_ascii_digit() {
-                            val =
-                                chars[i + 2].to_digit(10).expect("Invalid literal digit") as usize;
+                            val = chars[i + 2].to_digit(10).expect("Invalid literal digit") as i32;
                         } else {
                             val = match chars[i + 2] {
                                 'n' => 10,
@@ -631,7 +628,7 @@ pub fn string_to_tokens(
                         }
                         i += 1
                     } else {
-                        val = chars[i + 1] as usize;
+                        val = chars[i + 1] as i32;
                     }
                     ret.push(Token::NumLiteral(val));
                     i += 2;
@@ -664,11 +661,11 @@ pub enum Token {
     While,
     Loop,
     Fn,
-    Type(CType),
+    Type(RhType),
     // Assign(String),
     Star,
     // Var(String),
-    NumLiteral(usize),
+    NumLiteral(i32),
     StrLiteral(String),
     Add,
     AddO,
@@ -723,6 +720,28 @@ pub enum Token {
     Return,
     PutChar,
     Assert, // this might be to much for the lexer to do
-            // FuncDeclare((String, Vec<String>, CType)), // function name, args, return type
+            // FuncDeclare((String, Vec<String>, RhType)), // function name, args, return type
             // FuncCall(String, Vec<String>), // function name, args
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum RhType {
+    Char,
+    Int,
+    Void,
+}
+
+impl fmt::Display for RhType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Write strictly the first element into the supplied output
+        // stream: `f`. Returns `fmt::Result` which indicates whether the
+        // operation succeeded or failed. Note that `write!` uses syntax which
+        // is very similar to `println!`.
+        let p = match self {
+            RhType::Char => "u8",
+            RhType::Int => "u16",
+            RhType::Void => "()",
+        };
+        write!(f, "{}", p)
+    }
 }
