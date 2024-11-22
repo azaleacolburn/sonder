@@ -1,4 +1,4 @@
-use crate::ast::{Node, StatementNode};
+use crate::parser::{AssignmentOpType, NodeType, TokenNode as Node};
 
 #[derive(Debug, Clone)]
 enum PtrType {
@@ -14,11 +14,11 @@ enum PtrType {
 }
 
 #[derive(Debug, Clone)]
-enum PtrUsage<'a> {
-    DerefL { lvalue: &'static dyn Node, rvalue: &'static dyn Node }, // deref is on the left side of the statement
-    DerefR { rvalue: &'a Node },                   // deref is on the right side of statement
-    AssignL { lvalue: &'a Node, rvalue: &'a Node }, // ptr is on the left side of assignment
-    AssignR { rvalue: &'a Node },                  // ptr is on the right side of assignment
+enum PtrUsage {
+    DerefL,
+    DerefR,
+    AssignL,
+    AssignR,
 }
 
 #[derive(Debug, Clone)]
@@ -27,7 +27,28 @@ pub struct Ptr<'a> {
     points_to: &'a Node,
     t: PtrType,
     is_mut: bool,
-    deref_instances: Vec<PtrUsage<'a>>,
+    deref_instances: Vec<Usage<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Usage<'a> {
+    usage_type: PtrUsage,
+    lvalue: &'a Node,
+    rvalue: &'a Node,
+}
+
+#[derive(Debug, Clone)]
+pub struct Deref<'a> {
+    ptr_name: String,
+    deref_type: DerefType,
+    lvalue: &'a Node,
+    rvalue: &'a Node,
+}
+
+#[derive(Debug, Clone)]
+pub enum DerefType {
+    Left,
+    Right,
 }
 
 /// We need this to check if pointer values are being reassigned
@@ -41,14 +62,28 @@ pub enum AssignmentBool {
 /// Note: It only returns explicit pointers
 /// TODO: Make pointer grabbing and mut checking for every variable a single sweep over the tree
 ///
-pub fn get_all_pointers_and_derefs(root: &'static dyn Node, ptrs: &mut Vec<Ptr<'a>>) -> Vec<Ptr<'a>> {
-    let mut sub_ptrs: Vec<Ptr> = match &root.children() {
+pub fn get_all_pointers_and_derefs<'a>(
+    root: &'a Node,
+    ptrs: &mut Vec<Ptr<'a>>,
+    derefs: &Vec<Deref<'a>>,
+) -> (Vec<Ptr<'a>>, Vec<Deref<'a>>) {
+    let sub_ptrs_and_derefs: Vec<(Vec<Ptr>, Vec<Deref>)> = match &root.children {
         Some(children) => children
             .iter()
-            .flat_map(|child| get_all_pointers_and_derefs(child, ptrs))
+            .map(|child| get_all_pointers_and_derefs(child, ptrs, derefs))
             .collect(),
         None => vec![],
     };
+
+    let mut sub_ptrs: Vec<Ptr> = sub_ptrs_and_derefs
+        .clone()
+        .into_iter()
+        .flat_map(|pair| pair.0)
+        .collect();
+    let sub_derefs: Vec<Deref> = sub_ptrs_and_derefs
+        .into_iter()
+        .flat_map(|pair| pair.1)
+        .collect();
 
     match &root.token {
         NodeType::Assignment(_, id) => {
@@ -57,10 +92,6 @@ pub fn get_all_pointers_and_derefs(root: &'static dyn Node, ptrs: &mut Vec<Ptr<'
             }
         }
         NodeType::DeRef(node) => {
-            println!(
-                "deref_node_children: {:?}",
-                node.children.as_ref().expect("Deref node children empty")
-            );
             let deref_id_node = node
                 .children
                 .as_ref()
@@ -70,16 +101,19 @@ pub fn get_all_pointers_and_derefs(root: &'static dyn Node, ptrs: &mut Vec<Ptr<'
                     std::mem::discriminant(&node.token)
                         == std::mem::discriminant(&NodeType::Id(String::new()))
                 })
-                .unwrap_or(node);
+                .expect("No id in deref");
             if let NodeType::Id(id) = &deref_id_node.token {
                 // FIXME: This doesn't support: *(t + f)
-                let usage = PtrUsage::DerefR { rvalue: node };
+                let usage = Usage {
+                    usage_type: PtrUsage::DerefR,
+                    lvalue: &'a 
 
+                };
                 ptrs.iter_mut()
                     .find(|ptr| ptr.name == *id)
                     .expect("Non-ptr")
                     .deref_instances
-                    .push(usage);
+                    .push();
             } else {
                 panic!("Non-Id made it through filtering out non-ids");
             }
@@ -94,51 +128,35 @@ pub fn get_all_pointers_and_derefs(root: &'static dyn Node, ptrs: &mut Vec<Ptr<'
             // Where there are two variables being dereferenced together
 
             // L-side deref ids
-            println!("node: {:?}", deref_node);
+            let deref_ids: Vec<Node> = deref_node
+                .children
+                .as_ref()
+                .unwrap()
+                .iter()
+                .filter(|node| {
+                    std::mem::discriminant(&node.token)
+                        == std::mem::discriminant(&NodeType::Id(String::new()))
+                })
+                .map(|node| node.clone())
+                .collect();
 
-            let deref_id: String = if let NodeType::Id(id) = &deref_node.token {
-                println!("here");
-                id.clone()
+            println!("l-side deref ids: {:?}", deref_ids);
+
+            if deref_ids.len() > 1 {
+                println!("Multiple ptrs deref assigned at once, all things here are raw pointers");
             } else {
-                println!(
-                    "deref_node_children: {:?}",
-                    deref_node
-                        .children
-                        .as_ref()
-                        .expect("Deref node children empty")
-                );
-
-                let deref_ids: Vec<Node> = deref_node
-                    .children
-                    .as_ref()
-                    .expect("No id being assigned")
-                    .iter()
-                    .filter(|node| {
-                        std::mem::discriminant(&node.token)
-                            == std::mem::discriminant(&NodeType::Id(String::new()))
-                    })
-                    .map(|node| node.clone())
-                    .collect();
-                if deref_ids.len() > 1 {
-                    panic!(
-                        "Multiple ptrs deref assigned at once, all things here are raw pointers"
-                    );
+                if let NodeType::Id(id) = &deref_ids[0].token {
+                    // Write handler later
+                    println!("ptrs: {:?}", ptrs);
+                    let dereffed_ptr = ptrs
+                        .iter_mut()
+                        .find(|ptr| ptr.name == *id)
+                        .expect("None of the ids in deref assignment are ptrs");
+                    dereffed_ptr.is_mut = true;
                 } else {
-                    if let NodeType::Id(id) = &deref_ids[0].token {
-                        // Write handler later
-                        println!("ptrs: {:?}", ptrs);
-                        id.clone()
-                    } else {
-                        panic!("Non-Id made it through filtering out non-ids")
-                    }
+                    panic!("Non-Id made it through filtering out non-ids")
                 }
-            };
-            let usage = PtrUsage::DerefL { lvalue: deref_node, rvalue: }
-            let dereffed_ptr = ptrs
-                .iter_mut()
-                .find(|ptr| ptr.name == deref_id)
-                .expect("None of the ids in deref assignment are ptrs");
-            dereffed_ptr.is_mut = true;
+            }
         }
         NodeType::PtrDeclaration(name, _ptr_type, points_to) => {
             let ptr = Ptr {
@@ -157,5 +175,38 @@ pub fn get_all_pointers_and_derefs(root: &'static dyn Node, ptrs: &mut Vec<Ptr<'
 
     ptrs.append(&mut (sub_ptrs.clone()));
 
-    sub_ptrs
+    (sub_ptrs, sub_derefs)
+}
+
+/// Checks if a pointer is ever defererenced and modified
+pub fn is_mut(ptr_name: &String, root: &Node) -> bool {
+    // TODO: Fix this being scuffed
+    let blank = vec![];
+    for child in root.children.as_ref().unwrap_or_else(|| &blank).iter() {
+        if is_mut(ptr_name, &child) {
+            return true;
+        }
+        if std::mem::discriminant(&child.token)
+            != std::mem::discriminant(&NodeType::Assignment(
+                AssignmentOpType::Eq,
+                ptr_name.to_string(),
+            ))
+        {
+            continue;
+        }
+
+        let deref = &child.children.as_ref().unwrap()[0];
+        let expression = &deref.children.as_ref().unwrap();
+        if !(deref.token == NodeType::DeRef) || !(expression.len() == 1) {
+            continue;
+        }
+
+        if let NodeType::Id(ptr) = &expression[0].token {
+            if *ptr == *ptr_name {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
