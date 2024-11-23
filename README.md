@@ -18,6 +18,7 @@ Sonder is a static analysis tool for C, for determining the necessary sementics 
       - this includes being passed mutably, or mutating
    3. Count to make sure at any given point, only a single mutable, or any number of immutable references are used (otherwise leave it as a raw pointer)
    4. If we have time, check for common Smart Pointer semantics
+
 3. Generate a new AST with previously implicit pointer semantics made explicit
 4. Try converting the new AST to semantically identical, idiomatic Rust.
 

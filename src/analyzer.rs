@@ -1,6 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
-use crate::parser::{NodeType, TokenNode as Node};
+use crate::{
+    lexer::CType,
+    parser::{AssignmentOpType, NodeType, TokenNode as Node},
+};
 
 #[derive(Debug, Clone)]
 enum PtrType {
@@ -15,67 +18,206 @@ enum PtrType {
     MutRef,
 }
 
-#[derive(Debug, Clone)]
-enum PtrUsage {
-    DerefL,
-    DerefR,
-    AssignL,
-    AssignR,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PtrData {
+    points_to: String,
+    mutates: bool,
 }
-
-#[derive(Debug, Clone)]
-pub struct Ptr<'a> {
-    name: String,
-    points_to: &'a Node,
-    t: PtrType,
-    is_mut: bool,
-    deref_instances: Vec<Usage<'a>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Usage<'a> {
-    usage_type: PtrUsage,
-    lvalue: &'a Node,
-    rvalue: &'a Node,
-}
-
-#[derive(Debug, Clone)]
-pub struct Deref<'a> {
-    ptr_name: String,
-    deref_type: DerefType,
-    lvalue: &'a Node,
-    rvalue: &'a Node,
-}
-
-#[derive(Debug, Clone)]
-pub enum DerefType {
-    Left,
-    Right,
-}
-
-/// We need this to check if pointer values are being reassigned
-#[derive(Clone, Copy, Debug)]
-pub enum AssignmentBool {
-    IsAssignment(bool), // id being assigned to, is_mut
-    NotAssignment,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VarData<'a> {
-    is_ptr: bool,
+    ptr_data: Option<PtrData>,
     pointed_to_by: Vec<&'a str>,
     is_mut_by_ptr: bool,
     is_mut_direct: bool,
 }
 
-pub fn determine_var_mutability<'a>(root: &'a Node) -> HashMap<String, VarData> {
-    let mut vars: HashMap<String, VarData> = HashMap::new();
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnnotatedNode {
+    token: AnnotatedNodeT,
+    children: Option<Vec<AnnotatedNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AnnotatedNodeT {
+    Program,
+    Sub,
+    Div,
+    Eq,
+    Id(String), // figure out if we want this here
+    EqCmp,
+    NeqCmp,
+    BOr,
+    BAnd,
+    BXor,
+    BOrEq,
+    BAndEq,
+    BXorEq,
+    SubEq,
+    AddEq,
+    DivEq,
+    MulEq,
+    Mul,
+    MNeg,
+    AndCmp,
+    OrCmp,
+    NumLiteral(usize),
+    Add,
+    If,
+    For,
+    While,
+    _Loop,
+    Break,
+    FunctionCall(String),
+    Scope(Option<CType>), // <-- anything that has {} is a scope, scope is how we're handling multiple statements, scopes return the last statement's result or void
+    Assignment {
+        op: AssignmentOpType,
+        id: String,
+    },
+    DerefAssignment {
+        op: AssignmentOpType,
+        adr: Box<AnnotatedNode>,
+    },
+    Declaration {
+        id: String,
+        is_mut: bool,
+        t: CType,
+    },
+    PtrDeclaration {
+        id: String,
+        is_mut: bool,
+        t: CType,
+        adr: Box<AnnotatedNode>,
+    },
+    RefDeclaration {
+        id: String,
+        is_mut: bool,
+        t: CType,
+        adr: Box<AnnotatedNode>,
+    },
+    Asm(String),
+    Adr {
+        id: String,
+        is_mut: bool,
+    },
+    Ref {
+        id: String,
+        is_mut: bool,
+    },
+    DeRef(Box<AnnotatedNode>),
+    ArrayDeclaration {
+        id: String,
+        t: CType,
+        size: usize,
+    },
+    FunctionDecaration {
+        id: String,
+        t: CType,
+    },
+    Type(CType),
+    Assert,
+    Return,
+    PutChar,
+    StructDeclaration(String),
+}
+impl Display for AnnotatedNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.token) // doesn't print values
+    }
+}
+
+impl AnnotatedNode {
+    pub fn print(&self, n: &mut i32) {
+        (0..*n).into_iter().for_each(|_| print!("  "));
+        println!("{}", self);
+        *n += 1;
+        if let Some(children) = &self.children {
+            children.iter().for_each(|node| {
+                node.print(n);
+            })
+        }
+        *n -= 1;
+        // println!("End Children");
+    }
+}
+pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>) -> AnnotatedNode {
+    let children = root.children.as_ref().unwrap_or(&vec![]).to_vec();
+    let annotated_node_children = Some(
+        children
+            .iter()
+            .map(|node| annotate_ast(node, var_info))
+            .collect(),
+    );
+    let token = match &root.token {
+        NodeType::Declaration(id, t, _) => {
+            let declaration_info = var_info.get(id).expect("Declared id not in map");
+            let is_mut = declaration_info.is_mut_by_ptr || declaration_info.is_mut_direct;
+            AnnotatedNodeT::Declaration {
+                id: id.to_string(),
+                is_mut,
+                t: t.clone(),
+            }
+        }
+        NodeType::PtrDeclaration(id, t, adr) => {
+            let ptr_info = var_info.get(id).expect("Ptr not found in info map");
+            let is_mut = ptr_info.is_mut_by_ptr || ptr_info.is_mut_direct;
+            let annotated_adr = Box::new(annotate_ast(adr, var_info));
+            AnnotatedNodeT::PtrDeclaration {
+                id: id.to_string(),
+                is_mut,
+                t: t.clone(),
+                adr: annotated_adr,
+            }
+        }
+        NodeType::Adr(id) => {
+            let adr_info = var_info.get(id).expect("Adr to undeclared variable");
+            // TODO: This doesn't mean that it's modified by *this* node
+            let is_mut = adr_info.is_mut_by_ptr;
+            AnnotatedNodeT::Adr {
+                id: id.to_string(),
+                is_mut,
+            }
+        }
+        NodeType::DerefAssignment(op, adr) => {
+            let annotated_adr = Box::new(annotate_ast(adr, var_info));
+            AnnotatedNodeT::DerefAssignment {
+                op: op.clone(),
+                adr: annotated_adr,
+            }
+        }
+        NodeType::DeRef(expr) => {
+            let annotated_expr = Box::new(annotate_ast(expr, var_info));
+            AnnotatedNodeT::DeRef(annotated_expr)
+        }
+        node => node.to_annotated_node(),
+    };
+    AnnotatedNode {
+        token,
+        children: annotated_node_children,
+    }
+}
+
+pub fn determine_var_mutability<'a>(
+    root: &'a Node,
+    prev_vars: &HashMap<String, VarData<'a>>,
+) -> HashMap<String, VarData<'a>> {
+    let mut vars: HashMap<String, VarData> = prev_vars.clone();
+    if root.children.is_some() {
+        root.children.as_ref().unwrap().iter().for_each(|node| {
+            determine_var_mutability(node, &vars)
+                .iter()
+                .for_each(|(id, var_data)| {
+                    vars.insert(id.to_string(), var_data.clone());
+                });
+        })
+    }
+
     match &root.token {
         NodeType::Declaration(id, _, _) => {
+            println!("Declaration: {id}");
             vars.insert(
                 id.to_string(),
                 VarData {
-                    is_ptr: false,
+                    ptr_data: None,
                     pointed_to_by: vec![],
                     is_mut_by_ptr: false,
                     is_mut_direct: false,
@@ -86,39 +228,66 @@ pub fn determine_var_mutability<'a>(root: &'a Node) -> HashMap<String, VarData> 
             vars.get_mut(id).expect("Undeclared Id").is_mut_direct = true;
         }
         NodeType::PtrDeclaration(id, _, expr) => {
+            let expr_ids = find_ids(expr);
+            if expr_ids.len() > 1 {
+                panic!("More than one id in expr: `&(a + b)` not legal");
+            } else if expr_ids.len() != 1 {
+                panic!("ptr to no id");
+            }
+            let ptr_data = Some(PtrData {
+                points_to: expr_ids[0].clone(),
+                mutates: false,
+            });
             let var = VarData {
-                is_ptr: true,
+                ptr_data,
                 pointed_to_by: vec![],
                 is_mut_by_ptr: false,
                 is_mut_direct: false,
             };
-            let expr_id = find_ids(expr);
-            vars.insert(id.to_string(), var);
-            // Doesn't support &that + &this
-            // This immediantly breakes borrow checking rules
-            vars.get_mut(&expr_id[0])
-                .expect("Undeclared Id")
-                .pointed_to_by
-                .push(id);
+            let expr_ids = find_ids(expr);
+            if expr_ids.len() > 0 {
+                vars.insert(id.to_string(), var);
+                // Doesn't support &that + &this
+                // This immediantly breakes borrow checking rules
+                println!("{:?}", vars);
+                println!("expr_id: {}", expr_ids[0]);
+                vars.get_mut(&expr_ids[0])
+                    .expect("Undeclared Id")
+                    .pointed_to_by
+                    .push(id);
+            }
         }
         NodeType::DerefAssignment(_, l_side) => {
             let deref_ids = find_ids(&l_side);
+            println!("{:?}", deref_ids);
             // This breakes because `*(t + s) = bar` is not allowed
+            // Actually, it shouldn't, because **m is fine
             if deref_ids.len() > 1 {
                 panic!("Unsupported: Multiple items dereferenced");
+            } else if deref_ids.len() != 1 {
+                panic!("Unsupported: no_ids being dereffed")
             }
-            let ptr_id: &str = &deref_ids[0];
-            let mutated_var_name: Vec<String> = vars
-                .iter()
-                .filter(|(_name, data)| data.pointed_to_by.contains(&ptr_id))
-                .map(|(name, _data)| name.clone())
-                .collect();
-            if mutated_var_name.len() > 1 {
-                panic!("Unsupported: Pointer points to more than one thing");
+
+            for ptr_id in deref_ids {
+                vars.get_mut(ptr_id.as_str())
+                    .as_mut()
+                    .expect("Deref Assigning Undeclared Pointer")
+                    .ptr_data
+                    .as_mut()
+                    // This panics if `*(t + non_ptr)`
+                    .expect("Deref assigning non-ptr")
+                    .mutates = true;
+
+                let mutated_var_name: Vec<String> = vars
+                    .iter()
+                    .filter(|(_name, data)| data.pointed_to_by.contains(&ptr_id.as_str()))
+                    .map(|(name, _data)| name.clone())
+                    .collect();
+
+                vars.get_mut(&mutated_var_name[0])
+                    .expect("Undeclared Id Being Dereferenced")
+                    .is_mut_by_ptr = true;
             }
-            vars.get_mut(&mutated_var_name[0])
-                .expect("Undeclared Id Being Dereferenced")
-                .is_mut_by_ptr = true;
         }
         _ => {}
     };
@@ -126,6 +295,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node) -> HashMap<String, VarData> 
 }
 
 fn find_ids<'a>(root: &'a Node) -> Vec<String> {
+    println!("{root}");
     let mut ids: Vec<String> = root
         .children
         .as_ref()
@@ -133,118 +303,12 @@ fn find_ids<'a>(root: &'a Node) -> Vec<String> {
         .iter()
         .flat_map(|child| find_ids(child))
         .collect();
-    if let NodeType::Id(id) = &root.token {
-        ids.push(id.to_string());
+    match &root.token {
+        NodeType::Id(id) => ids.push(id.to_string()),
+        NodeType::Adr(id) => ids.push(id.to_string()),
+        NodeType::DeRef(node) => ids.append(&mut find_ids(&*node)),
+        _ => {}
     }
+
     ids
 }
-
-// /// Returns a vector of all pointers and derefts
-// /// Note: It only returns explicit pointers
-// /// TODO: Make pointer grabbing and mut checking for every variable a single sweep over the tree
-// ///
-// pub fn get_all_pointers_and_derefs<'a>(root: &'a Node, ptrs: &mut Vec<Ptr<'a>>) -> Vec<Ptr<'a>> {
-//     let mut sub_ptrs: Vec<Ptr> = match &root.children {
-//         Some(children) => children
-//             .iter()
-//             .map(|child| get_all_pointers_and_derefs(child, ptrs))
-//             .collect(),
-//         None => vec![],
-//     };
-//
-//     match &root.token {
-//         NodeType::Assignment(_, id) => {
-//             if sub_ptrs.len() > 1 {
-//                 println!("More than one dereferenced pointer in R-value no non-deref assignment on id: {id}");
-//             }
-//         }
-//         NodeType::DeRef(node) => {
-//             let deref_id_node = node
-//                 .children
-//                 .as_ref()
-//                 .unwrap()
-//                 .iter()
-//                 .find(|node| {
-//                     std::mem::discriminant(&node.token)
-//                         == std::mem::discriminant(&NodeType::Id(String::new()))
-//                 })
-//                 .expect("No id in deref");
-//             if let NodeType::Id(id) = &deref_id_node.token {
-//                 // FIXME: This doesn't support: *(t + f)
-//                 todo!();
-//                 let usage = Usage {
-//                     usage_type: PtrUsage::DerefR,
-//                 };
-//                 ptrs.iter_mut()
-//                     .find(|ptr| ptr.name == *id)
-//                     .expect("Non-ptr")
-//                     .deref_instances
-//                     .push(usage);
-//             } else {
-//                 panic!("Non-Id made it through filtering out non-ids");
-//             }
-//         }
-//         NodeType::DerefAssignment(_, deref_node) => {
-//             // FIXME: This doesn't support things like
-//             // int g = 0;
-//             // int y = 9;
-//             // int* j = &g;
-//             // *(j + y) = 7;
-//             //
-//             // Where there are two variables being dereferenced together
-//
-//             // L-side deref ids
-//             let deref_ids: Vec<Node> = deref_node
-//                 .children
-//                 .as_ref()
-//                 .unwrap()
-//                 .iter()
-//                 .filter(|node| {
-//                     std::mem::discriminant(&node.token)
-//                         == std::mem::discriminant(&NodeType::Id(String::new()))
-//                 })
-//                 .map(|node| node.clone())
-//                 .collect();
-//
-//             println!("l-side deref ids: {:?}", deref_ids);
-//
-//             if deref_ids.len() > 1 {
-//                 println!("Multiple ptrs deref assigned at once, all things here are raw pointers");
-//             } else {
-//                 if let NodeType::Id(id) = &deref_ids[0].token {
-//                     // Write handler later
-//                     println!("ptrs: {:?}", ptrs);
-//                     let dereffed_ptr = ptrs
-//                         .iter_mut()
-//                         .find(|ptr| ptr.name == *id)
-//                         .expect("None of the ids in deref assignment are ptrs");
-//                     dereffed_ptr.is_mut = true;
-//                 } else {
-//                     panic!("Non-Id made it through filtering out non-ids")
-//                 }
-//             }
-//             let dereffed_ptr = ptrs
-//                 .iter_mut()
-//                 .find(|ptr| ptr.name == deref_id)
-//                 .expect("None of the ids in deref assignment are ptrs");
-//             dereffed_ptr.is_mut = true;
-//         }
-//         NodeType::PtrDeclaration(name, _ptr_type, points_to) => {
-//             let ptr = Ptr {
-//                 name: name.clone(),
-//                 points_to: &*points_to,
-//                 deref_instances: vec![],
-//                 t: PtrType::TrueRaw,
-//                 is_mut: false,
-//             };
-//             sub_ptrs.push(ptr);
-//         }
-//         _ => {
-//             println!("Not semantically important token for grabbing ptrs");
-//         }
-//     }
-//
-//     ptrs.append(&mut (sub_ptrs.clone()));
-//
-//     sub_ptrs
-// }

@@ -1,4 +1,4 @@
-use std::{fmt, num::ParseIntError};
+use std::num::ParseIntError;
 
 /// each index is a new line, the value is the token_i that starts that line
 pub struct LineNumHandler {

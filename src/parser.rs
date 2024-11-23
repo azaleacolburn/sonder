@@ -1,3 +1,4 @@
+use crate::analyzer::AnnotatedNodeT;
 use crate::error::{ErrType as ET, RhErr};
 use crate::lexer::{CType, LineNumHandler, Token};
 
@@ -32,7 +33,6 @@ pub enum NodeType {
     DivEq,
     MulEq,
     Mul,
-    MNeg,
     AndCmp,
     OrCmp,
     NumLiteral(usize),
@@ -51,9 +51,8 @@ pub enum NodeType {
     Asm(String),
     Adr(String),
     DeRef(Box<TokenNode>),
-    ArrayDeclaration((String, CType, usize)), // id, type, count
-    FunctionDecaration((String, CType)),
-    Type(CType),
+    ArrayDeclaration(String, CType, usize), // id, type, count
+    FunctionDecaration(String, CType),
     Assert,
     Return,
     PutChar,
@@ -123,6 +122,61 @@ impl NodeType {
             _ => {
                 println!("Oh God No, Not A Valid Token");
                 return Err(());
+            }
+        }
+    }
+
+    pub fn to_annotated_node(&self) -> AnnotatedNodeT {
+        match self {
+            NodeType::Program => AnnotatedNodeT::Program,
+            NodeType::Sub => AnnotatedNodeT::Sub,
+            NodeType::Div => AnnotatedNodeT::Div,
+            NodeType::Eq => AnnotatedNodeT::Eq,
+            NodeType::Id(s) => AnnotatedNodeT::Id(s.to_string()),
+            NodeType::EqCmp => AnnotatedNodeT::EqCmp,
+            NodeType::NeqCmp => AnnotatedNodeT::NeqCmp,
+            NodeType::BOr => AnnotatedNodeT::BOr,
+            NodeType::BAnd => AnnotatedNodeT::BAnd,
+            NodeType::BXor => AnnotatedNodeT::BXor,
+            NodeType::BOrEq => AnnotatedNodeT::BOrEq,
+            NodeType::BAndEq => AnnotatedNodeT::BAndEq,
+            NodeType::BXorEq => AnnotatedNodeT::BXorEq,
+            NodeType::SubEq => AnnotatedNodeT::SubEq,
+            NodeType::AddEq => AnnotatedNodeT::AddEq,
+            NodeType::DivEq => AnnotatedNodeT::DivEq,
+            NodeType::MulEq => AnnotatedNodeT::MulEq,
+            NodeType::Mul => AnnotatedNodeT::Mul,
+            NodeType::AndCmp => AnnotatedNodeT::AndCmp,
+            NodeType::OrCmp => AnnotatedNodeT::OrCmp,
+            NodeType::NumLiteral(size) => AnnotatedNodeT::NumLiteral(*size),
+            NodeType::Add => AnnotatedNodeT::Add,
+            NodeType::If => AnnotatedNodeT::If,
+            NodeType::For => AnnotatedNodeT::For,
+            NodeType::While => AnnotatedNodeT::While,
+            NodeType::_Loop => AnnotatedNodeT::_Loop,
+            NodeType::Break => AnnotatedNodeT::Break,
+            NodeType::FunctionCall(s) => AnnotatedNodeT::FunctionCall(s.to_string()),
+            NodeType::Scope(s) => AnnotatedNodeT::Scope(s.clone()),
+            NodeType::Assignment(op, id) => AnnotatedNodeT::Assignment {
+                op: op.clone(),
+                id: id.to_string(),
+            },
+            NodeType::Asm(asm) => AnnotatedNodeT::Asm(asm.to_string()),
+            NodeType::ArrayDeclaration(id, t, size) => AnnotatedNodeT::ArrayDeclaration {
+                id: id.to_string(),
+                t: t.clone(),
+                size: *size,
+            },
+            NodeType::FunctionDecaration(id, t) => AnnotatedNodeT::FunctionDecaration {
+                id: id.to_string(),
+                t: t.clone(),
+            },
+            NodeType::Assert => AnnotatedNodeT::Assert,
+            NodeType::Return => AnnotatedNodeT::Return,
+            NodeType::PutChar => AnnotatedNodeT::PutChar,
+            NodeType::StructDeclaration(id) => AnnotatedNodeT::StructDeclaration(id.to_string()),
+            node => {
+                panic!("Should have been caught by parent match: {:?}", node)
             }
         }
     }
@@ -550,7 +604,7 @@ fn function_declare_statement(
         token_handler.get_token()
     );
     let mut function_node = TokenNode::new(
-        NodeType::FunctionDecaration((id.clone(), t.clone())),
+        NodeType::FunctionDecaration(id.clone(), t.clone()),
         Some(vec![]),
     );
     token_handler.next_token();
@@ -688,7 +742,7 @@ fn array_declare_statement(
             return Err(token_handler.new_err(ET::ExpectedSemi));
         }
         return Ok(TokenNode::new(
-            NodeType::ArrayDeclaration((id.clone(), t, alloc_count)),
+            NodeType::ArrayDeclaration(id.clone(), t, alloc_count),
             None,
         ));
     }
@@ -722,7 +776,7 @@ fn array_declare_statement(
     }
 
     Ok(TokenNode::new(
-        NodeType::ArrayDeclaration((id, t, alloc_count)),
+        NodeType::ArrayDeclaration(id, t, alloc_count),
         Some(items),
     ))
 }
