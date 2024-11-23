@@ -1,7 +1,5 @@
 use std::{fmt, num::ParseIntError};
 
-use crate::ast::CType;
-
 /// each index is a new line, the value is the token_i that starts that line
 pub struct LineNumHandler {
     pub token_lines: Vec<i32>,
@@ -725,4 +723,11 @@ pub enum Token {
     Assert, // this might be to much for the lexer to do
             // FuncDeclare((String, Vec<String>, CType)), // function name, args, return type
             // FuncCall(String, Vec<String>), // function name, args
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CType {
+    Void,
+    Int,
+    Char,
 }

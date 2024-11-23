@@ -7,6 +7,7 @@ fn analyze() {
     ast.print(&mut 0);
 
     let mut ptrs = vec![];
-    let pointers = analyzer::get_all_pointers_and_derefs(&ast, &mut ptrs);
+    let mut derefs = vec![];
+    let pointers = analyzer::get_all_pointers_and_derefs(&ast, &mut ptrs, &mut derefs);
     println!("{:?}", pointers);
 }
