@@ -85,6 +85,7 @@ pub enum AnnotatedNodeT {
     PtrDeclaration {
         id: String,
         is_mut: bool,
+        mutates: bool,
         t: CType,
         adr: Box<AnnotatedNode>,
     },

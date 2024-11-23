@@ -4,6 +4,29 @@
 
 Sonder is a static analysis tool for C, for determining the necessary sementics for converting the analyzed C programs to Rust.
 
+## Assumptions
+
+1. The address of only one variable at a time is taken
+
+```c
+&(foo + bar) // illegal
+```
+
+2. Only one pointer is dereferenced at a time
+
+```c
+*(foo + bar) // illegal
+```
+
+3. Only pointser are dereferenced
+
+```c
+*not_ptr // illegal
+
+```
+
+Any of these will immediantly result in raw pointers being used, although at the moment, they panic
+
 ## Steps
 
 1. Get list of all owned data
