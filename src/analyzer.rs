@@ -20,21 +20,21 @@ enum PtrType {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PtrData {
-    points_to: String,
-    mutates: bool,
+    pub points_to: String,
+    pub mutates: bool,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VarData<'a> {
-    ptr_data: Option<PtrData>,
-    pointed_to_by: Vec<&'a str>,
-    is_mut_by_ptr: bool,
-    is_mut_direct: bool,
+    pub ptr_data: Option<PtrData>,
+    pub pointed_to_by: Vec<&'a str>,
+    pub is_mut_by_ptr: bool,
+    pub is_mut_direct: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnnotatedNode {
-    token: AnnotatedNodeT,
-    children: Option<Vec<AnnotatedNode>>,
+    pub token: AnnotatedNodeT,
+    pub children: Option<Vec<AnnotatedNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

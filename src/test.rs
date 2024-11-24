@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     analyzer::{self, VarData},
-    parse_c,
+    converter, parse_c,
 };
 
 // #[test]
@@ -37,6 +37,9 @@ fn test(code: String) {
     println!("{:?}", var_info);
     let annotated_ast = analyzer::annotate_ast(&ast, &var_info);
     annotated_ast.print(&mut 0);
+
+    let converted_rust = converter::convert_annotated_ast(&annotated_ast);
+    println!("{converted_rust}");
 }
 // fn test() -> i16 {
 //     let mut n = 0;
