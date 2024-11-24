@@ -280,13 +280,35 @@ pub fn determine_var_mutability<'a>(
                 panic!("Unsupported: no_ids being dereffed")
             }
             let num_of_vars = count_derefs(&l_side) + 1;
-            let ptr_chain = traverse_pointer_chain(&deref_ids[0], &vars, 0, num_of_vars);
+            let mut ptr_chain = traverse_pointer_chain(&deref_ids[0], &vars, 0, num_of_vars)
+                .into_iter()
+                .rev();
             println!("ptr_chain: {:?}", ptr_chain);
-            ptr_chain.iter().for_each(|var| {
-                vars.get_mut(var)
+            // [m, p, n]
+            let first_ptr = ptr_chain.next().expect("No pointers in chain");
+            vars.entry(first_ptr).and_modify(|var_data| {
+                var_data.is_mut_direct = true;
+                var_data
+                    .ptr_data
                     .as_mut()
-                    .expect("Var not in info map")
-                    .is_mut_by_ptr = true;
+                    .expect("First ptr in deref not ptr")
+                    .mutates = true;
+            });
+
+            // TODO: Figure out if we can move ptr_chain here
+            ptr_chain.clone().enumerate().for_each(|(i, var)| {
+                if i != ptr_chain.len() - 1 {
+                    vars.entry(var.clone()).and_modify(|var_data| {
+                        var_data
+                            .ptr_data
+                            .as_mut()
+                            .expect("Non-last in chain not ptr")
+                            .mutates = true;
+                    });
+                }
+                vars.entry(var).and_modify(|var_data| {
+                    var_data.is_mut_by_ptr = true;
+                });
             })
         }
         _ => {}
@@ -298,7 +320,7 @@ fn count_derefs(root: &Node) -> u8 {
     let mut count = 0;
     let children = root.children.as_ref();
     if let Some(children) = children {
-        count += children.iter().map(|node| count_derefs(node)).sum::<u8>();
+        count += children.iter().map(count_derefs).sum::<u8>();
     }
     match &root.token {
         NodeType::DeRef(expr) => {
@@ -344,7 +366,7 @@ fn find_ids<'a>(root: &'a Node) -> Vec<String> {
         .as_ref()
         .unwrap_or(&vec![])
         .iter()
-        .flat_map(|child| find_ids(child))
+        .flat_map(find_ids)
         .collect();
     match &root.token {
         NodeType::Id(id) => ids.push(id.to_string()),
