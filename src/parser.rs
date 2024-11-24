@@ -435,11 +435,7 @@ fn arithmetic_factor(token_handler: &mut TokenHandler) -> Result<TokenNode, RhEr
         // Address of a variable
         Token::BAnd => {
             token_handler.next_token();
-
-            while let Token::BAnd = token_handler.get_token() {
-                
-            }
-            let Token::Id(id) = token_handler.get_token() {
+            if let Token::Id(id) = token_handler.get_token() {
                 Ok(TokenNode::new(NodeType::Adr(id.to_string()), None))
             } else {
                 Err(token_handler.new_err(ET::ExpectedId))

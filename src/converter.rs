@@ -66,9 +66,8 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
         AnnotatedNodeT::DeRef(id) => {
             format!("*{}", convert_annotated_ast(id))
         }
-        AnnotatedNodeT::Adr { id, is_mut } => {
-            let mut_s = if *is_mut { "mut " } else { "" };
-            format!("&{mut_s}{id}")
+        AnnotatedNodeT::Adr { id } => {
+            format!("{id}")
         }
         _ => non_ptr_conversion(root),
     }

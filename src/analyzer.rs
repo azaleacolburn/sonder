@@ -102,13 +102,12 @@ pub enum AnnotatedNodeT {
         adr: Box<AnnotatedNode>,
     },
     Asm(String),
+    // This is handled by the ptr declaration for now
     Adr {
         id: String,
-        is_mut: bool,
     },
     Ref {
         id: String,
-        is_mut: bool,
     },
     DeRef(Box<AnnotatedNode>),
     ArrayDeclaration {
@@ -192,9 +191,7 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
             // Unsafe assumption: Adresses are always immutable unless explicitely annotated otherwise by the ptr declaration
             // `list.append(&mut other_list)` isn't something we're going to worry about for now
             let adr_info = var_info.get(id).expect("Adr to undeclared variable");
-            AnnotatedNodeT::Adr {
-                id: id.to_string(),
-            }
+            AnnotatedNodeT::Adr { id: id.to_string() }
         }
         NodeType::DerefAssignment(op, adr) => {
             let annotated_adr = Box::new(annotate_ast(adr, var_info));
@@ -253,7 +250,6 @@ pub fn determine_var_mutability<'a>(
             } else if expr_ids.len() != 1 {
                 panic!("ptr to no id");
             }
-            let ref_list: Vec<RefType> = count_refs(expr);
             let ptr_data = Some(PtrData {
                 points_to: expr_ids[0].clone(),
                 mutates: false,
@@ -320,21 +316,6 @@ pub fn determine_var_mutability<'a>(
         _ => {}
     };
     vars
-}
-
-fn count_refs(root: &Node) -> u8 {
-    let mut count = 0;
-    let children = root.children.as_ref();
-    if let Some(children) = children {
-        count += children.iter().map(count_derefs).sum::<u8>();
-    }
-    match &root.token {
-        NodeType::Adr(id) => {
-            count += + 1;
-        }
-        _ => {}
-    };
-    count
 }
 
 fn count_derefs(root: &Node) -> u8 {
