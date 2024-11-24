@@ -182,8 +182,7 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
         }
         NodeType::Adr(id) => {
             let adr_info = var_info.get(id).expect("Adr to undeclared variable");
-            // TODO: This doesn't mean that it's modified by *this* node
-            let is_mut = adr_info.is_mut_by_ptr;
+            let is_mut = ;
             AnnotatedNodeT::Adr {
                 id: id.to_string(),
                 is_mut,
@@ -257,7 +256,8 @@ pub fn determine_var_mutability<'a>(
                 is_mut_direct: false,
             };
             let expr_ids = find_ids(expr);
-            if expr_ids.len() > 0 {
+            // TODO: Figure out how to annotate specific address call as mutable or immutable
+            if expr_ids.len() == 1 {
                 vars.insert(id.to_string(), var);
                 // Doesn't support &that + &this
                 // This immediantly breakes borrow checking rules

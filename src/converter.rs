@@ -17,12 +17,12 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 CType::Int => "i32",
                 CType::Char => "u8",
             };
-            //let rust_adr = convert_annotated_ast(&adr);
+            let rust_adr = convert_annotated_ast(&adr);
             let ref_type = if ptr_data.mutates { " &mut " } else { " &" };
 
-            let mut_binding = if *is_mut { " mut " } else { "" };
+            let mut_binding = if *is_mut { "mut " } else { "" };
             // Only supports one reference at a time
-            format!("let{mut_binding}{id}: {rust_t} ={ref_type}{adr};")
+            format!("let {mut_binding}{id}: {rust_t} = {ref_type}{rust_adr};")
         }
         AnnotatedNodeT::DerefAssignment { op, adr } => {
             let rust_op = match op {
@@ -36,7 +36,15 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 AssignmentOpType::BAndEq => "&=",
             };
             let rust_adr = convert_annotated_ast(&*adr);
-            format!("{rust_adr} {rust_op} = ")
+            let expr_child = root
+                .children
+                .as_ref()
+                .expect("deref assignment must have r_side")
+                .iter()
+                .map(convert_annotated_ast)
+                .collect::<Vec<String>>()[0]
+                .clone();
+            format!("{rust_adr} {rust_op} {expr_child}")
         }
         AnnotatedNodeT::Declaration { id, is_mut, t } => {
             let rust_t = match t {
@@ -44,14 +52,29 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 CType::Int => "i32",
                 CType::Char => "u8",
             };
-            let binding = if *is_mut { " mut " } else { "" };
-            format!("let{binding}{id}: {rust_t} = ")
+            let binding = if *is_mut { "mut " } else { "" };
+            let expr_child = root
+                .children
+                .as_ref()
+                .expect("deref assignment must have r_side")
+                .iter()
+                .map(convert_annotated_ast)
+                .collect::<Vec<String>>()[0]
+                .clone();
+            format!("let {binding}{id}: {rust_t} = {expr_child}")
+        }
+        AnnotatedNodeT::DeRef(id) => {
+            format!("*{}", convert_annotated_ast(id))
+        }
+        AnnotatedNodeT::Adr { id, is_mut } => {
+            let mut_s = if *is_mut { "mut " } else { "" };
+            format!("&{mut_s}{id}")
         }
         _ => non_ptr_conversion(root),
     }
 }
 fn non_ptr_conversion(root: &AnnotatedNode) -> String {
-    match root.token {
+    match &root.token {
         AnnotatedNodeT::Add => {
             let children = root
                 .children
@@ -91,6 +114,45 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
         AnnotatedNodeT::Eq => {
             format!("=")
         }
-        _ => todo!(),
+        AnnotatedNodeT::Id(id) => {
+            format!("{id}")
+        }
+        AnnotatedNodeT::NumLiteral(n) => {
+            format!("{n}")
+        }
+        AnnotatedNodeT::FunctionDecaration { id, t } => {
+            let rust_t = match t {
+                CType::Void => "()",
+                CType::Int => "i32",
+                CType::Char => "u8",
+            };
+            let mut ret = format!("fn {id}() -> {rust_t} {{\n");
+            root.children
+                .as_ref()
+                .expect("Function should have children")
+                .iter()
+                .for_each(|child| {
+                    ret.push_str(&convert_annotated_ast(child));
+                });
+            ret.push_str("\n}");
+            ret
+        }
+        AnnotatedNodeT::Program => root
+            .children
+            .as_ref()
+            .expect("Program should have children")
+            .iter()
+            .map(convert_annotated_ast)
+            .collect::<Vec<String>>()
+            .join("\n"),
+        AnnotatedNodeT::Scope(_) => root
+            .children
+            .as_ref()
+            .expect("Program should have children")
+            .iter()
+            .map(convert_annotated_ast)
+            .collect::<Vec<String>>()
+            .join("\n"),
+        _ => panic!("Unsupported AnnotatedNode"),
     }
 }
