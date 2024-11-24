@@ -18,6 +18,12 @@ enum PtrType {
     MutRefMut,
 }
 
+#[derive(Debug, Clone)]
+pub enum RefType {
+    Mut,
+    Imut,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PtrData {
     pub points_to: String,
@@ -128,7 +134,7 @@ impl Display for AnnotatedNode {
 
 impl AnnotatedNode {
     pub fn print(&self, n: &mut i32) {
-        (0..*n).into_iter().for_each(|_| print!("  "));
+        (0..*n).into_iter().for_each(|_| print!("\t"));
         println!("{}", self);
         *n += 1;
         if let Some(children) = &self.children {
@@ -165,7 +171,7 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
                 .ptr_data
                 .clone()
                 .expect("Declared Ptr not in info map");
-            // Decide if we want an enum or two bools
+            // TODO: Decide if we want an enum or two bools
             let _ptr_type = match (is_mut, ptr_data.mutates) {
                 (true, true) => PtrType::MutPtrMut,
                 (true, false) => PtrType::MutPtrConst,
@@ -181,11 +187,13 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
             }
         }
         NodeType::Adr(id) => {
+            // `(&mut t + (&b))` illegal
+            // `&mut &mut &t` illegal
+            // Unsafe assumption: Adresses are always immutable unless explicitely annotated otherwise by the ptr declaration
+            // `list.append(&mut other_list)` isn't something we're going to worry about for now
             let adr_info = var_info.get(id).expect("Adr to undeclared variable");
-            let is_mut = ;
             AnnotatedNodeT::Adr {
                 id: id.to_string(),
-                is_mut,
             }
         }
         NodeType::DerefAssignment(op, adr) => {
@@ -245,6 +253,7 @@ pub fn determine_var_mutability<'a>(
             } else if expr_ids.len() != 1 {
                 panic!("ptr to no id");
             }
+            let ref_list: Vec<RefType> = count_refs(expr);
             let ptr_data = Some(PtrData {
                 points_to: expr_ids[0].clone(),
                 mutates: false,
@@ -255,19 +264,16 @@ pub fn determine_var_mutability<'a>(
                 is_mut_by_ptr: false,
                 is_mut_direct: false,
             };
-            let expr_ids = find_ids(expr);
             // TODO: Figure out how to annotate specific address call as mutable or immutable
-            if expr_ids.len() == 1 {
-                vars.insert(id.to_string(), var);
-                // Doesn't support &that + &this
-                // This immediantly breakes borrow checking rules
-                println!("{:?}", vars);
-                println!("expr_id: {}", expr_ids[0]);
-                vars.get_mut(&expr_ids[0])
-                    .expect("Undeclared Id")
-                    .pointed_to_by
-                    .push(id);
-            }
+            vars.insert(id.to_string(), var);
+            // Doesn't support &that + &this
+            // This immediantly breakes borrow checking rules
+            println!("{:?}", vars);
+            println!("expr_id: {}", expr_ids[0]);
+            vars.get_mut(&expr_ids[0])
+                .expect("Undeclared Id")
+                .pointed_to_by
+                .push(id);
         }
         NodeType::DerefAssignment(_, l_side) => {
             let deref_ids = find_ids(&l_side);
@@ -314,6 +320,21 @@ pub fn determine_var_mutability<'a>(
         _ => {}
     };
     vars
+}
+
+fn count_refs(root: &Node) -> u8 {
+    let mut count = 0;
+    let children = root.children.as_ref();
+    if let Some(children) = children {
+        count += children.iter().map(count_derefs).sum::<u8>();
+    }
+    match &root.token {
+        NodeType::Adr(id) => {
+            count += + 1;
+        }
+        _ => {}
+    };
+    count
 }
 
 fn count_derefs(root: &Node) -> u8 {

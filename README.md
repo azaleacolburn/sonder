@@ -18,12 +18,21 @@ Sonder is a static analysis tool for C, for determining the necessary sementics 
 *(foo + bar) // illegal
 ```
 
-3. Only pointser are dereferenced
+3. Only pointers are dereferenced
 
 ```c
 *not_ptr // illegal
-
 ```
+
+4. UNSAFE ASSUMPTION: Mutatble references can't be made unless they're tied to a ptr declaration.
+   Adresses are always immutable unless explicitely annotated otherwise by the ptr declaration.
+
+```rust
+list.append(&mut other_list) // not something we're going to worry about for now
+```
+
+In the future, we will treat arguments as being bound to parameters as variables
+So,`&mut other_list` will be treated as if it's bound to the variable value inside the function
 
 Any of these will immediantly result in raw pointers being used, although at the moment, they panic
 
@@ -51,3 +60,11 @@ Any of these will immediantly result in raw pointers being used, although at the
 - Exclusive branches can hold different references to an object
 - But they all must consider the higher-scoped references to higher-scoped data
 - Assume all non-exclusive branches occur
+
+```
+
+```
+
+```
+
+```
