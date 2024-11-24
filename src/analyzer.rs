@@ -7,15 +7,15 @@ use crate::{
 
 #[derive(Debug, Clone)]
 enum PtrType {
-    TrueRaw,
-
     ConstPtrConst,
     ConstPtrMut,
     MutPtrConst,
     MutPtrMut,
 
-    ConstRef,
-    MutRef,
+    ConstRefConst,
+    ConstRefMut,
+    MutRefConst,
+    MutRefMut,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,7 +85,7 @@ pub enum AnnotatedNodeT {
     PtrDeclaration {
         id: String,
         is_mut: bool,
-        mutates: bool,
+        ptr_data: PtrData,
         t: CType,
         adr: Box<AnnotatedNode>,
     },
@@ -137,7 +137,6 @@ impl AnnotatedNode {
             })
         }
         *n -= 1;
-        // println!("End Children");
     }
 }
 pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>) -> AnnotatedNode {
@@ -162,9 +161,21 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
             let ptr_info = var_info.get(id).expect("Ptr not found in info map");
             let is_mut = ptr_info.is_mut_by_ptr || ptr_info.is_mut_direct;
             let annotated_adr = Box::new(annotate_ast(adr, var_info));
+            let ptr_data = ptr_info
+                .ptr_data
+                .clone()
+                .expect("Declared Ptr not in info map");
+            // Decide if we want an enum or two bools
+            let _ptr_type = match (is_mut, ptr_data.mutates) {
+                (true, true) => PtrType::MutPtrMut,
+                (true, false) => PtrType::MutPtrConst,
+                (false, true) => PtrType::ConstPtrMut,
+                (false, false) => PtrType::ConstPtrMut,
+            };
             AnnotatedNodeT::PtrDeclaration {
                 id: id.to_string(),
                 is_mut,
+                ptr_data,
                 t: t.clone(),
                 adr: annotated_adr,
             }
@@ -260,43 +271,74 @@ pub fn determine_var_mutability<'a>(
         }
         NodeType::DerefAssignment(_, l_side) => {
             let deref_ids = find_ids(&l_side);
-            println!("{:?}", deref_ids);
+            println!("deref_ids: {:?}", deref_ids);
             // This breakes because `*(t + s) = bar` is not allowed
-            // Actually, it shouldn't, because **m is fine
+            // However, **m is fine
             if deref_ids.len() > 1 {
                 panic!("Unsupported: Multiple items dereferenced");
             } else if deref_ids.len() != 1 {
                 panic!("Unsupported: no_ids being dereffed")
             }
-
-            for ptr_id in deref_ids {
-                vars.get_mut(ptr_id.as_str())
+            let num_of_vars = count_derefs(&l_side) + 1;
+            let ptr_chain = traverse_pointer_chain(&deref_ids[0], &vars, 0, num_of_vars);
+            println!("ptr_chain: {:?}", ptr_chain);
+            ptr_chain.iter().for_each(|var| {
+                vars.get_mut(var)
                     .as_mut()
-                    .expect("Deref Assigning Undeclared Pointer")
-                    .ptr_data
-                    .as_mut()
-                    // This panics if `*(t + non_ptr)`
-                    .expect("Deref assigning non-ptr")
-                    .mutates = true;
-
-                let mutated_var_name: Vec<String> = vars
-                    .iter()
-                    .filter(|(_name, data)| data.pointed_to_by.contains(&ptr_id.as_str()))
-                    .map(|(name, _data)| name.clone())
-                    .collect();
-
-                vars.get_mut(&mutated_var_name[0])
-                    .expect("Undeclared Id Being Dereferenced")
+                    .expect("Var not in info map")
                     .is_mut_by_ptr = true;
-            }
+            })
         }
         _ => {}
     };
     vars
 }
 
+fn count_derefs(root: &Node) -> u8 {
+    let mut count = 0;
+    let children = root.children.as_ref();
+    if let Some(children) = children {
+        count += children.iter().map(|node| count_derefs(node)).sum::<u8>();
+    }
+    match &root.token {
+        NodeType::DeRef(expr) => {
+            count += count_derefs(&expr) + 1;
+        }
+        _ => {}
+    };
+    count
+}
+
+fn traverse_pointer_chain<'a>(
+    root: &'a str,
+    var_info: &HashMap<String, VarData<'a>>,
+    total_depth: u8,
+    max_depth: u8,
+) -> Vec<String> {
+    if total_depth == max_depth {
+        return vec![];
+    }
+    let is_ptr = &var_info
+        .get(root)
+        .as_ref()
+        .expect("Root not found in map")
+        .ptr_data;
+    match is_ptr {
+        Some(ref ptr_data) => {
+            let mut vec =
+                traverse_pointer_chain(&ptr_data.points_to, var_info, total_depth + 1, max_depth);
+            vec.push(root.to_string());
+            vec
+        }
+        None => {
+            println!("should be n {root}");
+            vec![root.to_string()]
+        }
+    }
+}
+
 fn find_ids<'a>(root: &'a Node) -> Vec<String> {
-    println!("{root}");
+    println!("find_ids root: {root}");
     let mut ids: Vec<String> = root
         .children
         .as_ref()
@@ -307,7 +349,9 @@ fn find_ids<'a>(root: &'a Node) -> Vec<String> {
     match &root.token {
         NodeType::Id(id) => ids.push(id.to_string()),
         NodeType::Adr(id) => ids.push(id.to_string()),
-        NodeType::DeRef(node) => ids.append(&mut find_ids(&*node)),
+        NodeType::DeRef(node) => {
+            ids.append(&mut find_ids(&*node));
+        }
         _ => {}
     }
 

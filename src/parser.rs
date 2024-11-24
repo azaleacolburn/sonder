@@ -223,6 +223,7 @@ impl TokenHandler {
     }
 
     pub fn new_err(&self, err: ET) -> RhErr {
+        println!("{:?}", err);
         RhErr {
             err,
             line: self.token_lines[self.curr_token],
