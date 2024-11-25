@@ -129,6 +129,26 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
         AnnotatedNodeT::NumLiteral(n) => {
             format!("{n}")
         }
+        AnnotatedNodeT::Assignment { op, id } => {
+            let rust_op = match op {
+                AssignmentOpType::Eq => "=",
+                AssignmentOpType::SubEq => "-=",
+                AssignmentOpType::DivEq => "/=",
+                AssignmentOpType::AddEq => "+=",
+                AssignmentOpType::MulEq => "*=",
+                AssignmentOpType::BOrEq => "|=",
+                AssignmentOpType::BXorEq => "^=",
+                AssignmentOpType::BAndEq => "&=",
+            };
+
+            let children = root
+                .children
+                .as_ref()
+                .expect("Add Node should have children");
+            let rust_expr = convert_annotated_ast(&children[0]);
+
+            format!("{id} {rust_op} {rust_expr}")
+        }
         AnnotatedNodeT::FunctionDecaration { id, t } => {
             let rust_t = match (id.as_str(), t) {
                 ("main", _) => "()",
