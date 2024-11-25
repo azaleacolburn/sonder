@@ -36,6 +36,23 @@ So,`&mut other_list` will be treated as if it's bound to the variable value insi
 
 Any of these will immediantly result in raw pointers being used, although at the moment, they panic
 
+## TODO
+
+- Figure out how to represent lifetimes
+  - This seems to rely on line numbers, which are lost information.
+  - Perhaps we could find a way to represent lifetimes through position on the ast, but that seems exceedingly difficult
+  - Including line-numbers in the initial ast seems to be the way to go
+
+```rust
+let t = 8;
+let n = &t;
+// n dropped here
+let m = &mut t;
+// m dropped here
+```
+
+- Figure out how to represent scope
+
 ## Steps
 
 1. Get list of all owned data
