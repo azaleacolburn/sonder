@@ -28,6 +28,21 @@ fn three_mut() {
     ));
 }
 
+#[test]
+fn multi_function() {
+    test(String::from(
+        "int main() {
+            int n = 0;
+            int* g = &n;
+        }
+        void test() {
+            int k = 3;
+            int* y = &k;
+            *y = k + 6;
+        }",
+    ));
+}
+
 fn test(code: String) {
     let ast = parse_c(code);
     ast.print(&mut 0);

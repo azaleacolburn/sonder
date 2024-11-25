@@ -54,7 +54,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 .map(convert_annotated_ast)
                 .collect::<Vec<String>>()[0]
                 .clone();
-            format!("{rust_adr} {rust_op} {expr_child}")
+            format!("{rust_adr} {rust_op} {expr_child};")
         }
         AnnotatedNodeT::Declaration { id, is_mut, t } => {
             let rust_t = match t {
@@ -71,7 +71,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 .map(convert_annotated_ast)
                 .collect::<Vec<String>>()[0]
                 .clone();
-            format!("let {binding}{id}: {rust_t} = {expr_child}")
+            format!("let {binding}{id}: {rust_t} = {expr_child};")
         }
         AnnotatedNodeT::DeRef(id) => {
             format!("*{}", convert_annotated_ast(id))

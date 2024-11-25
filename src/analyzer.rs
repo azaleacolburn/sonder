@@ -295,7 +295,8 @@ pub fn determine_var_mutability<'a>(
             println!("ptr_chain: {:?}", ptr_chain);
             // eg. [m, p, n]
             let first_ptr = ptr_chain.next().expect("No pointers in chain");
-            vars.entry(first_ptr).and_modify(|var_data| {
+            vars.entry(first_ptr.clone()).and_modify(|var_data| {
+                println!("first_ptr_id: {first_ptr}");
                 var_data
                     .ptr_data
                     .as_mut()
@@ -304,7 +305,7 @@ pub fn determine_var_mutability<'a>(
                 var_data
                     .ptr_data
                     .as_mut()
-                    .expect("Non-last in chain not ptr")
+                    .expect("First ptr in deref not ptr")
                     .ptr_type
                     .fill(RefType::Mut);
             });
