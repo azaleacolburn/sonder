@@ -1,5 +1,5 @@
 use crate::{
-    analyzer::{AnnotatedNode, AnnotatedNodeT},
+    analyzer::{AnnotatedNode, AnnotatedNodeT, RefType},
     lexer::CType,
     parser::AssignmentOpType,
 };
@@ -17,12 +17,22 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 CType::Int => "i32",
                 CType::Char => "u8",
             };
+            let ptr_type = ptr_data
+                .ptr_type
+                .iter()
+                .map(|t| match t {
+                    RefType::Mut => "&mut ",
+                    RefType::Imut => "&",
+                })
+                .collect::<Vec<&str>>()
+                .join("");
+            println!("ptr_type: {ptr_type}");
             let rust_adr = convert_annotated_ast(&adr);
             let ref_type = if ptr_data.mutates { " &mut " } else { " &" };
 
             let mut_binding = if *is_mut { "mut " } else { "" };
             // Only supports one reference at a time
-            format!("let {mut_binding}{id}: {rust_t} = {ref_type}{rust_adr};")
+            format!("let {mut_binding}{id}: {ptr_type}{rust_t} = {ref_type}{rust_adr};")
         }
         AnnotatedNodeT::DerefAssignment { op, adr } => {
             let rust_op = match op {

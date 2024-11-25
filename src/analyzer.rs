@@ -250,11 +250,16 @@ pub fn determine_var_mutability<'a>(
             } else if expr_ids.len() != 1 {
                 panic!("ptr to no id");
             }
-            let ptr_chain = traverse_pointer_chain(&expr_ids[0], &vars, 0, u8::MAX);
+            // As we go, we replace certain elements in this vector with `RefType::Mut`
+            let ptr_chain_placeholder_types =
+                traverse_pointer_chain(&expr_ids[0], &vars, 0, u8::MAX)
+                    .iter()
+                    .map(|_| RefType::Imut)
+                    .collect();
             let ptr_data = Some(PtrData {
                 points_to: expr_ids[0].clone(),
                 mutates: false,
-                ptr_type: vec![],
+                ptr_type: ptr_chain_placeholder_types,
             });
             let var = VarData {
                 ptr_data,
@@ -288,7 +293,7 @@ pub fn determine_var_mutability<'a>(
                 .into_iter()
                 .rev();
             println!("ptr_chain: {:?}", ptr_chain);
-            // [m, p, n]
+            // eg. [m, p, n]
             let first_ptr = ptr_chain.next().expect("No pointers in chain");
             vars.entry(first_ptr).and_modify(|var_data| {
                 var_data.is_mut_direct = true;
@@ -297,6 +302,12 @@ pub fn determine_var_mutability<'a>(
                     .as_mut()
                     .expect("First ptr in deref not ptr")
                     .mutates = true;
+                var_data
+                    .ptr_data
+                    .as_mut()
+                    .expect("Non-last in chain not ptr")
+                    .ptr_type
+                    .fill(RefType::Mut);
             });
 
             // TODO: Figure out if we can move ptr_chain here
@@ -308,6 +319,14 @@ pub fn determine_var_mutability<'a>(
                             .as_mut()
                             .expect("Non-last in chain not ptr")
                             .mutates = true;
+                        let type_chain = &mut var_data
+                            .ptr_data
+                            .as_mut()
+                            .expect("Non-last in chain not ptr")
+                            .ptr_type;
+                        for type_chain_i in i..type_chain.len() {
+                            type_chain[type_chain_i] = RefType::Mut;
+                        }
                     });
                 }
                 vars.entry(var).and_modify(|var_data| {
@@ -340,7 +359,7 @@ fn traverse_pointer_chain<'a>(
     var_info: &HashMap<String, VarData<'a>>,
     total_depth: u8,
     max_depth: u8,
-) -> Vec<(String, Option<RefType>)> {
+) -> Vec<String> {
     if total_depth == max_depth {
         return vec![];
     }
@@ -353,24 +372,12 @@ fn traverse_pointer_chain<'a>(
         Some(ref ptr_data) => {
             let mut vec =
                 traverse_pointer_chain(&ptr_data.points_to, var_info, total_depth + 1, max_depth);
-            let ref_type = match var_info
-                .get(root)
-                .as_ref()
-                .expect("Ptr doesn't exist")
-                .ptr_data
-                .as_ref()
-                .expect("Ptr data not found on ptr")
-                .mutates
-            {
-                true => RefType::Mut,
-                false => RefType::Imut,
-            };
-            vec.push((root.to_string(), Some(ref_type)));
+            vec.push(root.to_string());
             vec
         }
         None => {
             println!("should be n {root}");
-            vec![(root.to_string(), None)]
+            vec![root.to_string()]
         }
     }
 }
