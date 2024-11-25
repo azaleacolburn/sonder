@@ -120,12 +120,14 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             format!("{n}")
         }
         AnnotatedNodeT::FunctionDecaration { id, t } => {
-            let rust_t = match t {
-                CType::Void => "()",
-                CType::Int => "i32",
-                CType::Char => "u8",
+            let rust_t = match (id.as_str(), t) {
+                ("main", _) => "()",
+                (_, CType::Void) => "()",
+                (_, CType::Int) => "i32",
+                (_, CType::Char) => "u8",
             };
-            let mut ret = format!("fn {id}() -> {rust_t} {{\n");
+
+            let mut ret = format!("fn {id}() -> {rust_t} {{\n\t");
             root.children
                 .as_ref()
                 .expect("Function should have children")
@@ -151,7 +153,7 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             .iter()
             .map(convert_annotated_ast)
             .collect::<Vec<String>>()
-            .join("\n"),
+            .join("\n\t"),
         _ => panic!("Unsupported AnnotatedNode"),
     }
 }

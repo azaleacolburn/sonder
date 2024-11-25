@@ -18,7 +18,7 @@ enum PtrType {
     MutRefMut,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RefType {
     Mut,
     Imut,
@@ -28,6 +28,7 @@ pub enum RefType {
 pub struct PtrData {
     pub points_to: String,
     pub mutates: bool,
+    pub ptr_type: Vec<RefType>,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VarData<'a> {
@@ -190,7 +191,6 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
             // `&mut &mut &t` illegal
             // Unsafe assumption: Adresses are always immutable unless explicitely annotated otherwise by the ptr declaration
             // `list.append(&mut other_list)` isn't something we're going to worry about for now
-            let adr_info = var_info.get(id).expect("Adr to undeclared variable");
             AnnotatedNodeT::Adr { id: id.to_string() }
         }
         NodeType::DerefAssignment(op, adr) => {
@@ -250,9 +250,11 @@ pub fn determine_var_mutability<'a>(
             } else if expr_ids.len() != 1 {
                 panic!("ptr to no id");
             }
+            let ptr_chain = traverse_pointer_chain(&expr_ids[0], &vars, 0, u8::MAX);
             let ptr_data = Some(PtrData {
                 points_to: expr_ids[0].clone(),
                 mutates: false,
+                ptr_type: vec![],
             });
             let var = VarData {
                 ptr_data,
@@ -338,7 +340,7 @@ fn traverse_pointer_chain<'a>(
     var_info: &HashMap<String, VarData<'a>>,
     total_depth: u8,
     max_depth: u8,
-) -> Vec<String> {
+) -> Vec<(String, Option<RefType>)> {
     if total_depth == max_depth {
         return vec![];
     }
@@ -351,12 +353,24 @@ fn traverse_pointer_chain<'a>(
         Some(ref ptr_data) => {
             let mut vec =
                 traverse_pointer_chain(&ptr_data.points_to, var_info, total_depth + 1, max_depth);
-            vec.push(root.to_string());
+            let ref_type = match var_info
+                .get(root)
+                .as_ref()
+                .expect("Ptr doesn't exist")
+                .ptr_data
+                .as_ref()
+                .expect("Ptr data not found on ptr")
+                .mutates
+            {
+                true => RefType::Mut,
+                false => RefType::Imut,
+            };
+            vec.push((root.to_string(), Some(ref_type)));
             vec
         }
         None => {
             println!("should be n {root}");
-            vec![root.to_string()]
+            vec![(root.to_string(), None)]
         }
     }
 }
