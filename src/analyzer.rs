@@ -176,7 +176,7 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
                 (true, true) => PtrType::MutPtrMut,
                 (true, false) => PtrType::MutPtrConst,
                 (false, true) => PtrType::ConstPtrMut,
-                (false, false) => PtrType::ConstPtrMut,
+                (false, false) => PtrType::ConstPtrConst,
             };
             AnnotatedNodeT::PtrDeclaration {
                 id: id.to_string(),
@@ -296,7 +296,6 @@ pub fn determine_var_mutability<'a>(
             // eg. [m, p, n]
             let first_ptr = ptr_chain.next().expect("No pointers in chain");
             vars.entry(first_ptr).and_modify(|var_data| {
-                var_data.is_mut_direct = true;
                 var_data
                     .ptr_data
                     .as_mut()
