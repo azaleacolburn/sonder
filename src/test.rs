@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fs, process::Command};
 
 use crate::{
     analyzer::{self, VarData},
@@ -55,6 +55,15 @@ fn test(code: String) {
 
     let converted_rust = converter::convert_annotated_ast(&annotated_ast);
     println!("{converted_rust}");
+    validate(converted_rust);
+}
+
+fn validate(rust_code: String) {
+    fs::write("./test.rs", rust_code).expect("writing to succeed");
+    Command::new("rustc")
+        .arg("./test.rs")
+        .spawn()
+        .expect("Rust compilation failed");
 }
 // fn test() -> i16 {
 //     let mut n = 0;
