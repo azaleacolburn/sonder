@@ -28,5 +28,5 @@ pub enum ErrType {
 #[derive(Debug, Clone)]
 pub struct RhErr {
     pub err: ErrType,
-    pub line: i32,
+    pub line: usize,
 }

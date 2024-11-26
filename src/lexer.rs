@@ -1,25 +1,26 @@
 use std::num::ParseIntError;
 
 /// each index is a new line, the value is the token_i that starts that line
+#[derive(Debug, Clone)]
 pub struct LineNumHandler {
-    pub token_lines: Vec<i32>,
+    pub token_lines: Vec<usize>,
 }
 
 impl LineNumHandler {
     pub fn new() -> LineNumHandler {
         LineNumHandler {
-            token_lines: vec![-1],
+            token_lines: vec![],
         }
     }
 
     /// Creates a new line with the start of the line being this token_number
-    fn new_line(&mut self, token_number: i32) {
+    fn new_line(&mut self, token_number: usize) {
         self.token_lines.push(token_number);
     }
 
     /// Given a token index, returns the line that token was on
     /// For external use only
-    pub fn get_line(&self, token_number: i32) -> usize {
+    pub fn get_line(&self, token_number: usize) -> usize {
         self.token_lines
             .iter()
             .position(|n| *n < token_number)
@@ -41,7 +42,6 @@ pub fn string_to_tokens(
         // Handles num literals but we don't actually know if it is a literal yet
         if chars[i].is_numeric() {
             let mut is_dec = true;
-            // chars.into_iter().for_each(|x| if !x.is_numeric() { is_dec = false; });
             let mut num = String::from("");
             for j in i..chars.len() {
                 if !chars[j].is_alphanumeric() {
@@ -611,26 +611,24 @@ pub fn string_to_tokens(
                 }
             }
             '\n' => {
-                line_tracker.new_line(ret.len() as i32 - 1);
+                line_tracker.new_line(ret.len() - 1);
             }
             '\'' => {
                 if chars[i + 1].is_ascii() {
-                    let mut val: usize = 0;
-                    if chars[i + 1] == '\\' {
-                        if chars[i + 2].is_ascii_digit() {
-                            val =
-                                chars[i + 2].to_digit(10).expect("Invalid literal digit") as usize;
+                    let val: usize = if chars[i + 1] == '\\' {
+                        i += 1;
+                        if chars[i + 1].is_ascii_digit() {
+                            chars[i + 1].to_digit(10).expect("Invalid literal digit") as usize
                         } else {
-                            val = match chars[i + 2] {
+                            match chars[i + 1] {
                                 'n' => 10,
                                 't' => 9,
                                 _ => 0,
                             }
                         }
-                        i += 1
                     } else {
-                        val = chars[i + 1] as usize;
-                    }
+                        chars[i + 1] as usize
+                    };
                     ret.push(Token::NumLiteral(val));
                     i += 2;
                 }
