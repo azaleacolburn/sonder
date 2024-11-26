@@ -1,6 +1,6 @@
 use std::num::ParseIntError;
 
-/// each index is a new line, the value is the token_i that starts that line
+/// Each index is a new line, the value is the token_i that starts that line
 #[derive(Debug, Clone)]
 pub struct LineNumHandler {
     pub token_lines: Vec<usize>,
@@ -33,11 +33,11 @@ pub fn string_to_tokens(
     buff: impl ToString,
 ) -> Result<(Vec<Token>, LineNumHandler), ParseIntError> {
     let mut ret: Vec<Token> = vec![];
-    let chars = buff.to_string().chars().collect::<Vec<char>>();
+    let chars = buff.to_string().trim().chars().collect::<Vec<char>>();
     let mut curr: String = String::from("");
     let mut i: usize = 0;
     let mut line_tracker = LineNumHandler::new();
-    line_tracker.new_line(0);
+    line_tracker.new_line(1);
     while i < chars.len() {
         // Handles num literals but we don't actually know if it is a literal yet
         if chars[i].is_numeric() {
@@ -611,7 +611,7 @@ pub fn string_to_tokens(
                 }
             }
             '\n' => {
-                line_tracker.new_line(ret.len() - 1);
+                line_tracker.new_line(ret.len());
             }
             '\'' => {
                 if chars[i + 1].is_ascii() {
