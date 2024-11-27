@@ -5,30 +5,19 @@ use crate::{
     parser::{AssignmentOpType, NodeType, TokenNode as Node},
 };
 
-#[derive(Debug, Clone)]
-enum PtrType {
-    ConstPtrConst,
-    ConstPtrMut,
-    MutPtrConst,
-    MutPtrMut,
-
-    ConstRefConst,
-    ConstRefMut,
-    MutRefConst,
-    MutRefMut,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RefType {
-    Mut,
-    Imut,
+pub enum PtrType {
+    Rc,
+    RefCell,
+    RawPtr,
+    MutRef,
+    ImutRef,
 }
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PtrData {
     pub points_to: String,
     pub mutates: bool,
-    pub ptr_type: Vec<RefType>,
+    pub ptr_type: Vec<PtrType>,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VarData<'a> {
@@ -188,13 +177,6 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
                 .ptr_data
                 .clone()
                 .expect("Declared Ptr not in info map");
-            // TODO: Decide if we want an enum or two bools
-            let _ptr_type = match (is_mut, ptr_data.mutates) {
-                (true, true) => PtrType::MutPtrMut,
-                (true, false) => PtrType::MutPtrConst,
-                (false, true) => PtrType::ConstPtrMut,
-                (false, false) => PtrType::ConstPtrConst,
-            };
             AnnotatedNodeT::PtrDeclaration {
                 id: id.to_string(),
                 is_mut,
@@ -227,78 +209,6 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
         token,
         children: annotated_node_children,
     }
-}
-
-// TODO: Create more elegant solution than seperate functions for simply changing the exclusively
-// of an inequality
-pub fn both_ptr_active_range_overlap(l_1: Vec<Range<usize>>, l_2: Vec<Range<usize>>) -> bool {
-    let ranges_overlap =
-        |l_1: &Range<usize>, l_2: &Range<usize>| l_1.start <= l_2.end && l_2.start <= l_1.end;
-    l_1.iter()
-        .flat_map(|l_1| l_2.iter().map(|l_2| ranges_overlap(l_1, l_2)))
-        .any(|overlaps| overlaps)
-}
-pub fn var_active_range_overlap(l_1: Vec<Range<usize>>, l_2: Vec<Range<usize>>) -> bool {
-    let ranges_overlap =
-        |l_1: &Range<usize>, l_2: &Range<usize>| l_1.start < l_2.end && l_2.start < l_1.end;
-    l_1.iter()
-        .flat_map(|l_1| l_2.iter().map(|l_2| ranges_overlap(l_1, l_2)))
-        .any(|overlaps| overlaps)
-}
-
-pub fn borrow_check<'a>(vars: &HashMap<String, VarData<'a>>) {
-    vars.iter().for_each(|(id, var_data)| {
-        let pointed_to_by = var_data
-            .pointed_to_by
-            .iter()
-            .map(|ptr| {
-                let var_data = vars.get(*ptr);
-                (
-                    *var_data.as_ref().expect("Ptr not listed in vars"),
-                    match var_data
-                        .as_ref()
-                        .expect("Ptr not listed in vars")
-                        .ptr_data
-                        .as_ref()
-                        .expect(format!("Ptr {ptr} to {id} not a ptr in var map").as_str())
-                        .mutates
-                    {
-                        true => RefType::Mut,
-                        false => RefType::Imut,
-                    },
-                )
-            })
-            .collect::<Vec<(&VarData, RefType)>>();
-        println!("{id} is pointed to by: {:?}", pointed_to_by);
-        let mut pointed_to_by_mutably = pointed_to_by
-            .iter()
-            .filter(|(_mut_ptr_data, ref_type)| *ref_type == RefType::Mut);
-        let value_overlaps_with_mut_ptr =
-            pointed_to_by_mutably
-                .clone()
-                .any(|(mut_ptr_data, _ref_type)| {
-                    // This fails because the value and the pointer are going to overlap on the line
-                    // the ref to the pointer is taken
-                    // eg. `let m = &mut n`
-                    var_active_range_overlap(
-                        mut_ptr_data.non_borrowed_lines.clone(),
-                        var_data.non_borrowed_lines.clone(),
-                    )
-                });
-        let mutable_ref_overlaps = pointed_to_by_mutably.any(|(mut_ptr_data, _ref_type)| {
-            pointed_to_by
-                .iter()
-                .filter(|(other_ptr_data, _ref_type)| mut_ptr_data != other_ptr_data)
-                .any(|(other_ptr_data, _other_ref_type)| {
-                    both_ptr_active_range_overlap(
-                        mut_ptr_data.non_borrowed_lines.clone(),
-                        other_ptr_data.non_borrowed_lines.clone(),
-                    )
-                })
-        });
-        println!("VALUE_OVERLAPS_WITH_MUT_REF {id}: {value_overlaps_with_mut_ptr}");
-        println!("MUTABLE_REF_OVERLAPS {id}: {mutable_ref_overlaps}");
-    })
 }
 
 pub fn determine_var_mutability<'a>(

@@ -2,7 +2,7 @@ use std::{collections::HashMap, fs, process::Command};
 
 use crate::{
     analyzer::{self, VarData},
-    converter, parse_c,
+    checker, converter, parse_c,
 };
 
 // #[test]
@@ -48,9 +48,10 @@ fn test(code: String) {
     ast.print(&mut 0);
     let map: HashMap<String, VarData> = HashMap::new();
 
-    let var_info = analyzer::determine_var_mutability(&ast, &map);
+    let mut var_info = analyzer::determine_var_mutability(&ast, &map);
     println!("{:?}", var_info);
-    analyzer::borrow_check(&var_info);
+    let errors = checker::borrow_check(&var_info);
+    checker::adjust_ptr_type(errors, &mut var_info);
     let annotated_ast = analyzer::annotate_ast(&ast, &var_info);
     annotated_ast.print(&mut 0);
 
