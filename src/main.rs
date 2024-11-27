@@ -17,9 +17,10 @@ fn main() {
     parse_c(contents);
 }
 
-fn parse_c(contents: String) {
+fn parse_c(contents: String) -> TokenNode {
     let (tokens, line_numbers) = lexer::string_to_tokens(contents)
         .expect("Failed to lex tokens, please provide valid C code");
     println!("{:?}", tokens);
     println!("{:?}", line_numbers);
+    parser::program(tokens, line_numbers, true).expect("Failed to parse token stream")
 }

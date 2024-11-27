@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::analyzer::AnnotatedNodeT;
 use crate::error::{ErrType as ET, RhErr};
 use crate::lexer::{CType, LineNumHandler, Token};
@@ -185,7 +187,8 @@ impl NodeType {
 pub struct TokenHandler {
     tokens: Vec<Token>,
     curr_token: usize,
-    token_lines: Vec<usize>,
+    // Index is line number, range is start and end of line
+    token_lines: Vec<Range<usize>>,
 }
 
 #[allow(dead_code)]
@@ -194,7 +197,22 @@ impl TokenHandler {
         TokenHandler {
             tokens,
             curr_token: 0,
-            token_lines: line_tracker.token_lines,
+            token_lines: line_tracker
+                .token_lines
+                .iter()
+                .enumerate()
+                .map(|(line_number, start)| {
+                    let end = match line_tracker.token_lines.len() - 1 == line_number {
+                        true => *start,
+                        false => line_tracker.token_lines[line_number + 1],
+                    };
+
+                    Range {
+                        start: *start - 1,
+                        end: end - 1,
+                    }
+                })
+                .collect(),
         }
     }
 
@@ -226,12 +244,15 @@ impl TokenHandler {
         println!("{:?}", err);
         RhErr {
             err,
-            line: self.token_lines[self.curr_token],
+            line: self.line(),
         }
     }
 
     pub fn line(&self) -> usize {
-        self.token_lines[self.curr_token]
+        self.token_lines
+            .iter()
+            .position(|range| range.start <= self.curr_token && self.curr_token <= range.end)
+            .expect("Token outside of line number range")
     }
 }
 
