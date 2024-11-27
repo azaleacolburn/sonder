@@ -9,7 +9,8 @@ use crate::{
 pub enum PtrType {
     Rc,
     RefCell,
-    RawPtr,
+    RawPtrMut,
+    RawPtrImut,
     MutRef,
     ImutRef,
 }
@@ -256,11 +257,11 @@ pub fn determine_var_mutability<'a>(
             } else if expr_ids.len() != 1 {
                 panic!("ptr to no id");
             }
-            // As we go, we replace certain elements in this vector with `RefType::Mut`
+            // As we go, we replace certain elements in this vector with `PtrType::MutRef`
             let ptr_chain_placeholder_types =
                 traverse_pointer_chain(&expr_ids[0], &vars, 0, u8::MAX)
                     .iter()
-                    .map(|_| RefType::Imut)
+                    .map(|_| PtrType::ImutRef)
                     .collect();
             let ptr_data = Some(PtrData {
                 points_to: expr_ids[0].clone(),
@@ -318,7 +319,7 @@ pub fn determine_var_mutability<'a>(
                     .as_mut()
                     .expect("First ptr in deref not ptr")
                     .ptr_type
-                    .fill(RefType::Mut);
+                    .fill(PtrType::MutRef);
             });
 
             ptr_chain.clone().enumerate().for_each(|(i, var)| {
@@ -335,7 +336,7 @@ pub fn determine_var_mutability<'a>(
                             .expect("Non-last in chain not ptr")
                             .ptr_type;
                         for type_chain_i in i..type_chain.len() {
-                            type_chain[type_chain_i] = RefType::Mut;
+                            type_chain[type_chain_i] = PtrType::MutRef;
                         }
                     });
                 }

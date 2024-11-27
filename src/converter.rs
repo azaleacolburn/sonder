@@ -1,5 +1,5 @@
 use crate::{
-    analyzer::{AnnotatedNode, AnnotatedNodeT, RefType},
+    analyzer::{AnnotatedNode, AnnotatedNodeT, PtrType},
     lexer::CType,
     parser::AssignmentOpType,
 };
@@ -17,23 +17,44 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 CType::Int => "i32",
                 CType::Char => "u8",
             };
-            let ptr_type = ptr_data
+            let rust_adr = convert_annotated_ast(&adr);
+            let mut_binding = if *is_mut { "mut " } else { "" };
+            // Only supports one reference at a time
+            let get_ref_type = |ptr_types: Iterator<'_, PtrType>| match ptr_types.next() {
+                    PtrType::MutRef => format!("&mut {}{rust_t}", get_ref_type(ptr_types)),
+                    PtrType::ImutRef => format!("&{}{rust_t}", get_ref_type(ptr_types)),
+                    PtrType::RefCell => format!("RefCell<{}> ", get_ref_type(ptr_types)),
+                    PtrType::Rc => format!("Rc<{rust_t}> "),
+                    PtrType::RawPtrMut => format!("*mut {rust_t} "),
+                    PtrType::RawPtrImut => {
+                        format!("*const {rust_t} ")
+                    }
+
+            let expr_adr = ptr_data
                 .ptr_type
                 .iter()
                 .map(|t| match t {
-                    RefType::Mut => "&mut ",
-                    RefType::Imut => "&",
+                    PtrType::MutRef => format!("&mut {rust_t}"),
+                    PtrType::ImutRef => format!("&{rust_t}"),
+                    PtrType::RefCell => format!("RefCell<{rust_t}> "),
+                    PtrType::Rc => format!("Rc<{rust_t}> "),
+                    PtrType::RawPtrMut => format!("*mut {rust_t} "),
+                    PtrType::RawPtrImut => {
+                        format!("*const {rust_t} ")
+                    }
                 })
-                .collect::<Vec<&str>>()
+                .collect::<Vec<String>>()
                 .join("");
-            println!("ptr_type: {ptr_type}");
-            let rust_adr = convert_annotated_ast(&adr);
-            let ref_type = if ptr_data.mutates { " &mut " } else { " &" };
+            println!("reference: {reference}");
 
-            let mut_binding = if *is_mut { "mut " } else { "" };
-            // Only supports one reference at a time
-            format!("let {mut_binding}{id}: {ptr_type}{rust_t} = {ref_type}{rust_adr};")
+            format!("let {mut_binding}{id}: {reference};")
         }
+// = &mut {rust_adr}
+// = &{rust_adr}
+// = RefCell::new({rust_adr})
+// = Rc::new({rust_adr})
+// = &{rust_adr} as *mut {rust_t}
+// = &{rust_adr} as *const {rust_t}
         AnnotatedNodeT::DerefAssignment { op, adr } => {
             let rust_op = match op {
                 AssignmentOpType::Eq => "=",
