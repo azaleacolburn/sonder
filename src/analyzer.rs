@@ -242,26 +242,41 @@ pub fn borrow_check<'a>(vars: &HashMap<String, VarData<'a>>) {
                 )
             })
             .collect::<Vec<(&VarData, RefType)>>();
-        let mutable_ref_overlaps = pointed_to_by
+        println!("{id} is pointed to by: {:?}", pointed_to_by);
+        let mut pointed_to_by_mutably = pointed_to_by
             .iter()
-            .filter(|(_mut_ptr_data, ref_type)| *ref_type == RefType::Mut)
-            .any(|(mut_ptr_data, _ref_type)| {
-                pointed_to_by
-                    .iter()
-                    .any(|(other_ptr_data, _other_ref_type)| {
-                        lifetimes_overlap(
-                            (
-                                mut_ptr_data.initialization_line,
-                                mut_ptr_data.last_usage_line,
-                            ),
-                            (
-                                other_ptr_data.initialization_line,
-                                other_ptr_data.last_usage_line,
-                            ),
-                        )
-                    })
-            });
-        println!("MUTABLE_REF_OVERLAPS {id}: {mutable_ref_overlaps}")
+            .filter(|(_mut_ptr_data, ref_type)| *ref_type == RefType::Mut);
+        let value_overlaps_with_mut_ptr =
+            pointed_to_by_mutably
+                .clone()
+                .any(|(mut_ptr_data, _ref_type)| {
+                    lifetimes_overlap(
+                        (
+                            mut_ptr_data.initialization_line,
+                            mut_ptr_data.last_usage_line,
+                        ),
+                        (var_data.initialization_line, var_data.last_usage_line),
+                    )
+                });
+        let mutable_ref_overlaps = pointed_to_by_mutably.any(|(mut_ptr_data, _ref_type)| {
+            pointed_to_by
+                .iter()
+                .filter(|(other_ptr_data, _ref_type)| mut_ptr_data != other_ptr_data)
+                .any(|(other_ptr_data, _other_ref_type)| {
+                    lifetimes_overlap(
+                        (
+                            mut_ptr_data.initialization_line,
+                            mut_ptr_data.last_usage_line,
+                        ),
+                        (
+                            other_ptr_data.initialization_line,
+                            other_ptr_data.last_usage_line,
+                        ),
+                    )
+                })
+        });
+        println!("VALUE_OVERLAPS_WITH_MUT_REF {id}: {value_overlaps_with_mut_ptr}");
+        println!("MUTABLE_REF_OVERLAPS {id}: {mutable_ref_overlaps}");
     })
 }
 
