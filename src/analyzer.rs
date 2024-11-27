@@ -1,4 +1,4 @@
-use std::{cmp, collections::HashMap, fmt::Display};
+use std::{cmp, collections::HashMap, fmt::Display, ops::Range};
 
 use crate::{
     lexer::CType,
@@ -36,9 +36,23 @@ pub struct VarData<'a> {
     pub pointed_to_by: Vec<&'a str>,
     pub is_mut_by_ptr: bool,
     pub is_mut_direct: bool,
-    // Really, we mean instantiated, but the pattern of initializing and instantiating seperately is harder to analyze and requires a PtrAssignment node
-    pub initialization_line: usize,
-    pub last_usage_line: usize,
+    // The pattern of initializing and instantiating seperately is harder to analyze and requires a PtrAssignment node
+    // Line ranges when the var isn't borrowed
+    pub non_borrowed_lines: Vec<Range<usize>>,
+}
+
+impl<'a> VarData<'a> {
+    pub fn add_non_borrowed_line(&mut self, line: usize) {
+        let len = self.non_borrowed_lines.len() - 1;
+        let end = &mut self.non_borrowed_lines[len].end;
+        *end = cmp::max(line, *end);
+    }
+    pub fn new_borrow(&mut self, line: usize) {
+        self.non_borrowed_lines.push(Range {
+            start: line,
+            end: line,
+        });
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -215,8 +229,21 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
     }
 }
 
-pub fn lifetimes_overlap(lifetime_1: (usize, usize), lifetime_2: (usize, usize)) -> bool {
-    lifetime_1.0 < lifetime_2.1 && lifetime_2.0 < lifetime_1.1
+// TODO: Create more elegant solution than seperate functions for simply changing the exclusively
+// of an inequality
+pub fn both_ptr_active_range_overlap(l_1: Vec<Range<usize>>, l_2: Vec<Range<usize>>) -> bool {
+    let ranges_overlap =
+        |l_1: &Range<usize>, l_2: &Range<usize>| l_1.start <= l_2.end && l_2.start <= l_1.end;
+    l_1.iter()
+        .flat_map(|l_1| l_2.iter().map(|l_2| ranges_overlap(l_1, l_2)))
+        .any(|overlaps| overlaps)
+}
+pub fn var_active_range_overlap(l_1: Vec<Range<usize>>, l_2: Vec<Range<usize>>) -> bool {
+    let ranges_overlap =
+        |l_1: &Range<usize>, l_2: &Range<usize>| l_1.start < l_2.end && l_2.start < l_1.end;
+    l_1.iter()
+        .flat_map(|l_1| l_2.iter().map(|l_2| ranges_overlap(l_1, l_2)))
+        .any(|overlaps| overlaps)
 }
 
 pub fn borrow_check<'a>(vars: &HashMap<String, VarData<'a>>) {
@@ -250,12 +277,12 @@ pub fn borrow_check<'a>(vars: &HashMap<String, VarData<'a>>) {
             pointed_to_by_mutably
                 .clone()
                 .any(|(mut_ptr_data, _ref_type)| {
-                    lifetimes_overlap(
-                        (
-                            mut_ptr_data.initialization_line,
-                            mut_ptr_data.last_usage_line,
-                        ),
-                        (var_data.initialization_line, var_data.last_usage_line),
+                    // This fails because the value and the pointer are going to overlap on the line
+                    // the ref to the pointer is taken
+                    // eg. `let m = &mut n`
+                    var_active_range_overlap(
+                        mut_ptr_data.non_borrowed_lines.clone(),
+                        var_data.non_borrowed_lines.clone(),
                     )
                 });
         let mutable_ref_overlaps = pointed_to_by_mutably.any(|(mut_ptr_data, _ref_type)| {
@@ -263,15 +290,9 @@ pub fn borrow_check<'a>(vars: &HashMap<String, VarData<'a>>) {
                 .iter()
                 .filter(|(other_ptr_data, _ref_type)| mut_ptr_data != other_ptr_data)
                 .any(|(other_ptr_data, _other_ref_type)| {
-                    lifetimes_overlap(
-                        (
-                            mut_ptr_data.initialization_line,
-                            mut_ptr_data.last_usage_line,
-                        ),
-                        (
-                            other_ptr_data.initialization_line,
-                            other_ptr_data.last_usage_line,
-                        ),
+                    both_ptr_active_range_overlap(
+                        mut_ptr_data.non_borrowed_lines.clone(),
+                        other_ptr_data.non_borrowed_lines.clone(),
                     )
                 })
         });
@@ -305,15 +326,17 @@ pub fn determine_var_mutability<'a>(
                     pointed_to_by: vec![],
                     is_mut_by_ptr: false,
                     is_mut_direct: false,
-                    initialization_line: root.line,
-                    last_usage_line: root.line,
+                    non_borrowed_lines: vec![Range {
+                        start: root.line,
+                        end: root.line,
+                    }],
                 },
             );
         }
         NodeType::Assignment(_, id) => {
             vars.entry(id.to_string()).and_modify(|var_data| {
                 var_data.is_mut_direct = true;
-                var_data.last_usage_line = cmp::max(root.line, var_data.last_usage_line);
+                var_data.add_non_borrowed_line(root.line);
             });
         }
         NodeType::PtrDeclaration(id, _, expr) => {
@@ -339,8 +362,10 @@ pub fn determine_var_mutability<'a>(
                 pointed_to_by: vec![],
                 is_mut_by_ptr: false,
                 is_mut_direct: false,
-                initialization_line: root.line,
-                last_usage_line: root.line,
+                non_borrowed_lines: vec![Range {
+                    start: root.line,
+                    end: root.line,
+                }],
             };
             // TODO: Figure out how to annotate specific address call as mutable or immutable
             vars.insert(id.to_string(), var);
@@ -350,7 +375,7 @@ pub fn determine_var_mutability<'a>(
             println!("expr_id: {}", expr_ids[0]);
             vars.entry(expr_ids[0].to_string()).and_modify(|var_data| {
                 var_data.pointed_to_by.push(id);
-                var_data.last_usage_line = cmp::max(root.line, var_data.last_usage_line);
+                var_data.add_non_borrowed_line(root.line);
             });
         }
         NodeType::DerefAssignment(_, l_side) => {
@@ -372,7 +397,7 @@ pub fn determine_var_mutability<'a>(
             let first_ptr = ptr_chain.next().expect("No pointers in chain");
             vars.entry(first_ptr.clone()).and_modify(|var_data| {
                 println!("first_ptr_id: {first_ptr}");
-                var_data.last_usage_line = cmp::max(root.line, var_data.last_usage_line);
+                var_data.add_non_borrowed_line(root.line);
                 var_data
                     .ptr_data
                     .as_mut()
@@ -405,15 +430,18 @@ pub fn determine_var_mutability<'a>(
                     });
                 }
                 vars.entry(var).and_modify(|var_data| {
-                    var_data.last_usage_line = cmp::max(root.line, var_data.last_usage_line);
+                    var_data.add_non_borrowed_line(root.line);
                     var_data.is_mut_by_ptr = true;
                 });
             });
         }
         NodeType::Id(id) => {
-            vars.entry(id.to_string()).and_modify(|var_data| {
-                var_data.last_usage_line = cmp::max(root.line, var_data.last_usage_line);
-            });
+            vars.entry(id.to_string())
+                .and_modify(|var_data| var_data.add_non_borrowed_line(root.line));
+        }
+        NodeType::Adr(id) => {
+            vars.entry(id.to_string())
+                .and_modify(|var_data| var_data.new_borrow(root.line));
         }
         _ => {}
     };
