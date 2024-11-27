@@ -50,6 +50,7 @@ fn test(code: String) {
 
     let var_info = analyzer::determine_var_mutability(&ast, &map);
     println!("{:?}", var_info);
+    analyzer::borrow_check(&var_info);
     let annotated_ast = analyzer::annotate_ast(&ast, &var_info);
     annotated_ast.print(&mut 0);
 

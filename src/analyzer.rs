@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{cmp, collections::HashMap, fmt::Display};
 
 use crate::{
     lexer::CType,
@@ -36,6 +36,9 @@ pub struct VarData<'a> {
     pub pointed_to_by: Vec<&'a str>,
     pub is_mut_by_ptr: bool,
     pub is_mut_direct: bool,
+    // Really, we mean instantiated, but the pattern of initializing and instantiating seperately is harder to analyze and requires a PtrAssignment node
+    pub initialization_line: usize,
+    pub last_usage_line: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -212,6 +215,56 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
     }
 }
 
+pub fn lifetimes_overlap(lifetime_1: (usize, usize), lifetime_2: (usize, usize)) -> bool {
+    lifetime_1.0 < lifetime_2.1 && lifetime_2.0 < lifetime_1.1
+}
+
+pub fn borrow_check<'a>(vars: &HashMap<String, VarData<'a>>) {
+    vars.iter().for_each(|(id, var_data)| {
+        let pointed_to_by = var_data
+            .pointed_to_by
+            .iter()
+            .map(|ptr| {
+                let var_data = vars.get(*ptr);
+                (
+                    *var_data.as_ref().expect("Ptr not listed in vars"),
+                    match var_data
+                        .as_ref()
+                        .expect("Ptr not listed in vars")
+                        .ptr_data
+                        .as_ref()
+                        .expect(format!("Ptr {ptr} to {id} not a ptr in var map").as_str())
+                        .mutates
+                    {
+                        true => RefType::Mut,
+                        false => RefType::Imut,
+                    },
+                )
+            })
+            .collect::<Vec<(&VarData, RefType)>>();
+        let mutable_ref_overlaps = pointed_to_by
+            .iter()
+            .filter(|(_mut_ptr_data, ref_type)| *ref_type == RefType::Mut)
+            .any(|(mut_ptr_data, _ref_type)| {
+                pointed_to_by
+                    .iter()
+                    .any(|(other_ptr_data, _other_ref_type)| {
+                        lifetimes_overlap(
+                            (
+                                mut_ptr_data.initialization_line,
+                                mut_ptr_data.last_usage_line,
+                            ),
+                            (
+                                other_ptr_data.initialization_line,
+                                other_ptr_data.last_usage_line,
+                            ),
+                        )
+                    })
+            });
+        println!("MUTABLE_REF_OVERLAPS {id}: {mutable_ref_overlaps}")
+    })
+}
+
 pub fn determine_var_mutability<'a>(
     root: &'a Node,
     prev_vars: &HashMap<String, VarData<'a>>,
@@ -237,11 +290,16 @@ pub fn determine_var_mutability<'a>(
                     pointed_to_by: vec![],
                     is_mut_by_ptr: false,
                     is_mut_direct: false,
+                    initialization_line: root.line,
+                    last_usage_line: root.line,
                 },
             );
         }
         NodeType::Assignment(_, id) => {
-            vars.get_mut(id).expect("Undeclared Id").is_mut_direct = true;
+            vars.entry(id.to_string()).and_modify(|var_data| {
+                var_data.is_mut_direct = true;
+                var_data.last_usage_line = cmp::max(root.line, var_data.last_usage_line);
+            });
         }
         NodeType::PtrDeclaration(id, _, expr) => {
             let expr_ids = find_ids(expr);
@@ -266,6 +324,8 @@ pub fn determine_var_mutability<'a>(
                 pointed_to_by: vec![],
                 is_mut_by_ptr: false,
                 is_mut_direct: false,
+                initialization_line: root.line,
+                last_usage_line: root.line,
             };
             // TODO: Figure out how to annotate specific address call as mutable or immutable
             vars.insert(id.to_string(), var);
@@ -273,10 +333,10 @@ pub fn determine_var_mutability<'a>(
             // This immediantly breakes borrow checking rules
             println!("{:?}", vars);
             println!("expr_id: {}", expr_ids[0]);
-            vars.get_mut(&expr_ids[0])
-                .expect("Undeclared Id")
-                .pointed_to_by
-                .push(id);
+            vars.entry(expr_ids[0].to_string()).and_modify(|var_data| {
+                var_data.pointed_to_by.push(id);
+                var_data.last_usage_line = cmp::max(root.line, var_data.last_usage_line);
+            });
         }
         NodeType::DerefAssignment(_, l_side) => {
             let deref_ids = find_ids(&l_side);
@@ -297,6 +357,7 @@ pub fn determine_var_mutability<'a>(
             let first_ptr = ptr_chain.next().expect("No pointers in chain");
             vars.entry(first_ptr.clone()).and_modify(|var_data| {
                 println!("first_ptr_id: {first_ptr}");
+                var_data.last_usage_line = cmp::max(root.line, var_data.last_usage_line);
                 var_data
                     .ptr_data
                     .as_mut()
@@ -310,7 +371,6 @@ pub fn determine_var_mutability<'a>(
                     .fill(RefType::Mut);
             });
 
-            // TODO: Figure out if we can move ptr_chain here
             ptr_chain.clone().enumerate().for_each(|(i, var)| {
                 if i != ptr_chain.len() - 1 {
                     vars.entry(var.clone()).and_modify(|var_data| {
@@ -330,9 +390,15 @@ pub fn determine_var_mutability<'a>(
                     });
                 }
                 vars.entry(var).and_modify(|var_data| {
+                    var_data.last_usage_line = cmp::max(root.line, var_data.last_usage_line);
                     var_data.is_mut_by_ptr = true;
                 });
-            })
+            });
+        }
+        NodeType::Id(id) => {
+            vars.entry(id.to_string()).and_modify(|var_data| {
+                var_data.last_usage_line = cmp::max(root.line, var_data.last_usage_line);
+            });
         }
         _ => {}
     };
