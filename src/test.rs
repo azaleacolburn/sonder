@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs, process::Command};
+use std::{collections::HashMap, fs, ops::Range, process::Command};
 
 use crate::{
     analyzer::{self, VarData},
@@ -49,7 +49,14 @@ fn test(code: String) {
     let map: HashMap<String, VarData> = HashMap::new();
 
     let mut var_info = analyzer::determine_var_mutability(&ast, &map);
-    println!("{:?}", var_info);
+    println!(
+        "{:?}",
+        var_info
+            .iter()
+            .map(|(id, data)| (id.clone(), data.non_borrowed_lines.clone()))
+            .collect::<Vec<(String, Vec<Range<usize>>)>>()
+    );
+
     let errors = checker::borrow_check(&var_info);
     checker::adjust_ptr_type(errors, &mut var_info);
     let annotated_ast = analyzer::annotate_ast(&ast, &var_info);

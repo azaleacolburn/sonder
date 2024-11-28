@@ -26,6 +26,7 @@ pub struct VarData<'a> {
     pub pointed_to_by: Vec<&'a str>,
     pub is_mut_by_ptr: bool,
     pub is_mut_direct: bool,
+    set_start_borrow: bool, // do we need to set the start of the new borrow
     // The pattern of initializing and instantiating seperately is harder to analyze and requires a PtrAssignment node
     // Line ranges when the var isn't borrowed
     pub non_borrowed_lines: Vec<Range<usize>>,
@@ -36,12 +37,18 @@ impl<'a> VarData<'a> {
         let len = self.non_borrowed_lines.len() - 1;
         let end = &mut self.non_borrowed_lines[len].end;
         *end = cmp::max(line, *end);
+        if self.set_start_borrow {
+            let start = &mut self.non_borrowed_lines[len].start;
+            *start = cmp::max(line, *start);
+            self.set_start_borrow = false;
+        }
     }
     pub fn new_borrow(&mut self, line: usize) {
         self.non_borrowed_lines.push(Range {
             start: line,
             end: line,
         });
+        self.set_start_borrow = true;
     }
 }
 
@@ -241,6 +248,7 @@ pub fn determine_var_mutability<'a>(
                         start: root.line,
                         end: root.line,
                     }],
+                    set_start_borrow: false,
                 },
             );
         }
@@ -251,6 +259,12 @@ pub fn determine_var_mutability<'a>(
             });
         }
         NodeType::PtrDeclaration(id, _, expr) => {
+            determine_var_mutability(expr, &vars)
+                .iter()
+                .for_each(|(id, var_data)| {
+                    vars.insert(id.to_string(), var_data.clone());
+                });
+
             let expr_ids = find_ids(expr);
             if expr_ids.len() > 1 {
                 panic!("More than one id in expr: `&(a + b)` not legal");
@@ -277,13 +291,12 @@ pub fn determine_var_mutability<'a>(
                     start: root.line,
                     end: root.line,
                 }],
+                set_start_borrow: false,
             };
             // TODO: Figure out how to annotate specific address call as mutable or immutable
             vars.insert(id.to_string(), var);
             // Doesn't support &that + &this
             // This immediantly breakes borrow checking rules
-            println!("{:?}", vars);
-            println!("expr_id: {}", expr_ids[0]);
             vars.entry(expr_ids[0].to_string()).and_modify(|var_data| {
                 var_data.pointed_to_by.push(id);
                 var_data.add_non_borrowed_line(root.line);
@@ -291,7 +304,6 @@ pub fn determine_var_mutability<'a>(
         }
         NodeType::DerefAssignment(_, l_side) => {
             let deref_ids = find_ids(&l_side);
-            println!("deref_ids: {:?}", deref_ids);
             // This breakes because `*(t + s) = bar` is not allowed
             // However, **m is fine
             if deref_ids.len() > 1 {
@@ -303,11 +315,9 @@ pub fn determine_var_mutability<'a>(
             let mut ptr_chain = traverse_pointer_chain(&deref_ids[0], &vars, 0, num_of_vars)
                 .into_iter()
                 .rev();
-            println!("ptr_chain: {:?}", ptr_chain);
             // eg. [m, p, n]
             let first_ptr = ptr_chain.next().expect("No pointers in chain");
             vars.entry(first_ptr.clone()).and_modify(|var_data| {
-                println!("first_ptr_id: {first_ptr}");
                 var_data.add_non_borrowed_line(root.line);
                 var_data
                     .ptr_data
@@ -341,7 +351,7 @@ pub fn determine_var_mutability<'a>(
                     });
                 }
                 vars.entry(var).and_modify(|var_data| {
-                    var_data.add_non_borrowed_line(root.line);
+                    // var_data.add_non_borrowed_line(root.line);
                     var_data.is_mut_by_ptr = true;
                 });
             });
@@ -396,14 +406,12 @@ fn traverse_pointer_chain<'a>(
             vec
         }
         None => {
-            println!("should be n {root}");
             vec![root.to_string()]
         }
     }
 }
 
 fn find_ids<'a>(root: &'a Node) -> Vec<String> {
-    println!("find_ids root: {root}");
     let mut ids: Vec<String> = root
         .children
         .as_ref()

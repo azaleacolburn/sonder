@@ -2,6 +2,7 @@ use crate::analyzer::{PtrType, VarData};
 use std::collections::HashMap;
 use std::ops::Range;
 
+#[derive(Debug, Clone)]
 pub enum BorrowError {
     MutMutOverlap,
     MutImutOverlap,
@@ -104,6 +105,10 @@ pub fn borrow_check<'a>(vars: &HashMap<String, VarData<'a>>) -> Vec<(String, Bor
                         .collect::<Vec<(String, BorrowError)>>()
                 })
                 .collect();
+            println!(
+                "value_overlaps_with_mut_ptr {id}: {:?}\nmutable_ref_overlaps {id}: {:?}",
+                value_overlaps_with_mut_ptr, mutable_ref_overlaps
+            );
             value_overlaps_with_mut_ptr.append(&mut mutable_ref_overlaps);
             value_overlaps_with_mut_ptr
         })
@@ -114,7 +119,7 @@ pub fn borrow_check<'a>(vars: &HashMap<String, VarData<'a>>) -> Vec<(String, Bor
 // of an inequality
 pub fn both_ptr_active_range_overlap(l_1: Vec<Range<usize>>, l_2: Vec<Range<usize>>) -> bool {
     let ranges_overlap =
-        |l_1: &Range<usize>, l_2: &Range<usize>| l_1.start <= l_2.end && l_2.start <= l_1.end;
+        |l_1: &Range<usize>, l_2: &Range<usize>| l_1.start < l_2.end && l_2.start < l_1.end;
     l_1.iter()
         .flat_map(|l_1| l_2.iter().map(|l_2| ranges_overlap(l_1, l_2)))
         .any(|overlaps| overlaps)
