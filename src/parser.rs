@@ -130,7 +130,6 @@ impl NodeType {
 
     pub fn to_annotated_node(&self) -> AnnotatedNodeT {
         match self {
-            NodeType::Program => AnnotatedNodeT::Program,
             NodeType::Sub => AnnotatedNodeT::Sub,
             NodeType::Div => AnnotatedNodeT::Div,
             NodeType::Eq => AnnotatedNodeT::Eq,

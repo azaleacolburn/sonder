@@ -38,10 +38,7 @@ Any of these will immediantly result in raw pointers being used, although at the
 
 ## TODO
 
-- Figure out how to represent lifetimes
-  - This seems to rely on line numbers, which are lost information.
-  - Perhaps we could find a way to represent lifetimes through position on the ast, but that seems exceedingly difficult
-  - Including line-numbers in the initial ast seems to be the way to go
+- Figure out how to pass back reference counting, because we want the value to be ref counted, not the ref tthat we dentified as problematic
 
 ```rust
 let t = 8;

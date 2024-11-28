@@ -25,10 +25,10 @@ pub fn adjust_ptr_type<'a>(
         let new_ptr_type = match (err, is_mut) {
             (BorrowError::MutMutOverlap, _) => PtrType::Rc,
             (BorrowError::MutImutOverlap, _) => PtrType::RefCell,
-            // TODO: if the id is the value
-            // involved, this will be more annoying
-            (BorrowError::ValueMutOverlap, true) => PtrType::RawPtrMut,
-            (BorrowError::ValueMutOverlap, false) => PtrType::RawPtrImut,
+            (BorrowError::ValueMutOverlap, _) => PtrType::Rc, // TODO: if the id is the value
+                                                              // involved, this will be more annoying
+                                                              // (BorrowError::ValueMutOverlap, true) => PtrType::RawPtrMut,
+                                                              // (BorrowError::ValueMutOverlap, false) => PtrType::RawPtrImut,
         };
         vars.entry(id.to_string()).and_modify(|var_data| {
             let ptr_data = var_data

@@ -1,5 +1,7 @@
 use std::{cmp, collections::HashMap, fmt::Display, ops::Range};
 
+use itertools::Itertools;
+
 use crate::{
     lexer::CType,
     parser::{AssignmentOpType, NodeType, TokenNode as Node},
@@ -60,7 +62,9 @@ pub struct AnnotatedNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnnotatedNodeT {
-    Program,
+    Program {
+        imports: Vec<String>,
+    },
     Sub,
     Div,
     Eq,
@@ -211,6 +215,26 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
             let annotated_expr = Box::new(annotate_ast(expr, var_info));
             AnnotatedNodeT::DeRef(annotated_expr)
         }
+        NodeType::Program => {
+            let imports: Vec<String> = var_info
+                .iter()
+                .flat_map(|(_, data)| match &data.ptr_data {
+                    Some(ptr_data) => ptr_data
+                        .ptr_type
+                        .iter()
+                        .map(|ptr_type| match ptr_type {
+                            PtrType::Rc => String::from("use std::rc::Rc;"),
+                            PtrType::RefCell => String::from("use std::cel::RefCell;"),
+                            _ => String::from(""),
+                        })
+                        .collect(),
+                    None => vec![String::from("")],
+                })
+                .filter(|s| *s != String::new())
+                .unique()
+                .collect();
+            AnnotatedNodeT::Program { imports }
+        }
         node => node.to_annotated_node(),
     };
     AnnotatedNode {
@@ -351,7 +375,6 @@ pub fn determine_var_mutability<'a>(
                     });
                 }
                 vars.entry(var).and_modify(|var_data| {
-                    // var_data.add_non_borrowed_line(root.line);
                     var_data.is_mut_by_ptr = true;
                 });
             });

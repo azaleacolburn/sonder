@@ -35,9 +35,9 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                         format!("RefCell<{}>", get_ref_type(ptr_types, rust_t))
                     }
                     Some(PtrType::Rc) => format!("Rc<{}>", get_ref_type(ptr_types, rust_t)),
-                    Some(PtrType::RawPtrMut) => format!("*mut {rust_t} "),
+                    Some(PtrType::RawPtrMut) => format!("*mut {}", get_ref_type(ptr_types, rust_t)),
                     Some(PtrType::RawPtrImut) => {
-                        format!("*const {rust_t} ")
+                        format!("*const {}", get_ref_type(ptr_types, rust_t))
                     }
                     None => rust_t.to_string(),
                 }
@@ -49,9 +49,9 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 PtrType::ImutRef => format!("&{rust_adr}"),
                 PtrType::RefCell => format!("RefCell::new({rust_adr}) "),
                 PtrType::Rc => format!("Rc::new({rust_adr}) "),
-                PtrType::RawPtrMut => format!("&mut {rust_adr} as *mut {rust_ref_type}"),
+                PtrType::RawPtrMut => format!("&mut {rust_adr} as {rust_ref_type}"),
                 PtrType::RawPtrImut => {
-                    format!("&{rust_adr} as *const {rust_ref_type}")
+                    format!("&{rust_adr} as {rust_ref_type}")
                 }
             };
 
@@ -102,8 +102,8 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 .clone();
             format!("let {binding}{id}: {rust_t} = {expr_child};")
         }
-        AnnotatedNodeT::DeRef(id) => {
-            format!("*{}", convert_annotated_ast(id))
+        AnnotatedNodeT::DeRef(expr) => {
+            format!("*{}", convert_annotated_ast(expr))
         }
         AnnotatedNodeT::Adr { id } => {
             format!("{id}")
@@ -197,14 +197,19 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             ret.push_str("\n}");
             ret
         }
-        AnnotatedNodeT::Program => root
-            .children
-            .as_ref()
-            .expect("Program should have children")
-            .iter()
-            .map(convert_annotated_ast)
-            .collect::<Vec<String>>()
-            .join("\n"),
+        AnnotatedNodeT::Program { imports } => {
+            let mut t = imports.clone();
+            t.push(
+                root.children
+                    .as_ref()
+                    .expect("Program should have children")
+                    .iter()
+                    .map(convert_annotated_ast)
+                    .collect::<Vec<String>>()
+                    .join("\n"),
+            );
+            t.join("\n")
+        }
         AnnotatedNodeT::Scope(_) => root
             .children
             .as_ref()
