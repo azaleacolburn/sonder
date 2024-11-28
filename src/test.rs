@@ -69,10 +69,15 @@ fn test(code: String) {
 
 fn validate(rust_code: String) {
     fs::write("./test.rs", rust_code).expect("writing to succeed");
-    Command::new("rustc")
+    match Command::new("rustc")
         .arg("./test.rs")
         .spawn()
-        .expect("Rust compilation failed");
+        .expect("Rust compilation failed")
+        .wait()
+    {
+        Ok(o) => println!("Test passed"),
+        None => panic!("Test failed"),
+    };
 }
 // fn test() -> i16 {
 //     let mut n = 0;

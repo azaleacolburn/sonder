@@ -30,6 +30,34 @@ pub fn adjust_ptr_type<'a>(
                                                               // (BorrowError::ValueMutOverlap, true) => PtrType::RawPtrMut,
                                                               // (BorrowError::ValueMutOverlap, false) => PtrType::RawPtrImut,
         };
+        println!("ERROR ID: {id}");
+        // TODO: This should actually traverse the pointer chain downwards
+        let sub_id = &vars
+            .get(id)
+            .as_ref()
+            .expect("ptr not in map")
+            .ptr_data
+            .as_ref()
+            .expect("ptr not ptr")
+            .points_to;
+        let same_level_ptrs = &vars
+            .get(sub_id)
+            .as_ref()
+            .expect("ptr not in map")
+            .pointed_to_by;
+        same_level_ptrs.iter().for_each(|ptr| {
+            vars.entry(ptr.to_string()).and_modify(|var_data| {
+                var_data
+                    .ptr_data
+                    .as_ref()
+                    .expect("same leveel ptr not ptr in map")
+                    // TODO: We want the specific reference that applies at the same level of the
+                    // problematic ptr
+                    // This is a really hard problem
+                    .ptr_type = new_ptr_type;
+            });
+        });
+
         vars.entry(id.to_string()).and_modify(|var_data| {
             let ptr_data = var_data
                 .ptr_data

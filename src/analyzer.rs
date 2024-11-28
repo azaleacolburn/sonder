@@ -10,6 +10,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PtrType {
     Rc,
+    RcClone,
     RefCell,
     RawPtrMut,
     RawPtrImut,

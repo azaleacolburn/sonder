@@ -73,4 +73,4 @@ let m = &mut t;
 - Branches are counted as their own scopes
 - Exclusive branches can hold different references to an object
 - But they all must consider the higher-scoped references to higher-scoped data
-- Assume all non-exclusive branches occur
+- Assume all branches occur
