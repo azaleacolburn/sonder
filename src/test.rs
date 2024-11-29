@@ -5,8 +5,8 @@ use crate::{convert_to_rust_code, parse_c};
 /// Valid use of pointers as if they were Rust references
 /// Translates one-to-one
 #[test]
-fn three_mut() {
-    let rust_code = to_rust(String::from(
+fn three_mut_layered() {
+    validate(
         "int main() {
             int n = 0;
             int* g = &n;
@@ -14,8 +14,8 @@ fn three_mut() {
             int** m = &p;
             **m = 5;
         }",
-    ));
-    validate(String::from("three_mut"), rust_code);
+        "three_mut_layered",
+    );
 }
 
 /// Invalid rust code if directly translated
@@ -31,16 +31,15 @@ fn three_mut() {
 /// ```
 #[test]
 fn value_overlap() {
-    let rust_code = to_rust(String::from(
+    validate(
         "int main() {
             int t = 0;
             int* g = &t;
             t = 1;
             *g = 2;
         }",
-    ));
-
-    validate(String::from("value_overlap"), rust_code)
+        "value_overlap",
+    );
 }
 
 /// Invalid Rust code if directly translated
@@ -59,7 +58,7 @@ fn value_overlap() {
 /// ```
 #[test]
 fn deref_value_assignment() {
-    let rust_code = to_rust(String::from(
+    validate(
         "int main() {
             int n = 0;
             int* g = &n;
@@ -69,14 +68,13 @@ fn deref_value_assignment() {
             int* y = &k;
             *y = k + 6;
         }",
-    ));
-
-    validate(String::from("deref_value_assignment"), rust_code);
+        "deref_value_assignment",
+    );
 }
 
 #[test]
 fn multi_ref() {
-    let rust_code = to_rust(String::from(
+    validate(
         "int main() {
             int n = 0;
             int* g = &n;
@@ -85,17 +83,14 @@ fn multi_ref() {
             int y = 9;
             *b = y;
         }",
-    ));
-
-    validate(String::from("multi_ref"), rust_code);
+        "multi_ref",
+    );
 }
 
-fn to_rust(code: String) -> String {
-    let ast = parse_c(code);
-    convert_to_rust_code(ast)
-}
+fn validate(c_code: &str, test_name: &str) {
+    let ast = parse_c(c_code.to_string());
+    let rust_code = convert_to_rust_code(ast);
 
-fn validate(test_name: String, rust_code: String) {
     fs::create_dir_all("./translated/exe").expect("dir failed");
     let file_name = format!("./translated/{test_name}_test.rs");
     fs::write(file_name.clone(), rust_code).expect("writing code to file failed");
