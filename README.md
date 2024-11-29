@@ -2,29 +2,40 @@
 
 ## Scratch repo for potential science fair submission
 
-Sonder is a static analysis tool for C, for determining the necessary sementics for converting the analyzed C programs to Rust.
+Sonder is a static analyser and transpiler, for converting well-written C code to Rust
 
-## Assumptions
+## What does well-written mean?
 
-1. The address of only one variable at a time is taken
+For the purposes of sonder, well-written means that for any given pointer the C code in question either
+
+- Treats it like a Rust reference in accordance with borrow-checking rules or
+- Treats it a cloned `Rc<RefCell<T>>`
+
+  If the code isn't well-written, sonder will fall back on unsafe raw pointers in the generated code, although at the moment, it panics
+
+## Examples of "not-well-written" C code
+
+1. The adding addresses
 
 ```c
-&(foo + bar) // illegal
+&foo + &bar // illegal
 ```
 
-2. Only one pointer is dereferenced at a time
+2. Dereferencing pointer arithmatic
 
 ```c
 *(foo + bar) // illegal
 ```
 
-3. Only pointers are dereferenced
+I'm aware that this includes legal array indexing, however, the sonder ast treats that as a totally seperate thing. So `arr[foo]` is legal while `*(arr + foo)` or `foo[arr]` aren't, even though they're equivalent.
+
+3. Dereferencing non-ptrs
 
 ```c
 *not_ptr // illegal
 ```
 
-4. UNSAFE ASSUMPTION: Mutatble references can't be made unless they're tied to a ptr declaration.
+4. TEMPORARY ASSUMPTION: Mutable references can't be made unless they're tied to a ptr declaration.
    Adresses are always immutable unless explicitely annotated otherwise by the ptr declaration.
 
 ```rust
@@ -38,39 +49,39 @@ Any of these will immediantly result in raw pointers being used, although at the
 
 ## TODO
 
-- Figure out how to pass back reference counting, because we want the value to be ref counted, not the ref tthat we dentified as problematic
-
-```rust
-let t = 8;
-let n = &t;
-// n dropped here
-let m = &mut t;
-// m dropped here
-```
-
+- Write more test cases for the current prototype
 - Figure out how to represent scope
+- Create a system for managing scope
+- Write scope-based borrowing checking
 
-## Steps
+## How does all this work?
 
-1. Get list of all owned data
-2. For each piece of owned data:
+Sonder is broken up into a few differenc components for performing different tasks; they are run sequentially.
+Note that all pointers are assumed to be either immutable or mutable references unless the checker deems otherwise
 
-   1. Get list of all usages of all refs to it in each scope
-   2. Iterate through scope to check if each one is mutable, or immutable
-      - this may include parsing called scopes
-      - some escape analysis may be will here
-      - whether full borrow-checking will be needed is still unclear
-      - we will need a way of checking branching
-      - this includes being passed mutably, or mutating
-   3. Count to make sure at any given point, only a single mutable, or any number of immutable references are used (otherwise leave it as a raw pointer)
-   4. If we have time, check for common Smart Pointer semantics
+### Analyser
 
-3. Generate a new AST with previously implicit pointer semantics made explicit
-4. Try converting the new AST to semantically identical, idiomatic Rust.
+The Analyser determines the necessary variable semantics for performing borrow-checking on C code.
+The primary data-structure involved is a map related variable names to information that would be aparent in Rust code, but must be inferred in C code. This includes:
 
-### Branch handing
+- Is the variable mutated by via pointer, directly, or not at all?
+- Is the variable a pointer? If so, where does it point to, and does it mutate that variable.
+- For what line-ranges does the variable appear to be in scope and not "behind a reference" (note that whether or not this actually follows borrow-checking rules is irrelevent to the analyser, it simply collects information)
 
-- Branches are counted as their own scopes
-- Exclusive branches can hold different references to an object
-- But they all must consider the higher-scoped references to higher-scoped data
-- Assume all branches occur
+### Checker
+
+The Checker performs a rudimentary, lexical form of borrow-checking, by validating the "lexical-lifetimes" of each mutable reference.
+If any mutable reference to a piece of data overlaps with an immutable reference to that data or with the usage of the underlying value, the underlying variable, reference, and all other references to that variable are assumed to not follow borrow-checking rules, but still be "well-written," and are marked as `Rc<RefCell>>`s.
+This isn't comprehensive borrow-checking and must be extended in numerous ways, most importantly to include function-based move semantics.
+
+### Annotater
+
+The Annotater takes the information about variables produced by the Analyser and Checker and creates a new AST that includes this information in necessary places, for example:
+
+- All declarations are annotated with whether the variable is mutable
+- PtrDeclarations are annotated with the pointer type (`Rc<RefCell<T>>`, `&mut`, `&`, `*mut`, or `*const`)
+  The generated AST is essentially a rudimentary Rust AST.
+
+### Converter
+
+The Converter takes the annotated AST and uses it to generate a corresponding Rust program.
