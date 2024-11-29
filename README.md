@@ -11,7 +11,7 @@ For the purposes of sonder, well-written means that for any given pointer, the C
 - Treats it like a Rust reference in accordance with borrow-checking rules or
 - Treats it a cloned `Rc<RefCell<T>>`
 
-  If the code isn't well-written, sonder will fall back on unsafe raw pointers in the generated code, although at the moment, it panics
+If the code isn't "well-written", sonder will fall back on unsafe raw pointers in the generated code, although at the moment, it instead panics.
 
 ## Examples of "not-well-written" C code
 
