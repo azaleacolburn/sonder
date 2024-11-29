@@ -158,10 +158,6 @@ impl NodeType {
             NodeType::Break => AnnotatedNodeT::Break,
             NodeType::FunctionCall(s) => AnnotatedNodeT::FunctionCall(s.to_string()),
             NodeType::Scope(s) => AnnotatedNodeT::Scope(s.clone()),
-            NodeType::Assignment(op, id) => AnnotatedNodeT::Assignment {
-                op: op.clone(),
-                id: id.to_string(),
-            },
             NodeType::Asm(asm) => AnnotatedNodeT::Asm(asm.to_string()),
             NodeType::ArrayDeclaration(id, t, size) => AnnotatedNodeT::ArrayDeclaration {
                 id: id.to_string(),

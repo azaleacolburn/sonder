@@ -15,6 +15,8 @@ use crate::{
 //     ));
 // }
 
+/// Valid use of pointers as if they were Rust references
+/// Translates one-to-one
 #[test]
 fn three_mut() {
     test(String::from(
@@ -26,6 +28,29 @@ fn three_mut() {
             **m = 5;
         }",
     ));
+}
+
+/// Invalid rust code if directly translated
+/// Should be caught by the checker and a safe solution should be applied
+/// eg.
+/// ```rust
+/// fn main() {
+///     let t: Rc<RefCell<i32>> = Rc::new(RefCell::new(0));
+///     let g = t.clone();
+///     *t.borrow_mut() = 1;
+///     *g.borrow_mut() = 2;
+/// }
+/// ```
+#[test]
+fn value_overlap() {
+    test(String::from(
+        "int main() {
+            int t = 0;
+            int* g = &t;
+            t = 1;
+            *g = 2;
+        }",
+    ))
 }
 
 #[test]
@@ -75,8 +100,8 @@ fn validate(rust_code: String) {
         .expect("Rust compilation failed")
         .wait()
     {
-        Ok(o) => println!("Test passed"),
-        None => panic!("Test failed"),
+        Ok(o) => println!("Test passed: {o}"),
+        Err(err) => panic!("Test failed, {err}"),
     };
 }
 // fn test() -> i16 {

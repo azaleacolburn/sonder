@@ -29,6 +29,7 @@ pub struct VarData<'a> {
     pub pointed_to_by: Vec<&'a str>,
     pub is_mut_by_ptr: bool,
     pub is_mut_direct: bool,
+    pub rc: bool,
     set_start_borrow: bool, // do we need to set the start of the new borrow
     // The pattern of initializing and instantiating seperately is harder to analyze and requires a PtrAssignment node
     // Line ranges when the var isn't borrowed
@@ -98,15 +99,18 @@ pub enum AnnotatedNodeT {
     Assignment {
         op: AssignmentOpType,
         id: String,
+        rc: bool,
     },
     DerefAssignment {
         op: AssignmentOpType,
         adr: Box<AnnotatedNode>,
+        rc: bool,
     },
     Declaration {
         id: String,
         is_mut: bool,
         t: CType,
+        rc: bool,
     },
     PtrDeclaration {
         id: String,
@@ -114,20 +118,14 @@ pub enum AnnotatedNodeT {
         ptr_data: PtrData,
         t: CType,
         adr: Box<AnnotatedNode>,
-    },
-    RefDeclaration {
-        id: String,
-        is_mut: bool,
-        t: CType,
-        adr: Box<AnnotatedNode>,
+        // Refers to it being an rc_ptr itself, not a
+        rc: bool,
     },
     Asm(String),
     // This is handled by the ptr declaration for now
     Adr {
         id: String,
-    },
-    Ref {
-        id: String,
+        rc: bool,
     },
     DeRef(Box<AnnotatedNode>),
     ArrayDeclaration {
@@ -176,15 +174,18 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
         NodeType::Declaration(id, t, _) => {
             let declaration_info = var_info.get(id).expect("Declared id not in map");
             let is_mut = declaration_info.is_mut_by_ptr || declaration_info.is_mut_direct;
+            let rc = declaration_info.rc;
             AnnotatedNodeT::Declaration {
                 id: id.to_string(),
                 is_mut,
                 t: t.clone(),
+                rc,
             }
         }
         NodeType::PtrDeclaration(id, t, adr) => {
             let ptr_info = var_info.get(id).expect("Ptr not found in info map");
             let is_mut = ptr_info.is_mut_by_ptr || ptr_info.is_mut_direct;
+            let rc = ptr_info.rc;
             let annotated_adr = Box::new(annotate_ast(adr, var_info));
             let ptr_data = ptr_info
                 .ptr_data
@@ -196,6 +197,7 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
                 ptr_data,
                 t: t.clone(),
                 adr: annotated_adr,
+                rc,
             }
         }
         NodeType::Adr(id) => {
@@ -203,13 +205,35 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
             // `&mut &mut &t` illegal
             // Unsafe assumption: Adresses are always immutable unless explicitely annotated otherwise by the ptr declaration
             // `list.append(&mut other_list)` isn't something we're going to worry about for now
-            AnnotatedNodeT::Adr { id: id.to_string() }
+            let rc = var_info
+                .get(id)
+                .as_ref()
+                .expect("Id of adr not found in map")
+                .rc;
+            AnnotatedNodeT::Adr {
+                id: id.to_string(),
+                rc,
+            }
         }
         NodeType::DerefAssignment(op, adr) => {
+            let ids = find_ids(&adr);
+            let derefed_id = ids[0].clone();
+            let rc = *var_info
+                .get(&derefed_id)
+                .as_ref()
+                .expect("dereffed_id not in map")
+                .ptr_data
+                .as_ref()
+                .expect("ptr not ptr")
+                .ptr_type
+                .last()
+                .unwrap()
+                == PtrType::RcClone;
             let annotated_adr = Box::new(annotate_ast(adr, var_info));
             AnnotatedNodeT::DerefAssignment {
                 op: op.clone(),
                 adr: annotated_adr,
+                rc,
             }
         }
         NodeType::DeRef(expr) => {
@@ -225,7 +249,8 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
                         .iter()
                         .map(|ptr_type| match ptr_type {
                             PtrType::Rc => String::from("use std::rc::Rc;"),
-                            PtrType::RefCell => String::from("use std::cel::RefCell;"),
+                            PtrType::RefCell => String::from("use std::cell::RefCell;"),
+                            PtrType::RcClone => String::from("use std::{rc::Rc, cell::RefCell};"),
                             _ => String::from(""),
                         })
                         .collect(),
@@ -235,6 +260,18 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
                 .unique()
                 .collect();
             AnnotatedNodeT::Program { imports }
+        }
+        NodeType::Assignment(op, id) => {
+            let rc = var_info
+                .get(id)
+                .as_ref()
+                .expect("Id being assigned to not in var_info")
+                .rc;
+            AnnotatedNodeT::Assignment {
+                id: id.clone(),
+                op: op.clone(),
+                rc,
+            }
         }
         node => node.to_annotated_node(),
     };
@@ -269,6 +306,7 @@ pub fn determine_var_mutability<'a>(
                     pointed_to_by: vec![],
                     is_mut_by_ptr: false,
                     is_mut_direct: false,
+                    rc: false,
                     non_borrowed_lines: vec![Range {
                         start: root.line,
                         end: root.line,
@@ -312,6 +350,7 @@ pub fn determine_var_mutability<'a>(
                 pointed_to_by: vec![],
                 is_mut_by_ptr: false,
                 is_mut_direct: false,
+                rc: false,
                 non_borrowed_lines: vec![Range {
                     start: root.line,
                     end: root.line,

@@ -23,38 +23,50 @@ pub fn adjust_ptr_type<'a>(
             .expect("Ptr not ptr")
             .mutates;
         let new_ptr_type = match (err, is_mut) {
-            (BorrowError::MutMutOverlap, _) => PtrType::Rc,
-            (BorrowError::MutImutOverlap, _) => PtrType::RefCell,
-            (BorrowError::ValueMutOverlap, _) => PtrType::Rc, // TODO: if the id is the value
-                                                              // involved, this will be more annoying
-                                                              // (BorrowError::ValueMutOverlap, true) => PtrType::RawPtrMut,
-                                                              // (BorrowError::ValueMutOverlap, false) => PtrType::RawPtrImut,
+            (BorrowError::MutMutOverlap, _) => PtrType::RcClone,
+            (BorrowError::MutImutOverlap, _) => PtrType::RcClone,
+            (BorrowError::ValueMutOverlap, _) => PtrType::RcClone, // TODO: if the id is the value
+                                                                   // involved, this will be more annoying
+                                                                   // (BorrowError::ValueMutOverlap, true) => PtrType::RawPtrMut,
+                                                                   // (BorrowError::ValueMutOverlap, false) => PtrType::RawPtrImut,
         };
         println!("ERROR ID: {id}");
         // TODO: This should actually traverse the pointer chain downwards
-        let sub_id = &vars
+        let sub_id = vars
             .get(id)
             .as_ref()
             .expect("ptr not in map")
             .ptr_data
             .as_ref()
             .expect("ptr not ptr")
-            .points_to;
-        let same_level_ptrs = &vars
-            .get(sub_id)
+            .points_to
+            .clone();
+        vars.entry(sub_id.to_string())
+            .and_modify(|var_data| var_data.rc = true);
+        let same_level_ptrs = vars
+            .get(&sub_id)
             .as_ref()
             .expect("ptr not in map")
-            .pointed_to_by;
+            .pointed_to_by
+            .clone();
         same_level_ptrs.iter().for_each(|ptr| {
             vars.entry(ptr.to_string()).and_modify(|var_data| {
-                var_data
+                let len = var_data
                     .ptr_data
                     .as_ref()
+                    .expect("same level ptr not in map")
+                    .ptr_type
+                    .len()
+                    - 1;
+                var_data
+                    .ptr_data
+                    .as_mut()
                     .expect("same leveel ptr not ptr in map")
                     // TODO: We want the specific reference that applies at the same level of the
                     // problematic ptr
                     // This is a really hard problem
-                    .ptr_type = new_ptr_type;
+                    // For now we'll just make the top ptr_type be an RcClone
+                    .ptr_type[len] = new_ptr_type.clone();
             });
         });
 
