@@ -197,6 +197,17 @@ pub fn determine_var_mutability<'a>(
             vars.entry(id.to_string())
                 .and_modify(|var_data| var_data.new_borrow(root.line));
         }
+        NodeType::DeRef(adr) => {
+            let ids = find_ids(&adr);
+            // Panics if more than one id derefed
+            if ids.len() != 1 {
+                panic!("more than one or 0 ids derefed");
+            }
+            let id = ids[0].clone();
+            vars.entry(id).and_modify(|var_data| {
+                var_data.add_non_borrowed_line(root.line);
+            });
+        }
         _ => {}
     };
     vars

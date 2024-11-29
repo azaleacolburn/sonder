@@ -39,7 +39,7 @@ pub enum AnnotatedNodeT {
     DivEq,
     MulEq,
     Mul,
-    MNeg,
+    _MNeg,
     AndCmp,
     OrCmp,
     NumLiteral(usize),
@@ -97,7 +97,6 @@ pub enum AnnotatedNodeT {
         id: String,
         t: CType,
     },
-    Type(CType),
     Assert,
     Return,
     PutChar,
@@ -178,7 +177,7 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
         NodeType::DerefAssignment(op, adr) => {
             let ids = find_ids(&adr);
             let derefed_id = ids[0].clone();
-            let count = count_derefs(&adr);
+            let count = count_derefs(adr);
             let rc = *var_info
                 .get(&derefed_id)
                 .as_ref()
@@ -198,7 +197,7 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
             }
         }
         NodeType::DeRef(expr) => {
-            let count = count_derefs(expr);
+            let count = count_derefs(expr) + 1;
             let ids = find_ids(&expr);
             let derefed_id = ids[0].clone();
             let rc = *var_info
@@ -212,7 +211,6 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
                 .last()
                 .unwrap()
                 == PtrType::RcClone;
-            let annotated_expr = Box::new(annotate_ast(expr, var_info));
 
             AnnotatedNodeT::DeRef {
                 id: derefed_id.clone(),

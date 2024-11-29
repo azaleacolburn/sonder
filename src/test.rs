@@ -1,15 +1,12 @@
-use std::{collections::HashMap, fs, ops::Range, process::Command};
+use std::{fs, process::Command};
 
-use crate::{
-    analyzer::{self, VarData},
-    annotater, checker, convert_to_rust_code, converter, parse_c,
-};
+use crate::{convert_to_rust_code, parse_c};
 
 /// Valid use of pointers as if they were Rust references
 /// Translates one-to-one
 #[test]
 fn three_mut() {
-    let rust_code = test(String::from(
+    let rust_code = to_rust(String::from(
         "int main() {
             int n = 0;
             int* g = &n;
@@ -34,7 +31,7 @@ fn three_mut() {
 /// ```
 #[test]
 fn value_overlap() {
-    let rust_code = test(String::from(
+    let rust_code = to_rust(String::from(
         "int main() {
             int t = 0;
             int* g = &t;
@@ -61,8 +58,8 @@ fn value_overlap() {
 /// }
 /// ```
 #[test]
-fn multi_function() {
-    let rust_code = test(String::from(
+fn deref_value_assignment() {
+    let rust_code = to_rust(String::from(
         "int main() {
             int n = 0;
             int* g = &n;
@@ -74,10 +71,26 @@ fn multi_function() {
         }",
     ));
 
-    validate(String::from("multi_function"), rust_code);
+    validate(String::from("deref_value_assignment"), rust_code);
 }
 
-fn test(code: String) -> String {
+#[test]
+fn multi_ref() {
+    let rust_code = to_rust(String::from(
+        "int main() {
+            int n = 0;
+            int* g = &n;
+            int* b = &n;
+            int k = *g;
+            int y = 9;
+            *b = y;
+        }",
+    ));
+
+    validate(String::from("multi_ref"), rust_code);
+}
+
+fn to_rust(code: String) -> String {
     let ast = parse_c(code);
     convert_to_rust_code(ast)
 }
