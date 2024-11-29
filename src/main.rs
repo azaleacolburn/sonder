@@ -4,6 +4,7 @@ use parser::TokenNode;
 
 #[allow(dead_code)]
 mod analyzer;
+mod annotater;
 mod checker;
 mod converter;
 mod error;

@@ -1,5 +1,6 @@
 use crate::{
-    analyzer::{AnnotatedNode, AnnotatedNodeT, PtrType},
+    analyzer::PtrType,
+    annotater::{AnnotatedNode, AnnotatedNodeT},
     lexer::CType,
     parser::AssignmentOpType,
 };
@@ -74,7 +75,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
         // = Rc::new({rust_adr})
         // = &{rust_adr} as *mut {rust_t}
         // = &{rust_adr} as *const {rust_t}
-        AnnotatedNodeT::DerefAssignment { op, adr, rc } => {
+        AnnotatedNodeT::DerefAssignment { op, id, rc, count } => {
             let rust_op = match op {
                 AssignmentOpType::Eq => "=",
                 AssignmentOpType::SubEq => "-=",
@@ -85,7 +86,6 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 AssignmentOpType::BXorEq => "^=",
                 AssignmentOpType::BAndEq => "&=",
             };
-            let rust_adr = convert_annotated_ast(&*adr);
             let expr_child = root
                 .children
                 .as_ref()
@@ -94,10 +94,19 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 .map(convert_annotated_ast)
                 .collect::<Vec<String>>()[0]
                 .clone();
+            let derefs: String =
+                (0..count.clone())
+                    .into_iter()
+                    .fold(String::new(), |mut acc, _| {
+                        acc.push_str("*");
+                        acc
+                    });
+
             if *rc {
-                format!("{rust_adr}.borrow_mut() {rust_op} {expr_child};")
+                println!("DerefAssignment");
+                format!("{derefs}{id}.borrow_mut() {rust_op} {expr_child};")
             } else {
-                format!("{rust_adr} {rust_op} {expr_child};")
+                format!("{derefs}{id} {rust_op} {expr_child};")
             }
         }
         AnnotatedNodeT::Declaration { id, is_mut, t, rc } => {
@@ -116,14 +125,25 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 .clone();
 
             if *rc {
-                format!("let {id} = Rc::new(RefCell::new({expr_child}));")
+                format!("let {id}: Rc<RefCell<{rust_t}>> = Rc::new(RefCell::new({expr_child}));")
             } else {
                 let binding = if *is_mut { "mut " } else { "" };
                 format!("let {binding}{id}: {rust_t} = {expr_child};")
             }
         }
-        AnnotatedNodeT::DeRef(expr) => {
-            format!("*{}", convert_annotated_ast(expr))
+        AnnotatedNodeT::DeRef { id, rc, count } => {
+            let derefs: String =
+                (0..count.clone())
+                    .into_iter()
+                    .fold(String::new(), |mut acc, _| {
+                        acc.push_str("*");
+                        acc
+                    });
+            if *rc {
+                format!("{derefs}{id}.borrow()")
+            } else {
+                format!("{derefs}{id}")
+            }
         }
         AnnotatedNodeT::Adr { id, rc } => {
             if *rc {
@@ -176,8 +196,12 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
         AnnotatedNodeT::Eq => {
             format!("=")
         }
-        AnnotatedNodeT::Id(id) => {
-            format!("{id}")
+        AnnotatedNodeT::Id { id, rc } => {
+            if *rc {
+                format!("*{id}.borrow()")
+            } else {
+                format!("{id}")
+            }
         }
         AnnotatedNodeT::NumLiteral(n) => {
             format!("{n}")

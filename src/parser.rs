@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use crate::analyzer::AnnotatedNodeT;
+use crate::annotater::AnnotatedNodeT;
 use crate::error::{ErrType as ET, RhErr};
 use crate::lexer::{CType, LineNumHandler, Token};
 
@@ -133,7 +133,6 @@ impl NodeType {
             NodeType::Sub => AnnotatedNodeT::Sub,
             NodeType::Div => AnnotatedNodeT::Div,
             NodeType::Eq => AnnotatedNodeT::Eq,
-            NodeType::Id(s) => AnnotatedNodeT::Id(s.to_string()),
             NodeType::EqCmp => AnnotatedNodeT::EqCmp,
             NodeType::NeqCmp => AnnotatedNodeT::NeqCmp,
             NodeType::BOr => AnnotatedNodeT::BOr,

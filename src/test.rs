@@ -2,7 +2,7 @@ use std::{collections::HashMap, fs, ops::Range, process::Command};
 
 use crate::{
     analyzer::{self, VarData},
-    checker, converter, parse_c,
+    annotater, checker, converter, parse_c,
 };
 
 // #[test]
@@ -19,7 +19,7 @@ use crate::{
 /// Translates one-to-one
 #[test]
 fn three_mut() {
-    test(String::from(
+    let rust_code = test(String::from(
         "int main() {
             int n = 0;
             int* g = &n;
@@ -28,6 +28,7 @@ fn three_mut() {
             **m = 5;
         }",
     ));
+    validate(String::from("three_mut"), rust_code);
 }
 
 /// Invalid rust code if directly translated
@@ -43,19 +44,21 @@ fn three_mut() {
 /// ```
 #[test]
 fn value_overlap() {
-    test(String::from(
+    let rust_code = test(String::from(
         "int main() {
             int t = 0;
             int* g = &t;
             t = 1;
             *g = 2;
         }",
-    ))
+    ));
+
+    validate(String::from("value_overlap"), rust_code)
 }
 
 #[test]
 fn multi_function() {
-    test(String::from(
+    let rust_code = test(String::from(
         "int main() {
             int n = 0;
             int* g = &n;
@@ -66,9 +69,11 @@ fn multi_function() {
             *y = k + 6;
         }",
     ));
+
+    validate(String::from("multi_function"), rust_code);
 }
 
-fn test(code: String) {
+fn test(code: String) -> String {
     let ast = parse_c(code);
     ast.print(&mut 0);
     let map: HashMap<String, VarData> = HashMap::new();
@@ -84,18 +89,19 @@ fn test(code: String) {
 
     let errors = checker::borrow_check(&var_info);
     checker::adjust_ptr_type(errors, &mut var_info);
-    let annotated_ast = analyzer::annotate_ast(&ast, &var_info);
+    let annotated_ast = annotater::annotate_ast(&ast, &var_info);
     annotated_ast.print(&mut 0);
 
     let converted_rust = converter::convert_annotated_ast(&annotated_ast);
     println!("{converted_rust}");
-    validate(converted_rust);
+    converted_rust
 }
 
-fn validate(rust_code: String) {
-    fs::write("./test.rs", rust_code).expect("writing to succeed");
+fn validate(test_name: String, rust_code: String) {
+    let file_name = format!("./{test_name}_test.rs");
+    fs::write(file_name.clone(), rust_code).expect("writing to succeed");
     match Command::new("rustc")
-        .arg("./test.rs")
+        .arg(file_name)
         .spawn()
         .expect("Rust compilation failed")
         .wait()
@@ -104,10 +110,3 @@ fn validate(rust_code: String) {
         Err(err) => panic!("Test failed, {err}"),
     };
 }
-// fn test() -> i16 {
-//     let mut n = 0;
-//     let mut p = &mut n;
-//     let m = &mut p;
-//     **m = 6;
-//     return **m;
-// }
