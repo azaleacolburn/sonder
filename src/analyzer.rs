@@ -12,15 +12,35 @@ pub enum PtrType {
     MutRef,
     ImutRef,
 }
+
+/// The top-level datastructure that stores data about all the variables and referencing
+/// Stores a vector of the instances of addresses being taken, in order
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PtrData {
+pub struct AnalysisContext<'a> {
+    pub variables: HashMap<String, VarData<'a>>,
+    pub addresses: Vec<AdrData>,
+}
+
+impl<'a> AnalysisContext<'a> {
+    pub fn new_var(&mut self, id: String, data: VarData<'a>) {
+        self.variables.insert(id, data);
+    }
+    pub fn new_adr(&mut self, adr: AdrData) {
+        self.addresses.insert(id, data);
+    }
+}
+/// Data of a specific instance of the address of a variable being taken
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdrData {
     pub points_to: String,
     pub mutates: bool,
+    // Determine if ptrtype makes sense in a variable-independent context
     pub ptr_type: Vec<PtrType>,
+    pub line_taken: usize,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VarData<'a> {
-    pub ptr_data: Option<PtrData>,
+    pub ptr_data: Option<&'a AdrData>,
     // The type of ptr here is relevent for annotating adr
     // Reference order matters here, so we have to be careful
     pub pointed_to_by: Vec<&'a str>,
@@ -55,9 +75,9 @@ impl<'a> VarData<'a> {
 
 pub fn determine_var_mutability<'a>(
     root: &'a Node,
-    prev_vars: &HashMap<String, VarData<'a>>,
-) -> HashMap<String, VarData<'a>> {
-    let mut vars: HashMap<String, VarData> = prev_vars.clone();
+    prev_ctx: AnalysisContext<'a>,
+) -> AnalysisContext<'a> {
+    let mut ctx: AnalysisContext = prev_ctx.clone();
     if root.children.is_some() {
         root.children.as_ref().unwrap().iter().for_each(|node| {
             determine_var_mutability(node, &vars)
