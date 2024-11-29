@@ -102,8 +102,9 @@ fn test(code: String) -> String {
 }
 
 fn validate(test_name: String, rust_code: String) {
+    fs::create_dir_all("./translated/exe").expect("dir failed");
     let file_name = format!("./translated/{test_name}_test.rs");
-    fs::write(file_name.clone(), rust_code).expect("writing to succeed");
+    fs::write(file_name.clone(), rust_code).expect("writing code to file failed");
     match Command::new("rustc")
         .arg(file_name)
         .arg("--out-dir")
