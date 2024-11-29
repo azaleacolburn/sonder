@@ -6,7 +6,7 @@ Sonder is a static analyser and transpiler, for converting well-written C code t
 
 ## What does well-written mean?
 
-For the purposes of sonder, well-written means that for any given pointer the C code in question either
+For the purposes of sonder, well-written means that for any given pointer, the C code in question either
 
 - Treats it like a Rust reference in accordance with borrow-checking rules or
 - Treats it a cloned `Rc<RefCell<T>>`
