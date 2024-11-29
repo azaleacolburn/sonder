@@ -5,16 +5,6 @@ use crate::{
     annotater, checker, converter, parse_c,
 };
 
-// #[test]
-// fn sanity() {
-//     test(String::from(
-//         "int main() {
-//             int n = 0;
-//             int* g = &n;
-//         }",
-//     ));
-// }
-
 /// Valid use of pointers as if they were Rust references
 /// Translates one-to-one
 #[test]
@@ -35,9 +25,9 @@ fn three_mut() {
 /// Should be caught by the checker and a safe solution should be applied
 /// eg.
 /// ```rust
-/// fn main() {
+/// fn main() -> () {
 ///     let t: Rc<RefCell<i32>> = Rc::new(RefCell::new(0));
-///     let g = t.clone();
+///     let g: Rc<RefCell<i32>> = t.clone();
 ///     *t.borrow_mut() = 1;
 ///     *g.borrow_mut() = 2;
 /// }
@@ -56,6 +46,20 @@ fn value_overlap() {
     validate(String::from("value_overlap"), rust_code)
 }
 
+/// Invalid Rust code if directly translated
+/// Should be caught by the checker and a safe solution should be applied
+/// eg.
+/// ```rust
+/// fn main() -> () {
+///     let n: i32 = 0;
+///     let g: &i32 = 0;
+/// }
+/// fn test -> () {
+///     let k: Rc<RefCell<i32>> = Rc::new(RefCell::new(3));
+///     let y: Rc<RefCell<i32>> = k.clone();
+///     *y.borrow_mut() = *k.borrow() + 6;
+/// }
+/// ```
 #[test]
 fn multi_function() {
     let rust_code = test(String::from(
@@ -98,10 +102,12 @@ fn test(code: String) -> String {
 }
 
 fn validate(test_name: String, rust_code: String) {
-    let file_name = format!("./{test_name}_test.rs");
+    let file_name = format!("./translated/{test_name}_test.rs");
     fs::write(file_name.clone(), rust_code).expect("writing to succeed");
     match Command::new("rustc")
         .arg(file_name)
+        .arg("--out-dir")
+        .arg("./translated/exe")
         .spawn()
         .expect("Rust compilation failed")
         .wait()

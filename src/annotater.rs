@@ -1,0 +1,269 @@
+use std::{collections::HashMap, fmt::Display};
+
+use itertools::Itertools;
+
+use crate::{
+    analyzer::{count_derefs, find_ids, PtrData, PtrType, VarData},
+    lexer::CType,
+    parser::{AssignmentOpType, NodeType, TokenNode as Node},
+};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnnotatedNode {
+    pub token: AnnotatedNodeT,
+    pub children: Option<Vec<AnnotatedNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AnnotatedNodeT {
+    Program {
+        imports: Vec<String>,
+    },
+    Sub,
+    Div,
+    Eq,
+    Id {
+        id: String,
+        rc: bool,
+    }, // figure out if we want this here
+    EqCmp,
+    NeqCmp,
+    BOr,
+    BAnd,
+    BXor,
+    BOrEq,
+    BAndEq,
+    BXorEq,
+    SubEq,
+    AddEq,
+    DivEq,
+    MulEq,
+    Mul,
+    MNeg,
+    AndCmp,
+    OrCmp,
+    NumLiteral(usize),
+    Add,
+    If,
+    For,
+    While,
+    _Loop,
+    Break,
+    FunctionCall(String),
+    Scope(Option<CType>), // <-- anything that has {} is a scope, scope is how we're handling multiple statements, scopes return the last statement's result or void
+    Assignment {
+        op: AssignmentOpType,
+        id: String,
+        rc: bool,
+    },
+    DerefAssignment {
+        op: AssignmentOpType,
+        id: String,
+        rc: bool,
+        count: u8,
+    },
+    Declaration {
+        id: String,
+        is_mut: bool,
+        t: CType,
+        rc: bool,
+    },
+    PtrDeclaration {
+        id: String,
+        is_mut: bool,
+        ptr_data: PtrData,
+        t: CType,
+        adr: Box<AnnotatedNode>,
+        // Refers to it being an rc_ptr itself, not a
+        rc: bool,
+    },
+    Asm(String),
+    // This is handled by the ptr declaration for now
+    Adr {
+        id: String,
+        rc: bool,
+    },
+    DeRef {
+        id: String,
+        rc: bool,
+        count: u8,
+    },
+    ArrayDeclaration {
+        id: String,
+        t: CType,
+        size: usize,
+    },
+    FunctionDecaration {
+        id: String,
+        t: CType,
+    },
+    Type(CType),
+    Assert,
+    Return,
+    PutChar,
+    StructDeclaration(String),
+}
+impl Display for AnnotatedNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.token) // doesn't print values
+    }
+}
+
+impl AnnotatedNode {
+    pub fn print(&self, n: &mut i32) {
+        (0..*n).into_iter().for_each(|_| print!("\t"));
+        println!("{}", self);
+        *n += 1;
+        if let Some(children) = &self.children {
+            children.iter().for_each(|node| {
+                node.print(n);
+            })
+        }
+        *n -= 1;
+    }
+}
+pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>) -> AnnotatedNode {
+    let children = root.children.as_ref().unwrap_or(&vec![]).to_vec();
+    let annotated_node_children = Some(
+        children
+            .iter()
+            .map(|node| annotate_ast(node, var_info))
+            .collect(),
+    );
+    let token = match &root.token {
+        NodeType::Declaration(id, t, _) => {
+            let declaration_info = var_info.get(id).expect("Declared id not in map");
+            let is_mut = declaration_info.is_mut_by_ptr || declaration_info.is_mut_direct;
+            let rc = declaration_info.rc;
+            AnnotatedNodeT::Declaration {
+                id: id.to_string(),
+                is_mut,
+                t: t.clone(),
+                rc,
+            }
+        }
+        NodeType::PtrDeclaration(id, t, adr) => {
+            let ptr_info = var_info.get(id).expect("Ptr not found in info map");
+            let is_mut = ptr_info.is_mut_by_ptr || ptr_info.is_mut_direct;
+            let rc = ptr_info.rc;
+            let annotated_adr = Box::new(annotate_ast(adr, var_info));
+            let ptr_data = ptr_info
+                .ptr_data
+                .clone()
+                .expect("Declared Ptr not in info map");
+            AnnotatedNodeT::PtrDeclaration {
+                id: id.to_string(),
+                is_mut,
+                ptr_data,
+                t: t.clone(),
+                adr: annotated_adr,
+                rc,
+            }
+        }
+        NodeType::Adr(id) => {
+            // `(&mut t + (&b))` illegal
+            // `&mut &mut &t` illegal
+            // Unsafe assumption: Adresses are always immutable unless explicitely annotated otherwise by the ptr declaration
+            // `list.append(&mut other_list)` isn't something we're going to worry about for now
+            let rc = var_info
+                .get(id)
+                .as_ref()
+                .expect("Id of adr not found in map")
+                .rc;
+            AnnotatedNodeT::Adr {
+                id: id.to_string(),
+                rc,
+            }
+        }
+        NodeType::DerefAssignment(op, adr) => {
+            let ids = find_ids(&adr);
+            let derefed_id = ids[0].clone();
+            let count = count_derefs(&adr);
+            let rc = *var_info
+                .get(&derefed_id)
+                .as_ref()
+                .expect("dereffed_id not in map")
+                .ptr_data
+                .as_ref()
+                .expect("ptr not ptr")
+                .ptr_type
+                .last()
+                .unwrap()
+                == PtrType::RcClone;
+            AnnotatedNodeT::DerefAssignment {
+                op: op.clone(),
+                id: derefed_id.clone(),
+                rc,
+                count,
+            }
+        }
+        NodeType::DeRef(expr) => {
+            let count = count_derefs(expr);
+            let ids = find_ids(&expr);
+            let derefed_id = ids[0].clone();
+            let rc = *var_info
+                .get(&derefed_id)
+                .as_ref()
+                .expect("dereffed_id not in map")
+                .ptr_data
+                .as_ref()
+                .expect("ptr not ptr")
+                .ptr_type
+                .last()
+                .unwrap()
+                == PtrType::RcClone;
+            let annotated_expr = Box::new(annotate_ast(expr, var_info));
+
+            AnnotatedNodeT::DeRef {
+                id: derefed_id.clone(),
+                rc,
+                count,
+            }
+        }
+        NodeType::Id(id) => {
+            let rc = var_info.get(id).as_ref().expect("Id not in map").rc;
+            AnnotatedNodeT::Id {
+                id: id.to_string(),
+                rc,
+            }
+        }
+        NodeType::Program => {
+            let imports: Vec<String> = var_info
+                .iter()
+                .flat_map(|(_, data)| match &data.ptr_data {
+                    Some(ptr_data) => ptr_data
+                        .ptr_type
+                        .iter()
+                        .map(|ptr_type| match ptr_type {
+                            PtrType::Rc => String::from("use std::rc::Rc;"),
+                            PtrType::RefCell => String::from("use std::cell::RefCell;"),
+                            PtrType::RcClone => String::from("use std::{rc::Rc, cell::RefCell};"),
+                            _ => String::from(""),
+                        })
+                        .collect(),
+                    None => vec![String::from("")],
+                })
+                .filter(|s| *s != String::new())
+                .unique()
+                .collect();
+            AnnotatedNodeT::Program { imports }
+        }
+        NodeType::Assignment(op, id) => {
+            let rc = var_info
+                .get(id)
+                .as_ref()
+                .expect("Id being assigned to not in var_info")
+                .rc;
+            AnnotatedNodeT::Assignment {
+                id: id.clone(),
+                op: op.clone(),
+                rc,
+            }
+        }
+        node => node.to_annotated_node(),
+    };
+    AnnotatedNode {
+        token,
+        children: annotated_node_children,
+    }
+}
