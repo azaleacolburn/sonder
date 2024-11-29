@@ -2,7 +2,7 @@ use std::{collections::HashMap, fs, ops::Range, process::Command};
 
 use crate::{
     analyzer::{self, VarData},
-    annotater, checker, converter, parse_c,
+    annotater, checker, convert_to_rust_code, converter, parse_c,
 };
 
 /// Valid use of pointers as if they were Rust references
@@ -79,26 +79,7 @@ fn multi_function() {
 
 fn test(code: String) -> String {
     let ast = parse_c(code);
-    ast.print(&mut 0);
-    let map: HashMap<String, VarData> = HashMap::new();
-
-    let mut var_info = analyzer::determine_var_mutability(&ast, &map);
-    println!(
-        "{:?}",
-        var_info
-            .iter()
-            .map(|(id, data)| (id.clone(), data.non_borrowed_lines.clone()))
-            .collect::<Vec<(String, Vec<Range<usize>>)>>()
-    );
-
-    let errors = checker::borrow_check(&var_info);
-    checker::adjust_ptr_type(errors, &mut var_info);
-    let annotated_ast = annotater::annotate_ast(&ast, &var_info);
-    annotated_ast.print(&mut 0);
-
-    let converted_rust = converter::convert_annotated_ast(&annotated_ast);
-    println!("{converted_rust}");
-    converted_rust
+    convert_to_rust_code(ast)
 }
 
 fn validate(test_name: String, rust_code: String) {
