@@ -87,6 +87,30 @@ fn multi_ref() {
     );
 }
 
+/// This is actually an interesting case
+/// Based on our current assumption, this is illegal, because we're assigning a reference in
+/// something that isn't a ptr declaration
+/// So the issue becomes, since during conversion, addresses just return their id and let the
+/// higher node handle the rest, and deref_assignment_node isn't handling the address level, the
+/// address never gets taken in the generated rust code
+///
+/// In addition to that, there's some cascading mutability issue that the checker isn't picking up
+/// on
+#[test]
+fn crazy_multi_ref() {
+    validate(
+        "int main() {
+            int n = 0;
+            int* g = &n;
+            int* k = &n;
+            int** h = &g;
+            int p = 3;
+            *h = &p;
+        }",
+        "crazy_multi_ref",
+    );
+}
+
 fn validate(c_code: &str, test_name: &str) {
     let ast = parse_c(c_code.to_string());
     let rust_code = convert_to_rust_code(ast);

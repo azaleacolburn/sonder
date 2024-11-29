@@ -21,6 +21,8 @@ pub struct PtrData {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VarData<'a> {
     pub ptr_data: Option<PtrData>,
+    // The type of ptr here is relevent for annotating adr
+    // Reference order matters here, so we have to be careful
     pub pointed_to_by: Vec<&'a str>,
     pub is_mut_by_ptr: bool,
     pub is_mut_direct: bool,

@@ -174,6 +174,9 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
                 rc,
             }
         }
+        // It seems like assignments and deref assignments need to handle referencing themselves
+        // Unless we want Adr nodes to know what kind of reference they are (which actually is
+        // sounding like the right decision now)
         NodeType::DerefAssignment(op, adr) => {
             let ids = find_ids(&adr);
             let derefed_id = ids[0].clone();

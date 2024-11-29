@@ -43,12 +43,46 @@ list.append(&mut other_list) // not something we're going to worry about for now
 ```
 
 In the future, we will treat arguments as being bound to parameters as variables
-So,`&mut other_list` will be treated as if it's bound to the variable value inside the function
+So,`&mut other_list` will be treated as if it's bound to the variable value inside the function ([see below](#refactor_ref_tracking))
 
 Any of these will immediantly result in raw pointers being used, although at the moment, they panic
 
-## TODO
+## Refactoring reference tracking {#refactor_ref_tracking}
 
+### Reasoning for the refactor
+
+Currently every instance of an address being taken it is assumed to be assigned to a pointer variable.
+Specifically, every pointer variable was assumed to be directly tied to that reference and only that reference.
+This is really convinient for handling all analysis in one big `vars` map data-structure, but causes problems if we want to do things like this:
+
+```c
+some_function(&p); // &p is not tied to any variable at all
+
+// or
+
+int n = 0;
+int g = &n;
+int m = 1;
+g = &m; // g points to different things at different times AHHHHHH
+```
+
+In both cases, a PtrDeclaration isn't handling the reference (a FunctionCall and Assignment) are respectively.
+In the first case, the plan was to have the address argument be assigned to the corredsponding parameter variable and let however we handle scope figure this out.
+However, the second case presents a challenge, `g` points to different values at different times, which makes the static analysis we've been doing _really_ tricky.
+Instead of pushing the first issue back to be dealt with by whatever code handles scopes and functions, it seems that we should handle them with a single refactor of the way references are tracked in analysis.
+
+### How to represent references going forward
+
+This will mean having a seperate data-structure for tracking references and having variables optionally link to them or vise versa, instead of ptr_data being optionally contained within var_data.
+This linking could be done via Bimap or mutual references.
+The data structure for keeping track of references would need to preserve the order that the references are taken in, so a vector seems fine
+
+The question then becomes, how do we link address and variable?
+An optional field in VarData seems like the best choice.
+
+## Todo
+
+- Rethink reference tracking
 - Write more test cases for the current prototype
 - Figure out how to represent scope
 - Create a system for managing scope
