@@ -30,9 +30,20 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(var) = var {
             self.variables.entry(var).and_modify(|var_data| {
-                var_data.ptr_data.push(adr.clone());
+                var_data.addresses.push(adr.clone());
             });
         }
+    }
+
+    pub fn get_var(&self, id: &str) -> Option<&VarData<'a>> {
+        self.variables.get(id)
+    }
+
+    /// Gets an address, given the id the address points to
+    pub fn get_adr(&self, var_id: &str) -> Option<&Rc<RefCell<AdrData<'a>>>> {
+        self.addresses
+            .iter()
+            .find(|adr_data| adr_data.borrow().adr_of == var_id)
     }
 
     pub fn mut_var<F>(&mut self, id: String, f: F)
@@ -47,7 +58,7 @@ impl<'a> AnalysisContext<'a> {
             .get(id)
             .as_ref()
             .expect("Checked ptr not in ctx")
-            .ptr_data
+            .addresses
             .len()
             > 0
     }
@@ -95,8 +106,8 @@ pub struct AdrData<'a> {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VarData<'a> {
-    // An emptry string should indicate a non-ptr variable
-    pub ptr_data: Vec<Rc<RefCell<AdrData<'a>>>>,
+    // An emptry vector indicates a non-ptr variable
+    pub addresses: Vec<Rc<RefCell<AdrData<'a>>>>,
     // The type of ptr here is relevent for annotating adr
     // Reference order matters here, so we have to be careful
     pub pointed_to_by: Vec<&'a str>,
@@ -169,7 +180,7 @@ pub fn determine_var_mutability<'a>(
         NodeType::PtrDeclaration(id, _, expr) => {
             ctx = determine_var_mutability(expr, ctx);
 
-            let expr_ptrs: Vec<&String> = find_ids(expr)
+            let expr_ptrs: Vec<&String> = find_ids(&expr)
                 .iter()
                 .filter(|id: &&String| ctx.is_ptr(id))
                 .collect();
@@ -184,16 +195,37 @@ pub fn determine_var_mutability<'a>(
                 // Ptr arithmatic outside the context of arrays is automatically a raw ptr
                 vec![PtrType::RawPtrImut]
             } else {
-                panic!("An id must be present on the right side of a ptr declaration");
+                vec![PtrType::ImutRef]
             };
 
-            let ptr_data = AdrData {
-                points_to: expr_ids[0].clone(),
-                mutates: false,
-                ptr_type: ptr_chain_placeholder_types,
-            };
+            let addresses = find_addresses(&expr);
+            // TODO: Add ptr chain len for non-overlapping ptrs
+            let points_to = if addresses.len() == 1 {
+                addresses.last()
+            } else if addresses.len() > 1 {
+                if let Some(last) = ptr_type_chain.last_mut() {
+                    *last = PtrType::RawPtrImut;
+                }
+                addresses.last()
+            } else if addresses.len() == 0 {
+                if expr_ptrs.len() == 0 {
+                    // TODO: Allow empty expressions in the future
+                    panic!("PtrDeclaration to nothing");
+                }
+                expr_ptrs.last().map(|n| &**n)
+            } else {
+                panic!(".len() is a usize");
+            }
+            .unwrap();
+
+            let adr_data = ctx
+                .get_adr(&points_to)
+                .expect("Points to algorithm failed")
+                .clone();
+            adr_data.borrow_mut().held_by = Some(&id);
+
             let var = VarData {
-                ptr_data,
+                addresses: vec![adr_data],
                 pointed_to_by: vec![],
                 is_mut_by_ptr: false,
                 is_mut_direct: false,
@@ -205,12 +237,11 @@ pub fn determine_var_mutability<'a>(
                 set_start_borrow: false,
             };
             // TODO: Figure out how to annotate specific address call as mutable or immutable
-            vars.insert(id.to_string(), var);
+            ctx.new_var(id.to_string(), var);
             // Doesn't support &that + &this
             // This immediantly breakes borrow checking rules
-            vars.entry(expr_ids[0].to_string()).and_modify(|var_data| {
+            ctx.mut_var(points_to.to_string(), |var_data| {
                 var_data.pointed_to_by.push(id);
-                var_data.add_non_borrowed_line(root.line);
             });
         }
         NodeType::DerefAssignment(_, l_side) => {
@@ -302,6 +333,21 @@ pub fn determine_var_mutability<'a>(
         _ => {}
     };
     vars
+}
+
+pub fn find_addresses(root: &Node) -> Vec<String> {
+    let mut vec = match root.children.as_ref() {
+        Some(children) => children
+            .iter()
+            .flat_map(find_addresses)
+            .collect::<Vec<String>>(),
+        None => vec![],
+    };
+    match &root.token {
+        NodeType::Adr(id) => vec.push(id.to_string()),
+        _ => {}
+    }
+    vec
 }
 
 pub fn count_derefs(root: &Node) -> u8 {
