@@ -76,7 +76,7 @@ impl<'a> AnalysisContext<'a> {
             .get(&root)
             .as_ref()
             .expect("Root in traversing ptr chain not found in map")
-            .ptr_data;
+            .addresses;
 
         match ptr_data.is_empty() {
             false => {
@@ -254,15 +254,16 @@ pub fn determine_var_mutability<'a>(
                 panic!("Unsupported: no_ids being dereffed")
             }
             let num_of_vars = count_derefs(&l_side) + 1;
-            let mut ptr_chain = traverse_pointer_chain(&deref_ids[0], &vars, 0, num_of_vars)
+            let mut ptr_chain = ctx
+                .traverse_pointer_chain(deref_ids[0], 0, num_of_vars)
                 .into_iter()
                 .rev();
             // eg. [m, p, n]
             let first_ptr = ptr_chain.next().expect("No pointers in chain");
-            vars.entry(first_ptr.clone()).and_modify(|var_data| {
+            ctx.mut_var(first_ptr.clone(), |var_data| {
                 var_data.add_non_borrowed_line(root.line);
                 var_data
-                    .ptr_data
+                    .addresses
                     .as_mut()
                     .expect("First ptr in deref not ptr")
                     .mutates = true;
