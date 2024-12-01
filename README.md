@@ -51,6 +51,8 @@ Any of these will immediantly result in raw pointers being used, although at the
 
 ### Reasoning for the refactor
 
+The issue is, while every ref should be attatched to a symbol, not all c pointers will be. This means that we need a way to safely handle them without just panicking because we have a vector with more than one element.
+
 Currently every instance of an address being taken it is assumed to be assigned to a pointer variable.
 Specifically, every pointer variable was assumed to be directly tied to that reference and only that reference.
 This is really convinient for handling all analysis in one big `vars` map data-structure, but causes problems if we want to do things like this:

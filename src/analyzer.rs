@@ -1,4 +1,4 @@
-use std::{cmp, collections::HashMap, ops::Range};
+use std::{cell::RefCell, cmp, collections::HashMap, ops::Range, rc::Rc};
 
 use crate::parser::{NodeType, TokenNode as Node};
 
@@ -18,29 +18,85 @@ pub enum PtrType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnalysisContext<'a> {
     pub variables: HashMap<String, VarData<'a>>,
-    pub addresses: Vec<AdrData>,
+    pub addresses: Vec<Rc<RefCell<AdrData<'a>>>>,
 }
 
 impl<'a> AnalysisContext<'a> {
     pub fn new_var(&mut self, id: String, data: VarData<'a>) {
         self.variables.insert(id, data);
     }
-    pub fn new_adr(&mut self, adr: AdrData) {
-        self.addresses.insert(id, data);
+    pub fn new_adr(&mut self, adr: Rc<RefCell<AdrData<'a>>>, var: Option<String>) {
+        self.addresses.push(adr.clone());
+
+        if let Some(var) = var {
+            self.variables.entry(var).and_modify(|var_data| {
+                var_data.ptr_data.push(adr.clone());
+            });
+        }
+    }
+
+    pub fn mut_var<F>(&mut self, id: String, f: F)
+    where
+        F: FnOnce(&mut VarData),
+    {
+        self.variables.entry(id).and_modify(f);
+    }
+
+    pub fn is_ptr(&self, id: &String) -> bool {
+        self.variables
+            .get(id)
+            .as_ref()
+            .expect("Checked ptr not in ctx")
+            .ptr_data
+            .len()
+            > 0
+    }
+    pub fn traverse_pointer_chain(
+        &self,
+        root: String,
+        total_depth: u8,
+        max_depth: u8,
+    ) -> Vec<String> {
+        if total_depth == max_depth {
+            return vec![];
+        }
+        let ptr_data = &self
+            .variables
+            .get(&root)
+            .as_ref()
+            .expect("Root in traversing ptr chain not found in map")
+            .ptr_data;
+
+        match ptr_data.is_empty() {
+            false => {
+                let mut vec = self.traverse_pointer_chain(
+                    ptr_data.last().unwrap().borrow().adr_of.clone(),
+                    total_depth + 1,
+                    max_depth,
+                );
+                vec.push(root.to_string());
+                vec
+            }
+            true => {
+                vec![root.to_string()]
+            }
+        }
     }
 }
 /// Data of a specific instance of the address of a variable being taken
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AdrData {
-    pub points_to: String,
+pub struct AdrData<'a> {
+    pub adr_of: String,
     pub mutates: bool,
+    pub held_by: Option<&'a str>,
     // Determine if ptrtype makes sense in a variable-independent context
     pub ptr_type: Vec<PtrType>,
     pub line_taken: usize,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VarData<'a> {
-    pub ptr_data: Option<&'a AdrData>,
+    // An emptry string should indicate a non-ptr variable
+    pub ptr_data: Vec<Rc<RefCell<AdrData<'a>>>>,
     // The type of ptr here is relevent for annotating adr
     // Reference order matters here, so we have to be careful
     pub pointed_to_by: Vec<&'a str>,
@@ -80,21 +136,18 @@ pub fn determine_var_mutability<'a>(
     let mut ctx: AnalysisContext = prev_ctx.clone();
     if root.children.is_some() {
         root.children.as_ref().unwrap().iter().for_each(|node| {
-            determine_var_mutability(node, &vars)
-                .iter()
-                .for_each(|(id, var_data)| {
-                    vars.insert(id.to_string(), var_data.clone());
-                });
+            // TODO: This feels illegal
+            ctx = determine_var_mutability(node, ctx);
         })
     }
 
     match &root.token {
         NodeType::Declaration(id, _, _) => {
             println!("Declaration: {id}");
-            vars.insert(
+            ctx.new_var(
                 id.to_string(),
                 VarData {
-                    ptr_data: None,
+                    ptr_data: vec![],
                     pointed_to_by: vec![],
                     is_mut_by_ptr: false,
                     is_mut_direct: false,
@@ -108,35 +161,37 @@ pub fn determine_var_mutability<'a>(
             );
         }
         NodeType::Assignment(_, id) => {
-            vars.entry(id.to_string()).and_modify(|var_data| {
+            ctx.mut_var(id.to_string(), |var_data| {
                 var_data.is_mut_direct = true;
                 var_data.add_non_borrowed_line(root.line);
             });
         }
         NodeType::PtrDeclaration(id, _, expr) => {
-            determine_var_mutability(expr, &vars)
-                .iter()
-                .for_each(|(id, var_data)| {
-                    vars.insert(id.to_string(), var_data.clone());
-                });
+            ctx = determine_var_mutability(expr, ctx);
 
-            let expr_ids = find_ids(expr);
-            if expr_ids.len() > 1 {
-                panic!("More than one id in expr: `&(a + b)` not legal");
-            } else if expr_ids.len() != 1 {
-                panic!("ptr to no id");
-            }
-            // As we go, we replace certain elements in this vector with `PtrType::MutRef`
-            let ptr_chain_placeholder_types =
-                traverse_pointer_chain(&expr_ids[0], &vars, 0, u8::MAX)
+            let expr_ptrs: Vec<&String> = find_ids(expr)
+                .iter()
+                .filter(|id: &&String| ctx.is_ptr(id))
+                .collect();
+
+            let ptr_type_chain: Vec<PtrType> = if expr_ptrs.len() == 1 {
+                // As we go, we replace certain elements in this vector with `PtrType::MutRef`
+                ctx.traverse_pointer_chain(expr_ptrs[0].clone(), 0, u8::MAX)
                     .iter()
                     .map(|_| PtrType::ImutRef)
-                    .collect();
-            let ptr_data = Some(PtrData {
+                    .collect()
+            } else if expr_ptrs.len() > 1 {
+                // Ptr arithmatic outside the context of arrays is automatically a raw ptr
+                vec![PtrType::RawPtrImut]
+            } else {
+                panic!("An id must be present on the right side of a ptr declaration");
+            };
+
+            let ptr_data = AdrData {
                 points_to: expr_ids[0].clone(),
                 mutates: false,
                 ptr_type: ptr_chain_placeholder_types,
-            });
+            };
             let var = VarData {
                 ptr_data,
                 pointed_to_by: vec![],
@@ -216,8 +271,22 @@ pub fn determine_var_mutability<'a>(
                 .and_modify(|var_data| var_data.add_non_borrowed_line(root.line));
         }
         NodeType::Adr(id) => {
-            vars.entry(id.to_string())
-                .and_modify(|var_data| var_data.new_borrow(root.line));
+            let ptr_type_chain = ctx
+                .traverse_pointer_chain(id.clone(), 0, u8::MAX)
+                .iter()
+                .map(|_| PtrType::ImutRef)
+                .collect();
+            let adr_data = Rc::new(RefCell::new(AdrData {
+                adr_of: id.to_string(),
+                mutates: false,
+                held_by: None,
+                ptr_type: ptr_type_chain,
+                line_taken: root.line,
+            }));
+            // We don't know if a variable owns this ref yet
+            // that's for the ptr_declaration to figure out
+            ctx.new_adr(adr_data, None);
+            ctx.mut_var(id.to_string(), |var_data| var_data.new_borrow(root.line));
         }
         NodeType::DeRef(adr) => {
             let ids = find_ids(&adr);
@@ -248,33 +317,6 @@ pub fn count_derefs(root: &Node) -> u8 {
         _ => {}
     };
     count
-}
-
-fn traverse_pointer_chain<'a>(
-    root: &'a str,
-    var_info: &HashMap<String, VarData<'a>>,
-    total_depth: u8,
-    max_depth: u8,
-) -> Vec<String> {
-    if total_depth == max_depth {
-        return vec![];
-    }
-    let is_ptr = &var_info
-        .get(root)
-        .as_ref()
-        .expect("Root not found in map")
-        .ptr_data;
-    match is_ptr {
-        Some(ref ptr_data) => {
-            let mut vec =
-                traverse_pointer_chain(&ptr_data.points_to, var_info, total_depth + 1, max_depth);
-            vec.push(root.to_string());
-            vec
-        }
-        None => {
-            vec![root.to_string()]
-        }
-    }
 }
 
 pub fn find_ids<'a>(root: &'a Node) -> Vec<String> {
