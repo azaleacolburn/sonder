@@ -158,7 +158,7 @@ pub fn determine_var_mutability<'a>(
             ctx.new_var(
                 id.to_string(),
                 VarData {
-                    ptr_data: vec![],
+                    add: vec![],
                     pointed_to_by: vec![],
                     is_mut_by_ptr: false,
                     is_mut_direct: false,

@@ -2,6 +2,8 @@ use crate::analyzer::{PtrType, VarData};
 use std::collections::HashMap;
 use std::ops::Range;
 
+// TODO: Derermine if overlapping value uses mutate or don't mutate
+// If it doesn't mutate, clone the underlying value instead
 #[derive(Debug, Clone)]
 pub enum BorrowError {
     MutMutOverlap,
