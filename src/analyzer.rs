@@ -110,7 +110,7 @@ pub struct VarData<'a> {
     pub addresses: Vec<Rc<RefCell<AdrData<'a>>>>,
     // The type of ptr here is relevent for annotating adr
     // Reference order matters here, so we have to be careful
-    pub pointed_to_by: Vec<&'a str>,
+    pub pointed_to_by: Vec<String>,
     pub is_mut_by_ptr: bool,
     pub is_mut_direct: bool,
     pub rc: bool,
@@ -158,7 +158,7 @@ pub fn determine_var_mutability<'a>(
             ctx.new_var(
                 id.to_string(),
                 VarData {
-                    add: vec![],
+                    addresses: vec![],
                     pointed_to_by: vec![],
                     is_mut_by_ptr: false,
                     is_mut_direct: false,
@@ -180,12 +180,10 @@ pub fn determine_var_mutability<'a>(
         NodeType::PtrDeclaration(id, _, expr) => {
             ctx = determine_var_mutability(expr, ctx);
 
-            let expr_ptrs: Vec<&String> = find_ids(&expr)
-                .iter()
-                .filter(|id: &&String| ctx.is_ptr(id))
-                .collect();
+            let ids = find_ids(&expr);
+            let expr_ptrs: Vec<&String> = ids.iter().filter(|id| ctx.is_ptr(id)).collect();
 
-            let ptr_type_chain: Vec<PtrType> = if expr_ptrs.len() == 1 {
+            let mut ptr_type_chain: Vec<PtrType> = if expr_ptrs.len() == 1 {
                 // As we go, we replace certain elements in this vector with `PtrType::MutRef`
                 ctx.traverse_pointer_chain(expr_ptrs[0].clone(), 0, u8::MAX)
                     .iter()
@@ -241,7 +239,7 @@ pub fn determine_var_mutability<'a>(
             // Doesn't support &that + &this
             // This immediantly breakes borrow checking rules
             ctx.mut_var(points_to.to_string(), |var_data| {
-                var_data.pointed_to_by.push(id);
+                var_data.pointed_to_by.push(id.clone());
             });
         }
         NodeType::DerefAssignment(_, l_side) => {
@@ -255,52 +253,38 @@ pub fn determine_var_mutability<'a>(
             }
             let num_of_vars = count_derefs(&l_side) + 1;
             let mut ptr_chain = ctx
-                .traverse_pointer_chain(deref_ids[0], 0, num_of_vars)
+                .traverse_pointer_chain(deref_ids[0].clone(), 0, num_of_vars)
                 .into_iter()
                 .rev();
             // eg. [m, p, n]
             let first_ptr = ptr_chain.next().expect("No pointers in chain");
             ctx.mut_var(first_ptr.clone(), |var_data| {
                 var_data.add_non_borrowed_line(root.line);
-                var_data
-                    .addresses
-                    .as_mut()
-                    .expect("First ptr in deref not ptr")
-                    .mutates = true;
-                var_data
-                    .ptr_data
-                    .as_mut()
-                    .expect("First ptr in deref not ptr")
-                    .ptr_type
-                    .fill(PtrType::MutRef);
+                let adr = var_data.addresses.last().expect("Variable not ptr");
+                adr.borrow_mut().mutates = true;
+                adr.borrow_mut().ptr_type.fill(PtrType::MutRef);
             });
 
             ptr_chain.clone().enumerate().for_each(|(i, var)| {
                 if i != ptr_chain.len() - 1 {
-                    vars.entry(var.clone()).and_modify(|var_data| {
-                        var_data
-                            .ptr_data
-                            .as_mut()
-                            .expect("Non-last in chain not ptr")
-                            .mutates = true;
-                        let type_chain = &mut var_data
-                            .ptr_data
-                            .as_mut()
-                            .expect("Non-last in chain not ptr")
-                            .ptr_type;
+                    ctx.mut_var(var.clone(), |var_data| {
+                        let adr = var_data.addresses.last().expect("Variable not ptr");
+
+                        adr.borrow_mut().mutates = true;
+
+                        let mut type_chain = adr.borrow_mut().ptr_type;
                         for type_chain_i in i..type_chain.len() {
                             type_chain[type_chain_i] = PtrType::MutRef;
                         }
                     });
                 }
-                vars.entry(var).and_modify(|var_data| {
-                    var_data.is_mut_by_ptr = true;
-                });
+                ctx.mut_var(var, |var_data| var_data.is_mut_by_ptr = true);
             });
         }
         NodeType::Id(id) => {
-            vars.entry(id.to_string())
-                .and_modify(|var_data| var_data.add_non_borrowed_line(root.line));
+            ctx.mut_var(id.to_string(), |var_data| {
+                var_data.add_non_borrowed_line(root.line)
+            });
         }
         NodeType::Adr(id) => {
             let ptr_type_chain = ctx
@@ -327,13 +311,11 @@ pub fn determine_var_mutability<'a>(
                 panic!("more than one or 0 ids derefed");
             }
             let id = ids[0].clone();
-            vars.entry(id).and_modify(|var_data| {
-                var_data.add_non_borrowed_line(root.line);
-            });
+            ctx.mut_var(id, |var_data| var_data.add_non_borrowed_line(root.line));
         }
         _ => {}
     };
-    vars
+    ctx
 }
 
 pub fn find_addresses(root: &Node) -> Vec<String> {
