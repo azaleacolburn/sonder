@@ -61,7 +61,7 @@ pub fn adjust_ptr_type<'a>(
                 var_data
                     .ptr_data
                     .as_mut()
-                    .expect("same leveel ptr not ptr in map")
+                    .expect("same level ptr not ptr in map")
                     // TODO: We want the specific reference that applies at the same level of the
                     // problematic ptr
                     // This is a really hard problem
@@ -109,7 +109,6 @@ pub fn borrow_check<'a>(vars: &HashMap<String, VarData<'a>>) -> Vec<(String, Bor
                     )
                 })
                 .collect();
-            println!("{id} is pointed to by: {:?}", pointed_to_by);
             let pointed_to_by_mutably = pointed_to_by
                 .iter()
                 .filter(|(_, _, ref_type)| *ref_type == PtrType::MutRef);
@@ -145,10 +144,6 @@ pub fn borrow_check<'a>(vars: &HashMap<String, VarData<'a>>) -> Vec<(String, Bor
                         .collect::<Vec<(String, BorrowError)>>()
                 })
                 .collect();
-            println!(
-                "value_overlaps_with_mut_ptr {id}: {:?}\nmutable_ref_overlaps {id}: {:?}",
-                value_overlaps_with_mut_ptr, mutable_ref_overlaps
-            );
             value_overlaps_with_mut_ptr.append(&mut mutable_ref_overlaps);
             value_overlaps_with_mut_ptr
         })

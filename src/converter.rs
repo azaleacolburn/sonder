@@ -103,7 +103,6 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                     });
 
             if *rc {
-                println!("DerefAssignment");
                 format!("{derefs}{id}.borrow_mut() {rust_op} {expr_child};")
             } else {
                 format!("{derefs}{id} {rust_op} {expr_child};")
@@ -251,7 +250,6 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
         }
         AnnotatedNodeT::Program { imports } => {
             let mut t = imports.clone();
-            println!("imports: {:?}", imports);
             t.push(
                 root.children
                     .as_ref()

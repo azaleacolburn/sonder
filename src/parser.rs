@@ -94,7 +94,6 @@ impl AssignmentOpType {
 
 impl NodeType {
     fn from_token(tok: &Token) -> Result<NodeType, ()> {
-        println!("tok: {:?}", tok);
         match tok {
             Token::Sub => Ok(NodeType::Sub),
             Token::Div => Ok(NodeType::Div),
@@ -235,7 +234,6 @@ impl TokenHandler {
     }
 
     pub fn new_err(&self, err: ET) -> RhErr {
-        println!("{:?}", err);
         RhErr {
             err,
             line: self.line(),
@@ -394,7 +392,6 @@ fn scalar_declaration_statement(
 fn arithmetic_expression(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
     let mut left = arithmetic_term(token_handler)?;
     let mut curr = token_handler.get_token().clone();
-    println!("Expression curr: {:?}", curr);
     while curr == Token::Add || curr == Token::Sub {
         token_handler.next_token();
         let right = arithmetic_term(token_handler)?;
@@ -411,7 +408,6 @@ fn arithmetic_expression(token_handler: &mut TokenHandler) -> Result<TokenNode, 
 fn arithmetic_term(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
     let mut left: TokenNode = arithmetic_factor(token_handler)?;
     let mut curr = token_handler.get_token().clone();
-    println!("Term curr: {:?}", curr);
     while curr == Token::Star || curr == Token::Div {
         token_handler.next_token();
         let right = arithmetic_factor(token_handler)?;

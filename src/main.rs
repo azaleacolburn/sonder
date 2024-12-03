@@ -26,7 +26,7 @@ fn parse_c(contents: String) -> TokenNode {
         .expect("Failed to lex tokens, please provide valid C code");
     println!("{:?}", tokens);
     println!("{:?}", line_numbers);
-    parser::program(tokens, line_numbers, true).expect("Failed to parse token stream")
+    parser::program(tokens, line_numbers, false).expect("Failed to parse token stream")
 }
 
 fn convert_to_rust_code(ast: TokenNode) -> String {
@@ -34,13 +34,13 @@ fn convert_to_rust_code(ast: TokenNode) -> String {
     let map: HashMap<String, VarData> = HashMap::new();
 
     let mut var_info = analyzer::determine_var_mutability(&ast, &map);
-    println!(
-        "{:?}",
-        var_info
-            .iter()
-            .map(|(id, data)| (id.clone(), data.non_borrowed_lines.clone()))
-            .collect::<Vec<(String, Vec<Range<usize>>)>>()
-    );
+    // println!(
+    //     "{:?}",
+    //     var_info
+    //         .iter()
+    //         .map(|(id, data)| (id.clone(), data.non_borrowed_lines.clone()))
+    //         .collect::<Vec<(String, Vec<Range<usize>>)>>()
+    // );
 
     let errors = checker::borrow_check(&var_info);
     checker::adjust_ptr_type(errors, &mut var_info);

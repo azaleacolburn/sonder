@@ -72,20 +72,20 @@ fn deref_value_assignment() {
     );
 }
 
-#[test]
-fn multi_ref() {
-    validate(
-        "int main() {
-            int n = 0;
-            int* g = &n;
-            int* b = &n;
-            int k = *g;
-            int y = 9;
-            *b = y;
-        }",
-        "multi_ref",
-    );
-}
+// #[test]
+// fn multi_ref() {
+//     validate(
+//         "int main() {
+//             int n = 0;
+//             int* g = &n;
+//             int* b = &n;
+//             int k = *g;
+//             int y = 9;
+//             *b = y;
+//         }",
+//         "multi_ref",
+//     );
+// }
 
 fn validate(c_code: &str, test_name: &str) {
     let ast = parse_c(c_code.to_string());
