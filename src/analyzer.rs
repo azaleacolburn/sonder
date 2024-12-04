@@ -22,6 +22,12 @@ pub struct AnalysisContext<'a> {
 }
 
 impl<'a> AnalysisContext<'a> {
+    pub fn new() -> AnalysisContext<'a> {
+        AnalysisContext {
+            variables: HashMap::new(),
+            addresses: vec![],
+        }
+    }
     pub fn new_var(&mut self, id: String, data: VarData<'a>) {
         self.variables.insert(id, data);
     }
@@ -99,18 +105,18 @@ impl<'a> AnalysisContext<'a> {
     /// - Variable doesn't exist in variables
     /// - Variable doesn't exist on given line
     /// - Variable not a ptr or never initialized
-    pub fn find_which_ref_at_id(&self, var_id: String, line: usize) -> String {
+    pub fn find_which_ref_at_id(&self, var_id: &str, line: usize) -> String {
         let mut reference: Option<String> = None;
         let init_at = self
             .variables
-            .get(&var_id)
+            .get(var_id)
             .expect("Variable given doesn't exist")
             .non_borrowed_lines[0]
             .start;
         // TODO: Check if this should be > or >=
         assert!(init_at >= line);
         self.variables
-            .get(&var_id)
+            .get(var_id)
             .expect("Variable given doesn't exist")
             .addresses
             .iter()
@@ -174,13 +180,13 @@ impl<'a> VarData<'a> {
 
 pub fn determine_var_mutability<'a>(
     root: &'a Node,
-    prev_ctx: &AnalysisContext<'a>,
+    prev_ctx: AnalysisContext<'a>,
 ) -> AnalysisContext<'a> {
-    let mut ctx: AnalysisContext = prev_ctx.clone();
+    let mut ctx: AnalysisContext = prev_ctx;
     if root.children.is_some() {
         root.children.as_ref().unwrap().iter().for_each(|node| {
             // TODO: This feels illegal
-            ctx = determine_var_mutability(node, &ctx);
+            ctx = determine_var_mutability(node, ctx);
         })
     }
 
@@ -210,7 +216,7 @@ pub fn determine_var_mutability<'a>(
             });
         }
         NodeType::PtrDeclaration(id, _, expr) => {
-            ctx = determine_var_mutability(expr, &ctx);
+            ctx = determine_var_mutability(expr, ctx);
 
             let ids = find_ids(&expr);
             let expr_ptrs: Vec<&String> = ids.iter().filter(|id| ctx.is_ptr(id)).collect();
@@ -275,7 +281,7 @@ pub fn determine_var_mutability<'a>(
             });
         }
         NodeType::DerefAssignment(_, l_side) => {
-            ctx = determine_var_mutability(&l_side, &ctx);
+            ctx = determine_var_mutability(&l_side, ctx);
             let deref_ids = find_ids(&l_side);
             // This breakes because `*(t + s) = bar` is not allowed
             // However, **m is fine

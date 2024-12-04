@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs::read_to_string, ops::Range};
 
-use analyzer::VarData;
+use analyzer::{AnalysisContext, VarData};
 use parser::TokenNode;
 
 #[allow(dead_code)]
@@ -31,19 +31,19 @@ fn parse_c(contents: String) -> TokenNode {
 
 fn convert_to_rust_code(ast: TokenNode) -> String {
     ast.print(&mut 0);
-    let map: HashMap<String, VarData> = HashMap::new();
+    let ctx: AnalysisContext = AnalysisContext::new();
 
-    let mut var_info = analyzer::determine_var_mutability(&ast, &map);
-    println!(
-        "{:?}",
-        var_info
-            .iter()
-            .map(|(id, data)| (id.clone(), data.non_borrowed_lines.clone()))
-            .collect::<Vec<(String, Vec<Range<usize>>)>>()
-    );
+    let mut var_info = analyzer::determine_var_mutability(&ast, ctx);
+    // println!(
+    //     "{:?}",
+    //     var_info
+    //         .iter()
+    //         .map(|(id, data)| (id.clone(), data.non_borrowed_lines.clone()))
+    //         .collect::<Vec<(String, Vec<Range<usize>>)>>()
+    // );
 
-    let errors = checker::borrow_check(&var_info);
-    checker::adjust_ptr_type(errors, &mut var_info);
+    let errors = checker::borrow_check(&ctx);
+    checker::adjust_ptr_type(errors, &mut ctx);
     let annotated_ast = annotater::annotate_ast(&ast, &var_info);
     annotated_ast.print(&mut 0);
 

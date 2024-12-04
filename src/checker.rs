@@ -1,5 +1,4 @@
 use crate::analyzer::{AnalysisContext, PtrType, VarData};
-use std::collections::HashMap;
 use std::ops::Range;
 
 // TODO: Derermine if overlapping value uses mutate or don't mutate
@@ -11,17 +10,17 @@ pub enum BorrowError {
     ValueMutOverlap,
 }
 
-pub struct CheckerError {
+pub struct BorrowErrorReport {
     id: String,
     line: usize,
     err: BorrowError,
 }
 
-pub fn adjust_ptr_type<'a>(errors: Vec<CheckerError>, ctx: AnalysisContext<'a>) {
+pub fn adjust_ptr_type<'a>(errors: Vec<BorrowErrorReport>, ctx: &mut AnalysisContext<'a>) {
     errors.iter().for_each(|error| {
         // A lot of work for nothing
         let ptr_data = ctx.get_var(&error.id).expect("Ptr in error not in map");
-        let ref_during_error = ctx.find_which_ref_at_id(error.id, error.line);
+        let ref_during_error = ctx.find_which_ref_at_id(&error.id, error.line);
         let ref_mutates = ptr_data
             .addresses
             .iter()
@@ -29,7 +28,7 @@ pub fn adjust_ptr_type<'a>(errors: Vec<CheckerError>, ctx: AnalysisContext<'a>) 
             .expect("Ref not assigned to ptr")
             .borrow()
             .mutates;
-        let new_ptr_type = match (error.err, ref_mutates) {
+        let new_ptr_type = match (&error.err, ref_mutates) {
             (BorrowError::MutMutOverlap, _) => PtrType::RcClone,
             (BorrowError::MutImutOverlap, _) => PtrType::RcClone,
             (BorrowError::ValueMutOverlap, _) => PtrType::RcClone, // TODO: if the id is the value
@@ -52,61 +51,61 @@ pub fn adjust_ptr_type<'a>(errors: Vec<CheckerError>, ctx: AnalysisContext<'a>) 
             ctx.mut_var(ptr.to_string(), |other_ptr_data| {
                 // TODO: Grab what the type was of the dpecific ref that pointed to the ref that we
                 // care about
-                let len = other_ptr_data
-                    .ptr_data
-                    .as_ref()
-                    .expect("same level ptr not in map")
-                    .ptr_type
-                    .len()
-                    - 1;
-                var_data
-                    .ptr_data
-                    .as_mut()
-                    .expect("same leveel ptr not ptr in map")
-                    // TODO: We want the specific reference that applies at the same level of the
-                    // problematic ptr
-                    // This is a really hard problem
-                    // For now we'll just make the top ptr_type be an RcClone
-                    .ptr_type[len] = new_ptr_type.clone();
+                let mut other_ptr_data_for_same_sub_var = other_ptr_data
+                    .addresses
+                    .iter()
+                    .find(|other_ptr_data| other_ptr_data.borrow().adr_of == sub_id)
+                    .expect("Should both have to the same object")
+                    .borrow_mut();
+                let other_ref_level_len = other_ptr_data_for_same_sub_var.ptr_type.len() - 1;
+
+                // TODO: We want the specific reference that applies at the same level of the
+                // problematic ptr
+                // This is a really hard problem
+                // For now we'll just make the top ptr_type be an RcClone
+                other_ptr_data_for_same_sub_var.ptr_type[other_ref_level_len] =
+                    new_ptr_type.clone();
             });
         });
 
-        vars.entry(id.to_string()).and_modify(|var_data| {
-            let ptr_data = var_data
-                .ptr_data
-                .as_mut()
-                .expect("Ptr not a ptr in map lol");
-            let ptr_type_len = ptr_data.ptr_type.len() - 1;
+        ctx.mut_var(error.id.to_string(), |var_data| {
+            let mut ptr_data = var_data
+                .addresses
+                .iter()
+                .find(|r| r.borrow().adr_of == ref_during_error)
+                .unwrap()
+                .borrow_mut();
+            let ref_level_len = ptr_data.ptr_type.len() - 1;
             ptr_data
                 // TODO: Determine correct solution to multiple reference issue
                 // This *probably* works
-                .ptr_type[ptr_type_len] = new_ptr_type;
+                .ptr_type[ref_level_len] = new_ptr_type;
         });
     });
 }
 
-pub fn borrow_check<'a>(vars: &HashMap<String, VarData<'a>>) -> Vec<(String, BorrowError)> {
-    vars.iter()
+// TODO: Figure out how to include line numbers in error reports
+pub fn borrow_check<'a>(ctx: &AnalysisContext<'a>) -> Vec<BorrowErrorReport> {
+    ctx.variables
+        .iter()
         .flat_map(|(id, var_data)| -> Vec<(String, BorrowError)> {
             let pointed_to_by: Vec<(String, &VarData<'a>, PtrType)> = var_data
                 .pointed_to_by
                 .iter()
                 .map(|ptr| {
-                    let var_data = vars.get(*ptr);
+                    let ptr_var_data = ctx.get_var(ptr).expect("ptr to var not in scope");
+                    let ptr_data_to_var = ptr_var_data
+                        .addresses
+                        .iter()
+                        .find(|ptr_data| ptr_data.borrow().adr_of == *id)
+                        .expect("Ptr does not record reference to var in map");
                     (
                         ptr.to_string(),
-                        *var_data.as_ref().expect("Ptr not listed in vars"),
-                        match var_data
-                            .as_ref()
-                            .expect("Ptr not listed in vars")
-                            .ptr_data
-                            .as_ref()
-                            .expect(format!("Ptr {ptr} to {id} not a ptr in var map").as_str())
-                            .mutates
-                        {
-                            true => PtrType::MutRef,
-                            false => PtrType::ImutRef,
-                        },
+                        ptr_var_data,
+                        // TODO: Check if this is a fine solution, if the top is mutable than all
+                        // the rest should be too
+                        // But is this ever what we want
+                        ptr_data_to_var.borrow().ptr_type[0].clone(),
                     )
                 })
                 .collect();
@@ -114,20 +113,21 @@ pub fn borrow_check<'a>(vars: &HashMap<String, VarData<'a>>) -> Vec<(String, Bor
             let pointed_to_by_mutably = pointed_to_by
                 .iter()
                 .filter(|(_, _, ref_type)| *ref_type == PtrType::MutRef);
-            let mut value_overlaps_with_mut_ptr: Vec<(String, BorrowError)> = pointed_to_by_mutably
-                .clone()
-                .filter(|(_, mut_ptr_data, _)| {
-                    // This fails because the value and the pointer are going to overlap on the line
-                    // the ref to the pointer is taken
-                    // eg. `let m = &mut n`
-                    var_active_range_overlap(
-                        mut_ptr_data.non_borrowed_lines.clone(),
-                        var_data.non_borrowed_lines.clone(),
-                    )
-                })
-                .map(|(id, _, _)| (id.clone(), BorrowError::ValueMutOverlap))
-                .collect();
-            let mut mutable_ref_overlaps: Vec<(String, BorrowError)> = pointed_to_by_mutably
+            let mut value_overlaps_with_mut_ptr: Vec<(String, BorrowError, usize)> =
+                pointed_to_by_mutably
+                    .clone()
+                    .filter(|(_, mut_ptr_data, _)| {
+                        // This fails because the value and the pointer are going to overlap on the line
+                        // the ref to the pointer is taken
+                        // eg. `let m = &mut n`
+                        var_active_range_overlap(
+                            mut_ptr_data.non_borrowed_lines.clone(),
+                            var_data.non_borrowed_lines.clone(),
+                        )
+                    })
+                    .map(|(id, _, _)| (id.clone(), BorrowError::ValueMutOverlap, _))
+                    .collect();
+            let mut mutable_ref_overlaps: Vec<(String, BorrowError, usize)> = pointed_to_by_mutably
                 .flat_map(|(_, mut_ptr_data, _)| {
                     pointed_to_by
                         .iter()
