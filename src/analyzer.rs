@@ -93,6 +93,38 @@ impl<'a> AnalysisContext<'a> {
             }
         }
     }
+    /// Finds which reference a specific variable held at the given line number
+    /// Panics if:
+    /// - Variable was declared on line given <- up for question
+    /// - Variable doesn't exist in variables
+    /// - Variable doesn't exist on given line
+    /// - Variable not a ptr or never initialized
+    pub fn find_which_ref_at_id(&self, var_id: String, line: usize) -> String {
+        let mut reference: Option<String> = None;
+        let init_at = self
+            .variables
+            .get(&var_id)
+            .expect("Variable given doesn't exist")
+            .non_borrowed_lines[0]
+            .start;
+        // TODO: Check if this should be > or >=
+        assert!(init_at >= line);
+        self.variables
+            .get(&var_id)
+            .expect("Variable given doesn't exist")
+            .addresses
+            .iter()
+            .for_each(|adr_data| {
+                let adr_data_ref = adr_data.borrow();
+                if adr_data_ref.line_taken < line {
+                    reference = Some(adr_data_ref.adr_of.clone());
+                }
+            });
+        if reference.is_none() {
+            panic!("Reference was none in finding ref function");
+        }
+        reference.unwrap()
+    }
 }
 /// Data of a specific instance of the address of a variable being taken
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,13 +174,13 @@ impl<'a> VarData<'a> {
 
 pub fn determine_var_mutability<'a>(
     root: &'a Node,
-    prev_ctx: AnalysisContext<'a>,
+    prev_ctx: &AnalysisContext<'a>,
 ) -> AnalysisContext<'a> {
     let mut ctx: AnalysisContext = prev_ctx.clone();
     if root.children.is_some() {
         root.children.as_ref().unwrap().iter().for_each(|node| {
             // TODO: This feels illegal
-            ctx = determine_var_mutability(node, ctx);
+            ctx = determine_var_mutability(node, &ctx);
         })
     }
 
@@ -178,7 +210,7 @@ pub fn determine_var_mutability<'a>(
             });
         }
         NodeType::PtrDeclaration(id, _, expr) => {
-            ctx = determine_var_mutability(expr, ctx);
+            ctx = determine_var_mutability(expr, &ctx);
 
             let ids = find_ids(&expr);
             let expr_ptrs: Vec<&String> = ids.iter().filter(|id| ctx.is_ptr(id)).collect();
@@ -243,6 +275,7 @@ pub fn determine_var_mutability<'a>(
             });
         }
         NodeType::DerefAssignment(_, l_side) => {
+            ctx = determine_var_mutability(&l_side, &ctx);
             let deref_ids = find_ids(&l_side);
             // This breakes because `*(t + s) = bar` is not allowed
             // However, **m is fine
@@ -268,13 +301,16 @@ pub fn determine_var_mutability<'a>(
             ptr_chain.clone().enumerate().for_each(|(i, var)| {
                 if i != ptr_chain.len() - 1 {
                     ctx.mut_var(var.clone(), |var_data| {
-                        let adr = var_data.addresses.last().expect("Variable not ptr");
+                        let mut adr = var_data
+                            .addresses
+                            .last()
+                            .expect("Variable not ptr")
+                            .borrow_mut();
 
-                        adr.borrow_mut().mutates = true;
+                        adr.mutates = true;
 
-                        let mut type_chain = adr.borrow_mut().ptr_type;
-                        for type_chain_i in i..type_chain.len() {
-                            type_chain[type_chain_i] = PtrType::MutRef;
+                        for type_chain_i in i..adr.ptr_type.len() {
+                            adr.ptr_type[type_chain_i] = PtrType::MutRef;
                         }
                     });
                 }

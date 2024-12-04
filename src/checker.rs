@@ -1,4 +1,4 @@
-use crate::analyzer::{PtrType, VarData};
+use crate::analyzer::{AnalysisContext, PtrType, VarData};
 use std::collections::HashMap;
 use std::ops::Range;
 
@@ -11,49 +11,48 @@ pub enum BorrowError {
     ValueMutOverlap,
 }
 
-pub fn adjust_ptr_type<'a>(
-    errors: Vec<(String, BorrowError)>,
-    vars: &mut HashMap<String, VarData<'a>>,
-) {
-    errors.iter().for_each(|(id, err)| {
-        let is_mut = vars
-            .get(id)
-            .as_ref()
-            .expect("ptr not in map")
-            .ptr_data
-            .as_ref()
-            .expect("Ptr not ptr")
+pub struct CheckerError {
+    id: String,
+    line: usize,
+    err: BorrowError,
+}
+
+pub fn adjust_ptr_type<'a>(errors: Vec<CheckerError>, ctx: AnalysisContext<'a>) {
+    errors.iter().for_each(|error| {
+        // A lot of work for nothing
+        let ptr_data = ctx.get_var(&error.id).expect("Ptr in error not in map");
+        let ref_during_error = ctx.find_which_ref_at_id(error.id, error.line);
+        let ref_mutates = ptr_data
+            .addresses
+            .iter()
+            .find(|ref_data| ref_data.borrow().adr_of == ref_during_error)
+            .expect("Ref not assigned to ptr")
+            .borrow()
             .mutates;
-        let new_ptr_type = match (err, is_mut) {
+        let new_ptr_type = match (error.err, ref_mutates) {
             (BorrowError::MutMutOverlap, _) => PtrType::RcClone,
             (BorrowError::MutImutOverlap, _) => PtrType::RcClone,
             (BorrowError::ValueMutOverlap, _) => PtrType::RcClone, // TODO: if the id is the value
-                                                                   // involved, this will be more annoying
-                                                                   // (BorrowError::ValueMutOverlap, true) => PtrType::RawPtrMut,
-                                                                   // (BorrowError::ValueMutOverlap, false) => PtrType::RawPtrImut,
         };
-        println!("ERROR ID: {id}");
+        println!("ERROR ID: {}", error.id);
+
         // TODO: This should actually traverse the pointer chain downwards
-        let sub_id = vars
-            .get(id)
-            .as_ref()
-            .expect("ptr not in map")
-            .ptr_data
-            .as_ref()
-            .expect("ptr not ptr")
-            .points_to
+        let sub_id = ctx
+            .get_adr(&ref_during_error)
+            .expect("Adr not in map")
+            .borrow()
+            .adr_of
             .clone();
-        vars.entry(sub_id.to_string())
-            .and_modify(|var_data| var_data.rc = true);
-        let same_level_ptrs = vars
-            .get(&sub_id)
-            .as_ref()
-            .expect("ptr not in map")
-            .pointed_to_by
-            .clone();
-        same_level_ptrs.iter().for_each(|ptr| {
-            vars.entry(ptr.to_string()).and_modify(|var_data| {
-                let len = var_data
+        ctx.mut_var(sub_id.to_string(), |var_data| var_data.rc = true);
+
+        let sub_var = ctx.get_var(&sub_id).expect("Sub id not in map");
+        let other_same_level_ptrs = sub_var.pointed_to_by.clone();
+
+        other_same_level_ptrs.iter().for_each(|ptr| {
+            ctx.mut_var(ptr.to_string(), |other_ptr_data| {
+                // TODO: Grab what the type was of the dpecific ref that pointed to the ref that we
+                // care about
+                let len = other_ptr_data
                     .ptr_data
                     .as_ref()
                     .expect("same level ptr not in map")
