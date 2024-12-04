@@ -43,11 +43,11 @@ list.append(&mut other_list) // not something we're going to worry about for now
 ```
 
 In the future, we will treat arguments as being bound to parameters as variables
-So,`&mut other_list` will be treated as if it's bound to the variable value inside the function ([see below](#refactor_ref_tracking))
+So,`&mut other_list` will be treated as if it's bound to the variable value inside the function (see below)
 
 Any of these will immediantly result in raw pointers being used, although at the moment, they panic
 
-## Refactoring reference tracking {#refactor_ref_tracking}
+## Refactoring reference tracking
 
 ### Reasoning for the refactor
 
