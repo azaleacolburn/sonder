@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Display};
 use itertools::Itertools;
 
 use crate::{
-    analyzer::{count_derefs, find_ids, PtrData, PtrType, VarData},
+    analyzer::{count_derefs, find_ids, AnalysisContext, PtrData, PtrType, VarData},
     lexer::CType,
     parser::{AssignmentOpType, NodeType, TokenNode as Node},
 };
@@ -121,7 +121,7 @@ impl AnnotatedNode {
         *n -= 1;
     }
 }
-pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>) -> AnnotatedNode {
+pub fn annotate_ast<'a>(root: &'a Node, var_info: AnalysisContext) -> AnnotatedNode {
     let children = root.children.as_ref().unwrap_or(&vec![]).to_vec();
     let annotated_node_children = Some(
         children

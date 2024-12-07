@@ -5,18 +5,26 @@ use std::ops::Range;
 // If it doesn't mutate, clone the underlying value instead
 #[derive(Debug, Clone)]
 pub enum BorrowError {
-    MutMutOverlap,
-    MutImutOverlap,
-    ValueMutOverlap,
+    MutMutOverlap {
+        first_ptr_id: String,
+        second_ptr_id: String,
+        sub_id: String,
+
+    },
+    MutImutOverlap {
+        mut_ptr_id: String,
+        imut_ptr_id: String,
+        sub_id: String,
+        
+    },
+    MutValueOverlap {
+        ptr_id: String,
+        value_id: String
+    },
 }
 
-pub struct BorrowErrorReport {
-    id: String,
-    line: usize,
-    err: BorrowError,
-}
 
-pub fn adjust_ptr_type<'a>(errors: Vec<BorrowErrorReport>, ctx: &mut AnalysisContext<'a>) {
+pub fn adjust_ptr_type<'a>(errors: Vec<BorrowError>, ctx: &mut AnalysisContext<'a>) {
     errors.iter().for_each(|error| {
         // A lot of work for nothing
         let ptr_data = ctx.get_var(&error.id).expect("Ptr in error not in map");
@@ -31,7 +39,8 @@ pub fn adjust_ptr_type<'a>(errors: Vec<BorrowErrorReport>, ctx: &mut AnalysisCon
         let new_ptr_type = match (&error.err, ref_mutates) {
             (BorrowError::MutMutOverlap, _) => PtrType::RcClone,
             (BorrowError::MutImutOverlap, _) => PtrType::RcClone,
-            (BorrowError::ValueMutOverlap, _) => PtrType::RcClone, // TODO: if the id is the value
+            // TODO: if the id is the value, we can clone
+            (BorrowError::MutValueOverlap, _) => PtrType::RcClone,
         };
         println!("ERROR ID: {}", error.id);
 
@@ -125,7 +134,7 @@ pub fn borrow_check<'a>(ctx: &AnalysisContext<'a>) -> Vec<BorrowErrorReport> {
                             var_data.non_borrowed_lines.clone(),
                         )
                     })
-                    .map(|(id, _, _)| (id.clone(), BorrowError::ValueMutOverlap, _))
+                    .map(|(ptr_id, _, _)| (ptr_id.clone(), BorrowError::MutValueOverlap, ))
                     .collect();
             let mut mutable_ref_overlaps: Vec<(String, BorrowError, usize)> = pointed_to_by_mutably
                 .flat_map(|(_, mut_ptr_data, _)| {
@@ -158,7 +167,9 @@ pub fn borrow_check<'a>(ctx: &AnalysisContext<'a>) -> Vec<BorrowErrorReport> {
 
 // TODO: Create more elegant solution than seperate functions for simply changing the exclusively
 // of an inequality
-pub fn both_ptr_active_range_overlap(l_1: Vec<Range<usize>>, l_2: Vec<Range<usize>>) -> bool {
+//
+// Returns the function
+pub fn both_ptr_active_range_overlap(l_1: Vec<Range<usize>>, l_2: Vec<Range<usize>>) -> Option<{
     let ranges_overlap =
         |l_1: &Range<usize>, l_2: &Range<usize>| l_1.start <= l_2.end && l_2.start <= l_1.end;
     l_1.iter()

@@ -31,9 +31,9 @@ fn parse_c(contents: String) -> TokenNode {
 
 fn convert_to_rust_code(ast: TokenNode) -> String {
     ast.print(&mut 0);
-    let ctx: AnalysisContext = AnalysisContext::new();
+    let mut ctx: AnalysisContext = AnalysisContext::new();
 
-    let mut var_info = analyzer::determine_var_mutability(&ast, ctx);
+    ctx = analyzer::determine_var_mutability(&ast, ctx);
     // println!(
     //     "{:?}",
     //     var_info
@@ -44,7 +44,7 @@ fn convert_to_rust_code(ast: TokenNode) -> String {
 
     let errors = checker::borrow_check(&ctx);
     checker::adjust_ptr_type(errors, &mut ctx);
-    let annotated_ast = annotater::annotate_ast(&ast, &var_info);
+    let annotated_ast = annotater::annotate_ast(&ast, ctx);
     annotated_ast.print(&mut 0);
 
     let converted_rust = converter::convert_annotated_ast(&annotated_ast);
