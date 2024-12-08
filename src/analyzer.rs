@@ -5,7 +5,7 @@ use crate::parser::{NodeType, TokenNode as Node};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PtrType {
     Rc,
-    RcClone,
+    RcRefClone,
     RefCell,
     RawPtrMut,
     RawPtrImut,
@@ -152,7 +152,8 @@ pub struct VarData<'a> {
     pub is_mut_by_ptr: bool,
     pub is_mut_direct: bool,
     pub rc: bool,
-    set_start_borrow: bool, // do we need to set the start of the new borrow
+    pub clone: bool,
+    pub set_start_borrow: bool, // do we need to set the start of the new borrow
     // The pattern of initializing and instantiating seperately is harder to analyze and requires a PtrAssignment node
     // Line ranges when the var isn't borrowed
     pub non_borrowed_lines: Vec<Range<usize>>,
@@ -206,6 +207,7 @@ pub fn determine_var_mutability<'a>(
                         end: root.line,
                     }],
                     set_start_borrow: false,
+                    clone: false,
                 },
             );
         }
@@ -271,6 +273,7 @@ pub fn determine_var_mutability<'a>(
                     end: root.line,
                 }],
                 set_start_borrow: false,
+                clone: false,
             };
             // TODO: Figure out how to annotate specific address call as mutable or immutable
             ctx.new_var(id.to_string(), var);

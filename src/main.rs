@@ -42,7 +42,9 @@ fn convert_to_rust_code(ast: TokenNode) -> String {
     //         .collect::<Vec<(String, Vec<Range<usize>>)>>()
     // );
 
-    let errors = checker::borrow_check(&ctx);
+    // TODO: Determine if this clone is necessary
+    let temp_ctx = ctx.clone();
+    let errors = checker::borrow_check(&temp_ctx);
     checker::adjust_ptr_type(errors, &mut ctx);
     let annotated_ast = annotater::annotate_ast(&ast, ctx);
     annotated_ast.print(&mut 0);
