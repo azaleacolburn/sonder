@@ -1,7 +1,6 @@
 use crate::{
     analyzer::{AnalysisContext, PtrType, VarData},
-    lexer::CType,
-    parser::{NodeType, TokenNode as Node},
+    parser::TokenNode as Node,
 };
 use std::ops::Range;
 
@@ -55,34 +54,30 @@ fn set_rc<'a>(value_id: &str, ctx: &mut AnalysisContext<'a>) {
     });
 }
 
-fn clone_solution<'a>(
-    mut_ptr_id: &str,
-    value_id: &str,
-    ctx: &mut AnalysisContext<'a>,
-    root: &mut Node,
-) {
-    let clone_id = format!("{value_id}_clone");
-    let clone_declaration_node = Node::new(NodeType::Declaration(clone_id, CType::Int, 0), vec![]);
-    // TODO: Figure out how to annotated cloning
-    // let value_data = ctx.get_var(value_id).expect("value id not in map");
-    // let cloned_value_id = format!("{}_clone", value_id);
-    // let cloned_value_data = VarData {
-    //     addresses: value_data.addresses.clone(),
-    //     pointed_to_by: value_data.pointed_to_by.clone(),
-    //     is_mut_direct: false,
-    //     is_mut_by_ptr: false,
-    //     non_borrowed_lines: vec![],
-    //     rc: false,
-    //     set_start_borrow: false,
-    // };
-    // ctx.new_var(cloned_value_id, cloned_value_data);
-}
+// fn clone_solution<'a>(
+//     mut_ptr_id: &str,
+//     value_id: &str,
+//     ctx: &mut AnalysisContext<'a>,
+//     root: &mut Node,
+// ) {
+//     let clone_id = format!("{value_id}_clone");
+//     let clone_declaration_node = Node::new(NodeType::Declaration(clone_id, CType::Int, 0), vec![]);
+//     // TODO: Figure out how to annotated cloning
+//     // let value_data = ctx.get_var(value_id).expect("value id not in map");
+//     // let cloned_value_id = format!("{}_clone", value_id);
+//     // let cloned_value_data = VarData {
+//     //     addresses: value_data.addresses.clone(),
+//     //     pointed_to_by: value_data.pointed_to_by.clone(),
+//     //     is_mut_direct: false,
+//     //     is_mut_by_ptr: false,
+//     //     non_borrowed_lines: vec![],
+//     //     rc: false,
+//     //     set_start_borrow: false,
+//     // };
+//     // ctx.new_var(cloned_value_id, cloned_value_data);
+// }
 
-pub fn adjust_ptr_type<'a>(
-    errors: Vec<BorrowError>,
-    ctx: &mut AnalysisContext<'a>,
-    root: &mut Node,
-) {
+pub fn adjust_ptr_type<'a>(errors: Vec<BorrowError>, ctx: &mut AnalysisContext<'a>) {
     errors.iter().for_each(|error| {
         // A lot of work for nothing
         match &error {
@@ -92,13 +87,17 @@ pub fn adjust_ptr_type<'a>(
                 value_id,
             } => set_rc(value_id, ctx),
             BorrowError::MutImutOverlap {
-                mut_ptr_id,
-                imut_ptr_id,
+                mut_ptr_id: _,
+                imut_ptr_id: _,
                 value_id,
-            } => {}
+            } => set_rc(value_id, ctx),
             // TODO: if the id is the value, we can clone
-            BorrowError::MutValueOverlap { ptr_id, value_id } => {
-                clone_solution(ptr_id, value_id, ctx, root)
+            BorrowError::MutValueOverlap {
+                ptr_id: _,
+                value_id,
+            } => {
+                set_rc(value_id, ctx)
+                // clone_solution(ptr_id, value_id, ctx, root)
             }
         };
 

@@ -3,19 +3,19 @@ use std::{collections::HashMap, fmt::Display};
 use itertools::Itertools;
 
 use crate::{
-    analyzer::{count_derefs, find_ids, AnalysisContext, PtrData, PtrType, VarData},
+    analyzer::{count_derefs, find_ids, AdrData, AnalysisContext, PtrType, VarData},
     lexer::CType,
     parser::{AssignmentOpType, NodeType, TokenNode as Node},
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AnnotatedNode {
-    pub token: AnnotatedNodeT,
-    pub children: Option<Vec<AnnotatedNode>>,
+pub struct AnnotatedNode<'a> {
+    pub token: AnnotatedNodeT<'a>,
+    pub children: Option<Vec<AnnotatedNode<'a>>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AnnotatedNodeT {
+pub enum AnnotatedNodeT<'a> {
     Program {
         imports: Vec<String>,
     },
@@ -71,9 +71,9 @@ pub enum AnnotatedNodeT {
     PtrDeclaration {
         id: String,
         is_mut: bool,
-        ptr_data: PtrData,
+        ptr_data: AdrData<'a>,
         t: CType,
-        adr: Box<AnnotatedNode>,
+        adr: Box<AnnotatedNode<'a>>,
         // Refers to it being an rc_ptr itself, not a
         rc: bool,
     },
@@ -102,13 +102,13 @@ pub enum AnnotatedNodeT {
     PutChar,
     StructDeclaration(String),
 }
-impl Display for AnnotatedNode {
+impl<'a> Display for AnnotatedNode<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.token) // doesn't print values
     }
 }
 
-impl AnnotatedNode {
+impl<'a> AnnotatedNode<'a> {
     pub fn print(&self, n: &mut i32) {
         (0..*n).into_iter().for_each(|_| print!("\t"));
         println!("{}", self);
@@ -121,17 +121,17 @@ impl AnnotatedNode {
         *n -= 1;
     }
 }
-pub fn annotate_ast<'a>(root: &'a Node, var_info: AnalysisContext) -> AnnotatedNode {
+pub fn annotate_ast<'a>(root: &'a Node, ctx: AnalysisContext) -> AnnotatedNode<'a> {
     let children = root.children.as_ref().unwrap_or(&vec![]).to_vec();
     let annotated_node_children = Some(
         children
             .iter()
-            .map(|node| annotate_ast(node, var_info))
+            .map(|node| annotate_ast(node, ctx))
             .collect(),
     );
     let token = match &root.token {
         NodeType::Declaration(id, t, _) => {
-            let declaration_info = var_info.get(id).expect("Declared id not in map");
+            let declaration_info = ctx.get_var(id).expect("Declared id not in map");
             let is_mut = declaration_info.is_mut_by_ptr || declaration_info.is_mut_direct;
             let rc = declaration_info.rc;
             AnnotatedNodeT::Declaration {
@@ -142,11 +142,11 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: AnalysisContext) -> AnnotatedN
             }
         }
         NodeType::PtrDeclaration(id, t, adr) => {
-            let ptr_info = var_info.get(id).expect("Ptr not found in info map");
+            let ptr_info = ctx.get_var(id).expect("Ptr not found in info map");
             let is_mut = ptr_info.is_mut_by_ptr || ptr_info.is_mut_direct;
             let rc = ptr_info.rc;
-            let annotated_adr = Box::new(annotate_ast(adr, var_info));
-            let ptr_data = ptr_info
+            let annotated_adr = Box::new(annotate_ast(adr, ctx));
+            let ptr_data = qtr_info
                 .ptr_data
                 .clone()
                 .expect("Declared Ptr not in info map");
@@ -164,8 +164,8 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: AnalysisContext) -> AnnotatedN
             // `&mut &mut &t` illegal
             // Unsafe assumption: Adresses are always immutable unless explicitely annotated otherwise by the ptr declaration
             // `list.append(&mut other_list)` isn't something we're going to worry about for now
-            let rc = var_info
-                .get(id)
+            let rc = ctx
+                .get_var(id)
                 .as_ref()
                 .expect("Id of adr not found in map")
                 .rc;
@@ -181,8 +181,8 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: AnalysisContext) -> AnnotatedN
             let ids = find_ids(&adr);
             let derefed_id = ids[0].clone();
             let count = count_derefs(adr);
-            let rc = *var_info
-                .get(&derefed_id)
+            let rc = *ctx
+                .get_var(&derefed_id)
                 .as_ref()
                 .expect("dereffed_id not in map")
                 .ptr_data
@@ -203,8 +203,8 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: AnalysisContext) -> AnnotatedN
             let count = count_derefs(expr) + 1;
             let ids = find_ids(&expr);
             let derefed_id = ids[0].clone();
-            let rc = *var_info
-                .get(&derefed_id)
+            let rc = *ctx
+                .get_var(&derefed_id)
                 .as_ref()
                 .expect("dereffed_id not in map")
                 .ptr_data
@@ -222,14 +222,14 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: AnalysisContext) -> AnnotatedN
             }
         }
         NodeType::Id(id) => {
-            let rc = var_info.get(id).as_ref().expect("Id not in map").rc;
+            let rc = ctx.get_var(id).as_ref().expect("Id not in map").rc;
             AnnotatedNodeT::Id {
                 id: id.to_string(),
                 rc,
             }
         }
         NodeType::Program => {
-            let imports: Vec<String> = var_info
+            let imports: Vec<String> = ctx
                 .iter()
                 .flat_map(|(_, data)| match &data.ptr_data {
                     Some(ptr_data) => ptr_data
@@ -250,10 +250,10 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: AnalysisContext) -> AnnotatedN
             AnnotatedNodeT::Program { imports }
         }
         NodeType::Assignment(op, id) => {
-            let rc = var_info
-                .get(id)
+            let rc = ctx
+                .get_var(id)
                 .as_ref()
-                .expect("Id being assigned to not in var_info")
+                .expect("Id being assigned to not in map")
                 .rc;
             AnnotatedNodeT::Assignment {
                 id: id.clone(),

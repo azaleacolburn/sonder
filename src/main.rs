@@ -1,6 +1,6 @@
-use std::{collections::HashMap, fs::read_to_string, ops::Range};
+use std::fs::read_to_string;
 
-use analyzer::{AnalysisContext, VarData};
+use analyzer::AnalysisContext;
 use parser::TokenNode;
 
 #[allow(dead_code)]
