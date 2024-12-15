@@ -179,15 +179,10 @@ impl<'a> VarData<'a> {
     }
 }
 
-pub fn determine_var_mutability<'a>(
-    root: &'a Node,
-    prev_ctx: AnalysisContext<'a>,
-) -> AnalysisContext<'a> {
-    let mut ctx: AnalysisContext = prev_ctx;
+pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext<'a>) {
     if root.children.is_some() {
         root.children.as_ref().unwrap().iter().for_each(|node| {
-            // TODO: This feels illegal
-            ctx = determine_var_mutability(node, ctx);
+            determine_var_mutability(node, ctx);
         })
     }
 
@@ -218,7 +213,7 @@ pub fn determine_var_mutability<'a>(
             });
         }
         NodeType::PtrDeclaration(id, _, expr) => {
-            ctx = determine_var_mutability(expr, ctx);
+            determine_var_mutability(expr, ctx);
 
             let ids = find_ids(&expr);
             let expr_ptrs: Vec<&String> = ids.iter().filter(|id| ctx.is_ptr(id)).collect();
@@ -284,7 +279,7 @@ pub fn determine_var_mutability<'a>(
             });
         }
         NodeType::DerefAssignment(_, l_side) => {
-            ctx = determine_var_mutability(&l_side, ctx);
+            determine_var_mutability(&l_side, ctx);
             let deref_ids = find_ids(&l_side);
             // This breakes because `*(t + s) = bar` is not allowed
             // However, **m is fine
@@ -360,7 +355,6 @@ pub fn determine_var_mutability<'a>(
         }
         _ => {}
     };
-    ctx
 }
 
 pub fn find_addresses(root: &Node) -> Vec<String> {
