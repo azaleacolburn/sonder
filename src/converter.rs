@@ -154,20 +154,24 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
     }
 }
 fn non_ptr_conversion(root: &AnnotatedNode) -> String {
-    let left = convert_annotated_ast(&root.children[0]);
-    let right = convert_annotated_ast(&root.children[1]);
+    let mut left: Option<String> = None;
+    let mut right: Option<String> = None;
+    if root.children.len() > 1 {
+        left = Some(convert_annotated_ast(&root.children[0]));
+        right = Some(convert_annotated_ast(&root.children[1]));
+    }
     match &root.token {
         AnnotatedNodeT::Add => {
-            format!("{left} + {right}")
+            format!("{} + {}", left.unwrap(), right.unwrap())
         }
         AnnotatedNodeT::Sub => {
-            format!("{left} - {right}")
+            format!("{} - {}", left.unwrap(), right.unwrap())
         }
         AnnotatedNodeT::Mul => {
-            format!("{left} * {right}")
+            format!("{} * {}", left.unwrap(), right.unwrap())
         }
         AnnotatedNodeT::Div => {
-            format!("{left} / {right}")
+            format!("{} / {}", left.unwrap(), right.unwrap())
         }
         AnnotatedNodeT::Eq => {
             format!("=")

@@ -6,13 +6,13 @@ use crate::{
 use std::{cell::RefCell, fmt::Display, rc::Rc};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AnnotatedNode<'a> {
-    pub token: AnnotatedNodeT<'a>,
-    pub children: Vec<AnnotatedNode<'a>>,
+pub struct AnnotatedNode {
+    pub token: AnnotatedNodeT,
+    pub children: Vec<AnnotatedNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AnnotatedNodeT<'a> {
+pub enum AnnotatedNodeT {
     Program {
         imports: Vec<String>,
     },
@@ -68,9 +68,9 @@ pub enum AnnotatedNodeT<'a> {
     PtrDeclaration {
         id: String,
         is_mut: bool,
-        adr_data: Rc<RefCell<AdrData<'a>>>,
+        adr_data: Rc<RefCell<AdrData>>,
         t: CType,
-        adr: Box<AnnotatedNode<'a>>,
+        adr: Box<AnnotatedNode>,
         // Refers to it being an rc_ptr itself, not a
         rc: bool,
     },
@@ -99,13 +99,13 @@ pub enum AnnotatedNodeT<'a> {
     PutChar,
     StructDeclaration(String),
 }
-impl<'a> Display for AnnotatedNode<'a> {
+impl Display for AnnotatedNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.token) // doesn't print values
     }
 }
 
-impl<'a> AnnotatedNode<'a> {
+impl AnnotatedNode {
     pub fn print(&self, n: &mut i32) {
         (0..*n).into_iter().for_each(|_| print!("\t"));
         println!("{}", self);
@@ -116,7 +116,7 @@ impl<'a> AnnotatedNode<'a> {
         *n -= 1;
     }
 }
-pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext<'a>) -> AnnotatedNode<'a> {
+pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode {
     let token = match &root.token {
         NodeType::Declaration(id, t, _) => {
             let declaration_info = ctx.get_var(id).expect("Declared id not in map");

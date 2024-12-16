@@ -1,7 +1,4 @@
-use crate::{
-    analyzer::{AnalysisContext, PtrType, VarData},
-    parser::TokenNode as Node,
-};
+use crate::analyzer::{AnalysisContext, PtrType, VarData};
 use std::ops::Range;
 
 // TODO: Derermine if overlapping value uses mutate or don't mutate
@@ -24,7 +21,7 @@ pub enum BorrowError {
     },
 }
 
-fn set_rc<'a>(value_id: &str, ctx: &mut AnalysisContext<'a>) {
+fn set_rc(value_id: &str, ctx: &mut AnalysisContext) {
     ctx.mut_var(value_id.to_string(), |var_data| var_data.rc = true);
 
     let sub_var_data = ctx.get_var(&value_id);
@@ -77,7 +74,7 @@ fn set_rc<'a>(value_id: &str, ctx: &mut AnalysisContext<'a>) {
 //     // ctx.new_var(cloned_value_id, cloned_value_data);
 // }
 
-pub fn adjust_ptr_type<'a>(errors: Vec<BorrowError>, ctx: &mut AnalysisContext<'a>) {
+pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext) {
     errors.iter().for_each(|error| {
         // A lot of work for nothing
         match &error {
@@ -108,12 +105,12 @@ pub fn adjust_ptr_type<'a>(errors: Vec<BorrowError>, ctx: &mut AnalysisContext<'
 #[derive(Debug, Clone)]
 struct PtrInfo<'a> {
     ptr_id: String,
-    ptr_var_data: &'a VarData<'a>,
+    ptr_var_data: &'a VarData,
     ptr_type: PtrType,
 }
 
 // TODO: Figure out how to include line numbers in error reports
-pub fn borrow_check<'a>(ctx: &'a AnalysisContext<'a>) -> Vec<BorrowError> {
+pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
     ctx.variables
         .iter()
         .flat_map(|(var_id, var_data)| -> Vec<BorrowError> {

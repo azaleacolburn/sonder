@@ -35,6 +35,9 @@ fn convert_to_rust_code(ast: TokenNode) -> String {
 
     analyzer::determine_var_mutability(&ast, &mut ctx);
 
+    println!("variables: {:?}", ctx.variables);
+    println!("addresses: {:?}", ctx.addresses);
+
     let temp_ctx = ctx.clone();
     let errors = checker::borrow_check(&temp_ctx);
     checker::adjust_ptr_type(errors, &mut ctx);

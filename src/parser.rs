@@ -247,6 +247,7 @@ impl TokenHandler {
             .iter()
             .position(|range| range.start <= self.curr_token && self.curr_token <= range.end)
             .expect("Token outside of line number range")
+            + 1
     }
 }
 
