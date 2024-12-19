@@ -62,7 +62,11 @@ fn clone_solution<'a>(
     root: &mut Node,
 ) {
     let clone_id = format!("{value_id}_clone");
-    let clone_declaration_node = Node::new(NodeType::Declaration(clone_id, CType::Int, 0), vec![]);
+    let clone_declaration_node = Node::new(
+        NodeType::Declaration(clone_id, CType::Int, 0),
+        vec![].into(),
+        root.line,
+    );
     // TODO: Figure out how to annotated cloning
     // let value_data = ctx.get_var(value_id).expect("value id not in map");
     // let cloned_value_id = format!("{}_clone", value_id);
