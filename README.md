@@ -1,6 +1,6 @@
 # sonder
 
-## Scratch repo for potential science fair submission
+## Scratch repo
 
 Sonder is a static analyser and transpiler, for converting well-written C code to Rust
 
@@ -27,7 +27,7 @@ If the code isn't "well-written", sonder will fall back on unsafe raw pointers i
 *(foo + bar) // illegal
 ```
 
-I'm aware that this includes legal array indexing, however, the sonder ast treats that as a totally seperate thing. So `arr[foo]` is legal while `*(arr + foo)` or `foo[arr]` aren't, even though they're equivalent.
+I'm aware that this includes legal array indexing if foo or bar aren't pointers, however, the sonder ast treats that as a totally seperate thing. So `arr[foo]` is legal while `*(arr + foo)` or `foo[arr]` aren't, even though they're equivalent.
 
 3. Dereferencing non-ptrs
 

@@ -1,4 +1,10 @@
-use std::{cell::RefCell, cmp, collections::HashMap, ops::Range, rc::Rc};
+use std::{
+    cell::{RefCell, RefMut},
+    cmp,
+    collections::HashMap,
+    ops::Range,
+    rc::Rc,
+};
 
 use crate::parser::{NodeType, TokenNode as Node};
 
@@ -16,22 +22,22 @@ pub enum PtrType {
 /// The top-level datastructure that stores data about all the variables and referencing
 /// Stores a vector of the instances of addresses being taken, in order
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AnalysisContext<'a> {
-    pub variables: HashMap<String, VarData<'a>>,
-    pub addresses: Vec<Rc<RefCell<AdrData<'a>>>>,
+pub struct AnalysisContext {
+    pub variables: HashMap<String, VarData>,
+    pub addresses: Vec<Rc<RefCell<AdrData>>>,
 }
 
-impl<'a> AnalysisContext<'a> {
-    pub fn new() -> AnalysisContext<'a> {
+impl AnalysisContext {
+    pub fn new() -> AnalysisContext {
         AnalysisContext {
             variables: HashMap::new(),
             addresses: vec![],
         }
     }
-    pub fn new_var(&mut self, id: String, data: VarData<'a>) {
+    pub fn new_var(&mut self, id: String, data: VarData) {
         self.variables.insert(id, data);
     }
-    pub fn new_adr(&mut self, adr: Rc<RefCell<AdrData<'a>>>, var: Option<String>) {
+    pub fn new_adr(&mut self, adr: Rc<RefCell<AdrData>>, var: Option<String>) {
         self.addresses.push(adr.clone());
 
         if let Some(var) = var {
@@ -41,12 +47,13 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub fn get_var(&self, id: &str) -> Option<&VarData<'a>> {
+    pub fn get_var(&self, id: &str) -> Option<&VarData> {
         self.variables.get(id)
     }
 
     /// Gets an address, given the id the address points to
-    pub fn get_adr(&self, var_id: &str) -> Option<&Rc<RefCell<AdrData<'a>>>> {
+    /// If more than one exists, the first one is returned
+    pub fn get_adr(&self, var_id: &str) -> Option<&Rc<RefCell<AdrData>>> {
         self.addresses
             .iter()
             .find(|adr_data| adr_data.borrow().adr_of == var_id)
@@ -57,6 +64,21 @@ impl<'a> AnalysisContext<'a> {
         F: FnOnce(&mut VarData),
     {
         self.variables.entry(id).and_modify(f);
+    }
+
+    /// Applies a function to an adr_data given the underlying id the adr points to
+    pub fn mut_adr<F>(&mut self, id: String, f: F)
+    where
+        F: FnOnce(RefMut<AdrData>),
+    {
+        let adr_data = self
+            .addresses
+            .iter_mut()
+            .map(|adr_cell| adr_cell.clone())
+            .find(|adr_data| adr_data.borrow().adr_of == id)
+            .expect(format!("No adr that points to given id: {id}").as_str());
+
+        f(adr_data.borrow_mut())
     }
 
     pub fn is_ptr(&self, id: &String) -> bool {
@@ -114,7 +136,8 @@ impl<'a> AnalysisContext<'a> {
             .non_borrowed_lines[0]
             .start;
         // TODO: Check if this should be > or >=
-        assert!(init_at >= line);
+        println!("var_id: {var_id} init_at: {init_at} line: {line}");
+        assert!(init_at < line);
         self.variables
             .get(var_id)
             .expect("Variable given doesn't exist")
@@ -134,18 +157,18 @@ impl<'a> AnalysisContext<'a> {
 }
 /// Data of a specific instance of the address of a variable being taken
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AdrData<'a> {
+pub struct AdrData {
     pub adr_of: String,
     pub mutates: bool,
-    pub held_by: Option<&'a str>,
+    pub held_by: Option<String>,
     // Determine if ptrtype makes sense in a variable-independent context
     pub ptr_type: Vec<PtrType>,
     pub line_taken: usize,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VarData<'a> {
+pub struct VarData {
     // An emptry vector indicates a non-ptr variable
-    pub addresses: Vec<Rc<RefCell<AdrData<'a>>>>,
+    pub addresses: Vec<Rc<RefCell<AdrData>>>,
     // The type of ptr here is relevent for annotating adr
     // Reference order matters here, so we have to be careful
     pub pointed_to_by: Vec<String>,
@@ -159,7 +182,7 @@ pub struct VarData<'a> {
     pub non_borrowed_lines: Vec<Range<usize>>,
 }
 
-impl<'a> VarData<'a> {
+impl VarData {
     pub fn add_non_borrowed_line(&mut self, line: usize) {
         let len = self.non_borrowed_lines.len() - 1;
         let end = &mut self.non_borrowed_lines[len].end;
@@ -179,15 +202,10 @@ impl<'a> VarData<'a> {
     }
 }
 
-pub fn determine_var_mutability<'a>(
-    root: &'a Node,
-    prev_ctx: AnalysisContext<'a>,
-) -> AnalysisContext<'a> {
-    let mut ctx: AnalysisContext = prev_ctx;
+pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
     if root.children.is_some() {
         root.children.as_ref().unwrap().iter().for_each(|node| {
-            // TODO: This feels illegal
-            ctx = determine_var_mutability(node, ctx);
+            determine_var_mutability(node, ctx);
         })
     }
 
@@ -212,13 +230,61 @@ pub fn determine_var_mutability<'a>(
             );
         }
         NodeType::Assignment(_, id) => {
+            // The first that we have to do is determine if what we're assigning to is a pointer
+            let var_data = ctx
+                .get_var(id.as_str())
+                .expect("variable being assigned to is not in map");
+            let is_ptr = var_data.addresses.len() > 0;
+            if is_ptr {
+                let ids =
+                    find_ids(&root.children.as_ref().expect("Assignment missing children")[0]);
+                let expr_ptrs: Vec<&String> = ids.iter().filter(|id| ctx.is_ptr(id)).collect();
+                let mut ptr_type_chain: Vec<PtrType> = if expr_ptrs.len() == 1 {
+                    // As we go, we replace certain elements in this vector with `PtrType::MutRef`
+                    ctx.traverse_pointer_chain(expr_ptrs[0].clone(), 0, u8::MAX)
+                        .iter()
+                        .map(|_| PtrType::ImutRef)
+                        .collect()
+                } else if expr_ptrs.len() > 1 {
+                    // Ptr arithmatic outside the context of arrays is automatically a raw ptr
+                    vec![PtrType::RawPtrImut]
+                } else {
+                    vec![PtrType::ImutRef]
+                };
+
+                let addresses =
+                    find_addresses(&root.children.as_ref().expect("Assignment missing child")[0]);
+                // TODO: Add ptr chain len for non-overlapping ptrs
+                let points_to = match addresses.len() {
+                    1 => addresses.last(),
+                    0 if expr_ptrs.len() != 0 => expr_ptrs.last().map(|n| &**n),
+                    n if n > 1 => {
+                        if let Some(last) = ptr_type_chain.last_mut() {
+                            *last = PtrType::RawPtrImut;
+                        }
+                        addresses.last()
+                    }
+                    _ => {
+                        panic!(".len() is a usize; expr_ptr.len: {}", expr_ptrs.len());
+                    }
+                }
+                .unwrap();
+
+                ctx.mut_adr(points_to.to_string(), |mut adr_data| {
+                    adr_data.held_by = Some(id.clone());
+                });
+                ctx.mut_var(points_to.to_string(), |var_data| {
+                    var_data.pointed_to_by.push(id.clone());
+                });
+            }
+
             ctx.mut_var(id.to_string(), |var_data| {
                 var_data.is_mut_direct = true;
                 var_data.add_non_borrowed_line(root.line);
             });
         }
         NodeType::PtrDeclaration(id, _, expr) => {
-            ctx = determine_var_mutability(expr, ctx);
+            determine_var_mutability(expr, ctx);
 
             let ids = find_ids(&expr);
             let expr_ptrs: Vec<&String> = ids.iter().filter(|id| ctx.is_ptr(id)).collect();
@@ -238,21 +304,18 @@ pub fn determine_var_mutability<'a>(
 
             let addresses = find_addresses(&expr);
             // TODO: Add ptr chain len for non-overlapping ptrs
-            let points_to = if addresses.len() == 1 {
-                addresses.last()
-            } else if addresses.len() > 1 {
-                if let Some(last) = ptr_type_chain.last_mut() {
-                    *last = PtrType::RawPtrImut;
+            let points_to = match addresses.len() {
+                1 => addresses.last(),
+                0 if expr_ptrs.len() != 0 => expr_ptrs.last().map(|n| &**n),
+                n if n > 1 => {
+                    if let Some(last) = ptr_type_chain.last_mut() {
+                        *last = PtrType::RawPtrImut;
+                    }
+                    addresses.last()
                 }
-                addresses.last()
-            } else if addresses.len() == 0 {
-                if expr_ptrs.len() == 0 {
-                    // TODO: Allow empty expressions in the future
-                    panic!("PtrDeclaration to nothing");
+                _ => {
+                    panic!(".len() is a usize; expr_ptr.len: {}", expr_ptrs.len());
                 }
-                expr_ptrs.last().map(|n| &**n)
-            } else {
-                panic!(".len() is a usize");
             }
             .unwrap();
 
@@ -260,7 +323,7 @@ pub fn determine_var_mutability<'a>(
                 .get_adr(&points_to)
                 .expect("Points to algorithm failed")
                 .clone();
-            adr_data.borrow_mut().held_by = Some(&id);
+            adr_data.borrow_mut().held_by = Some(id.clone());
 
             let var = VarData {
                 addresses: vec![adr_data],
@@ -284,7 +347,7 @@ pub fn determine_var_mutability<'a>(
             });
         }
         NodeType::DerefAssignment(_, l_side) => {
-            ctx = determine_var_mutability(&l_side, ctx);
+            determine_var_mutability(&l_side, ctx);
             let deref_ids = find_ids(&l_side);
             // This breakes because `*(t + s) = bar` is not allowed
             // However, **m is fine
@@ -360,7 +423,6 @@ pub fn determine_var_mutability<'a>(
         }
         _ => {}
     };
-    ctx
 }
 
 pub fn find_addresses(root: &Node) -> Vec<String> {

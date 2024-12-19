@@ -9,7 +9,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
         AnnotatedNodeT::PtrDeclaration {
             id,
             is_mut,
-            ptr_data,
+            adr_data,
             t,
             adr,
             rc,
@@ -20,12 +20,13 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 CType::Char => "u8",
             };
             let rust_adr = convert_annotated_ast(&adr);
-            let mut_binding =
-                if *is_mut && !(*rc || *ptr_data.ptr_type.last().unwrap() == PtrType::RcClone) {
-                    "mut "
-                } else {
-                    ""
-                };
+            let mut_binding = if *is_mut
+                && !(*rc || *adr_data.borrow().ptr_type.last().unwrap() == PtrType::RcRefClone)
+            {
+                "mut "
+            } else {
+                ""
+            };
             // Only supports one reference at a time
             fn get_ref_type<T>(ptr_types: &mut T, rust_t: &str) -> String
             where
@@ -38,7 +39,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                     Some(PtrType::ImutRef) => {
                         format!("&{}", get_ref_type(ptr_types, rust_t))
                     }
-                    Some(PtrType::RcClone) => {
+                    Some(PtrType::RcRefClone) => {
                         format!("Rc<RefCell<{}>>", get_ref_type(ptr_types, rust_t))
                     }
                     Some(PtrType::RefCell) => {
@@ -53,14 +54,15 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 }
             }
 
-            let rust_ref_type = get_ref_type(&mut ptr_data.ptr_type.clone().into_iter(), rust_t);
-            let rust_reference = match ptr_data.ptr_type[0] {
+            let rust_ref_type =
+                get_ref_type(&mut adr_data.borrow().ptr_type.clone().into_iter(), rust_t);
+            let rust_reference = match adr_data.borrow().ptr_type[0] {
                 PtrType::MutRef => format!("&mut {rust_adr}"),
                 PtrType::ImutRef => format!("&{rust_adr}"),
                 PtrType::RefCell => format!("RefCell::new({rust_adr}) "),
                 PtrType::Rc => format!("Rc::new({rust_adr}) "),
                 // .clone() should be handled by the adr call iself
-                PtrType::RcClone => format!("{rust_adr}"),
+                PtrType::RcRefClone => format!("{rust_adr}"),
                 PtrType::RawPtrMut => format!("&mut {rust_adr} as {rust_ref_type}"),
                 PtrType::RawPtrImut => {
                     format!("&{rust_adr} as {rust_ref_type}")
@@ -88,8 +90,6 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             };
             let expr_child = root
                 .children
-                .as_ref()
-                .expect("deref assignment must have r_side")
                 .iter()
                 .map(convert_annotated_ast)
                 .collect::<Vec<String>>()[0]
@@ -117,8 +117,6 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             };
             let expr_child = root
                 .children
-                .as_ref()
-                .expect("deref assignment must have r_side")
                 .iter()
                 .map(convert_annotated_ast)
                 .collect::<Vec<String>>()[0]
@@ -156,42 +154,24 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
     }
 }
 fn non_ptr_conversion(root: &AnnotatedNode) -> String {
+    let mut left: Option<String> = None;
+    let mut right: Option<String> = None;
+    if root.children.len() > 1 {
+        left = Some(convert_annotated_ast(&root.children[0]));
+        right = Some(convert_annotated_ast(&root.children[1]));
+    }
     match &root.token {
         AnnotatedNodeT::Add => {
-            let children = root
-                .children
-                .as_ref()
-                .expect("Add Node should have children");
-            let left = convert_annotated_ast(&children[0]);
-            let right = convert_annotated_ast(&children[1]);
-            format!("{left} + {right}")
+            format!("{} + {}", left.unwrap(), right.unwrap())
         }
         AnnotatedNodeT::Sub => {
-            let children = root
-                .children
-                .as_ref()
-                .expect("Add Node should have children");
-            let left = convert_annotated_ast(&children[0]);
-            let right = convert_annotated_ast(&children[1]);
-            format!("{left} - {right}")
+            format!("{} - {}", left.unwrap(), right.unwrap())
         }
         AnnotatedNodeT::Mul => {
-            let children = root
-                .children
-                .as_ref()
-                .expect("Add Node should have children");
-            let left = convert_annotated_ast(&children[0]);
-            let right = convert_annotated_ast(&children[1]);
-            format!("{left} * {right}")
+            format!("{} * {}", left.unwrap(), right.unwrap())
         }
         AnnotatedNodeT::Div => {
-            let children = root
-                .children
-                .as_ref()
-                .expect("Add Node should have children");
-            let left = convert_annotated_ast(&children[0]);
-            let right = convert_annotated_ast(&children[1]);
-            format!("{left} / {right}")
+            format!("{} / {}", left.unwrap(), right.unwrap())
         }
         AnnotatedNodeT::Eq => {
             format!("=")
@@ -218,11 +198,7 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
                 AssignmentOpType::BAndEq => "&=",
             };
 
-            let children = root
-                .children
-                .as_ref()
-                .expect("Add Node should have children");
-            let rust_expr = convert_annotated_ast(&children[0]);
+            let rust_expr = convert_annotated_ast(&root.children[0]);
 
             if *rc {
                 format!("*{id}.borrow_mut() {rust_op} {rust_expr};")
@@ -239,13 +215,9 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             };
 
             let mut ret = format!("fn {id}() -> {rust_t} {{\n\t");
-            root.children
-                .as_ref()
-                .expect("Function should have children")
-                .iter()
-                .for_each(|child| {
-                    ret.push_str(&convert_annotated_ast(child));
-                });
+            root.children.iter().for_each(|child| {
+                ret.push_str(&convert_annotated_ast(child));
+            });
             ret.push_str("\n}");
             ret
         }
@@ -254,8 +226,6 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             println!("imports: {:?}", imports);
             t.push(
                 root.children
-                    .as_ref()
-                    .expect("Program should have children")
                     .iter()
                     .map(convert_annotated_ast)
                     .collect::<Vec<String>>()
@@ -265,8 +235,6 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
         }
         AnnotatedNodeT::Scope(_) => root
             .children
-            .as_ref()
-            .expect("Program should have children")
             .iter()
             .map(convert_annotated_ast)
             .collect::<Vec<String>>()

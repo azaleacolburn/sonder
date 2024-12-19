@@ -1,8 +1,4 @@
-use crate::{
-    analyzer::{AnalysisContext, PtrType, VarData},
-    lexer::CType,
-    parser::{NodeType, TokenNode as Node},
-};
+use crate::analyzer::{AnalysisContext, PtrType, VarData};
 use std::ops::Range;
 
 // TODO: Derermine if overlapping value uses mutate or don't mutate
@@ -25,7 +21,7 @@ pub enum BorrowError {
     },
 }
 
-fn set_rc<'a>(value_id: &str, ctx: &mut AnalysisContext<'a>) {
+fn set_rc(value_id: &str, ctx: &mut AnalysisContext) {
     ctx.mut_var(value_id.to_string(), |var_data| var_data.rc = true);
 
     let sub_var_data = ctx.get_var(&value_id);
@@ -55,38 +51,30 @@ fn set_rc<'a>(value_id: &str, ctx: &mut AnalysisContext<'a>) {
     });
 }
 
-fn clone_solution<'a>(
-    mut_ptr_id: &str,
-    value_id: &str,
-    ctx: &mut AnalysisContext<'a>,
-    root: &mut Node,
-) {
-    let clone_id = format!("{value_id}_clone");
-    let clone_declaration_node = Node::new(
-        NodeType::Declaration(clone_id, CType::Int, 0),
-        vec![].into(),
-        root.line,
-    );
-    // TODO: Figure out how to annotated cloning
-    // let value_data = ctx.get_var(value_id).expect("value id not in map");
-    // let cloned_value_id = format!("{}_clone", value_id);
-    // let cloned_value_data = VarData {
-    //     addresses: value_data.addresses.clone(),
-    //     pointed_to_by: value_data.pointed_to_by.clone(),
-    //     is_mut_direct: false,
-    //     is_mut_by_ptr: false,
-    //     non_borrowed_lines: vec![],
-    //     rc: false,
-    //     set_start_borrow: false,
-    // };
-    // ctx.new_var(cloned_value_id, cloned_value_data);
-}
+// fn clone_solution<'a>(
+//     mut_ptr_id: &str,
+//     value_id: &str,
+//     ctx: &mut AnalysisContext<'a>,
+//     root: &mut Node,
+// ) {
+//     let clone_id = format!("{value_id}_clone");
+//     let clone_declaration_node = Node::new(NodeType::Declaration(clone_id, CType::Int, 0), vec![]);
+//     // TODO: Figure out how to annotated cloning
+//     // let value_data = ctx.get_var(value_id).expect("value id not in map");
+//     // let cloned_value_id = format!("{}_clone", value_id);
+//     // let cloned_value_data = VarData {
+//     //     addresses: value_data.addresses.clone(),
+//     //     pointed_to_by: value_data.pointed_to_by.clone(),
+//     //     is_mut_direct: false,
+//     //     is_mut_by_ptr: false,
+//     //     non_borrowed_lines: vec![],
+//     //     rc: false,
+//     //     set_start_borrow: false,
+//     // };
+//     // ctx.new_var(cloned_value_id, cloned_value_data);
+// }
 
-pub fn adjust_ptr_type<'a>(
-    errors: Vec<BorrowError>,
-    ctx: &mut AnalysisContext<'a>,
-    root: &mut Node,
-) {
+pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext) {
     errors.iter().for_each(|error| {
         // A lot of work for nothing
         match &error {
@@ -96,13 +84,17 @@ pub fn adjust_ptr_type<'a>(
                 value_id,
             } => set_rc(value_id, ctx),
             BorrowError::MutImutOverlap {
-                mut_ptr_id,
-                imut_ptr_id,
+                mut_ptr_id: _,
+                imut_ptr_id: _,
                 value_id,
-            } => {}
+            } => set_rc(value_id, ctx),
             // TODO: if the id is the value, we can clone
-            BorrowError::MutValueOverlap { ptr_id, value_id } => {
-                clone_solution(ptr_id, value_id, ctx, root)
+            BorrowError::MutValueOverlap {
+                ptr_id: _,
+                value_id,
+            } => {
+                set_rc(value_id, ctx)
+                // clone_solution(ptr_id, value_id, ctx, root)
             }
         };
 
@@ -113,12 +105,12 @@ pub fn adjust_ptr_type<'a>(
 #[derive(Debug, Clone)]
 struct PtrInfo<'a> {
     ptr_id: String,
-    ptr_var_data: &'a VarData<'a>,
+    ptr_var_data: &'a VarData,
     ptr_type: PtrType,
 }
 
 // TODO: Figure out how to include line numbers in error reports
-pub fn borrow_check<'a>(ctx: &'a AnalysisContext<'a>) -> Vec<BorrowError> {
+pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
     ctx.variables
         .iter()
         .flat_map(|(var_id, var_data)| -> Vec<BorrowError> {
