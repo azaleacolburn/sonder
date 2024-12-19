@@ -1,6 +1,6 @@
 # sonder
 
-## Scratch repo for potential science fair submission
+## Scratch repo
 
 Sonder is a static analyser and transpiler, for converting well-written C code to Rust
 
