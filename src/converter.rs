@@ -94,16 +94,22 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 .collect::<Vec<String>>()[0]
                 .clone();
             let mut l_side = id.clone();
+            let is_rc_clone = ref_types.contains(&PtrType::RcRefClone);
+
             ref_types
                 .into_iter()
                 .for_each(|deref_type| match deref_type {
-                    PtrType::RcRefClone => l_side = format!("*{l_side}.borrow_mut()"),
-                    PtrType::MutRef => l_side = format!("*{l_side}"),
+                    PtrType::RcRefClone => l_side = format!("{l_side}.borrow_mut()"),
+                    PtrType::MutRef if !is_rc_clone => l_side = format!("*{l_side}"),
+                    PtrType::MutRef => {}
                     t => panic!(
                         "Invalid Ptr Type being Derefferenced on lside of deref assignment: {:?}",
                         t
                     ),
                 });
+            if is_rc_clone {
+                l_side = format!("*{l_side}");
+            }
 
             format!("{l_side} {rust_op} {expr_child};")
         }

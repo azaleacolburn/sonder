@@ -19,6 +19,10 @@ pub enum BorrowError {
         ptr_id: String,
         value_id: String,
     },
+    MutValueSameLine {
+        ptr_id: String,
+        value_id: String,
+    },
 }
 
 fn set_ptr_rc(value_id: &str, ctx: &mut AnalysisContext) {
@@ -100,6 +104,10 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext) {
                 set_rc(value_id, ctx)
                 // clone_solution(ptr_id, value_id, ctx, root)
             }
+            BorrowError::MutValueSameLine { ptr_id, value_id } => {
+                // create_clone(value_id, ptr_id);
+                // set_raw(value_id, ptr_id);
+            }
         };
 
         // TODO: This should actually traverse the pointer chain downwards
@@ -165,7 +173,7 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
                         .iter()
                         .filter(|other_ptr_data| mut_ptr_data.ptr_id != other_ptr_data.ptr_id)
                         .filter(|other_ptr_data| {
-                            both_ptr_active_range_overlap(
+                            let both_ptr_active_range_overlap(
                                 mut_ptr_data.ptr_var_data.non_borrowed_lines.clone(),
                                 other_ptr_data.ptr_var_data.non_borrowed_lines.clone(),
                             )
@@ -196,16 +204,33 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
         .collect()
 }
 
+enum OverlapState {
+    Overlap,
+    SameLine,
+    NoOverlap
+}
+
 // TODO: Create more elegant solution than seperate functions for simply changing the exclusively
 // of an inequality
 //
 // Returns the function
-pub fn both_ptr_active_range_overlap(l_1: Vec<Range<usize>>, l_2: Vec<Range<usize>>) -> bool {
+pub fn both_ptr_active_range_overlap(l_1: Vec<Range<usize>>, l_2: Vec<Range<usize>>) -> OverlapState {
     let ranges_overlap =
-        |l_1: &Range<usize>, l_2: &Range<usize>| l_1.start <= l_2.end && l_2.start <= l_1.end;
-    l_1.iter()
-        .flat_map(|l_1| l_2.iter().map(|l_2| ranges_overlap(l_1, l_2)))
-        .any(|overlaps| overlaps)
+        |l_1: &Range<usize>, l_2: &Range<usize>| -> OverlapState {if l_1.start < l_2.end && l_2.start < l_1.end {
+        OverlapState::Overlap
+    } else if l_1.start == l_2.end || l_2.start == l_1.end {
+            OverlapState::SameLine
+        } else {
+            OverlapState::NoOverlap
+        }
+};
+
+    let overlaps_list: Vec<OverlapState> = l_1.iter()
+        .flat_map(|l_1| l_2.iter().map(|l_2| ranges_overlap(l_1, l_2))).collect;
+    if overlaps_list.contains(&OverlapState::Overlap) {
+        OverlapState::Overlap
+    } else if overlaps_list.contains(&OverlapState::SameLine)
+        
 }
 pub fn var_active_range_overlap(l_1: Vec<Range<usize>>, l_2: Vec<Range<usize>>) -> bool {
     let ranges_overlap =
