@@ -44,26 +44,14 @@ fn value_overlap() {
 
 /// Invalid Rust code if directly translated
 /// Should be caught by the checker and a safe solution should be applied
-/// eg.
-/// ```rust
-/// fn main() -> () {
-///     let n: i32 = 0;
-///     let g: &i32 = 0;
-/// }
-/// fn test -> () {
-///     let k: Rc<RefCell<i32>> = Rc::new(RefCell::new(3));
-///     let y: Rc<RefCell<i32>> = k.clone();
-///     *y.borrow_mut() = *k.borrow() + 6;
-/// }
+///
+/// See dilema in README.md
+///
 /// ```
 #[test]
 fn deref_value_assignment() {
     validate(
-        "int main() {
-            int n = 0;
-            int* g = &n;
-        }
-        void test() {
+        "void main() {
             int k = 3;
             int* y = &k;
             *y = k + 6;

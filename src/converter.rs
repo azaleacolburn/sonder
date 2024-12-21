@@ -97,7 +97,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             ref_types
                 .into_iter()
                 .for_each(|deref_type| match deref_type {
-                    PtrType::RcRefClone => l_side.push_str(".borrow_mut()"),
+                    PtrType::RcRefClone => l_side = format!("*{l_side}.borrow_mut()"),
                     PtrType::MutRef => l_side = format!("*{l_side}"),
                     t => panic!(
                         "Invalid Ptr Type being Derefferenced on lside of deref assignment: {:?}",

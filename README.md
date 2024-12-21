@@ -82,6 +82,56 @@ The data structure for keeping track of references would need to preserve the or
 The question then becomes, how do we link address and variable?
 An optional field in VarData seems like the best choice.
 
+### How to handle usage overlaps on the same line
+
+```c
+int main() {
+    int t = 0;
+    int* k = &t;
+    *k = t + 1;
+}
+```
+
+In this case, Rc<RefCell> won't work, since the borrow and mutable borrow are on the same line in the invalid translated code. Meaning we would get something like this:
+
+```rust
+fn main() -> () {
+    let mut t = Rc::new(RefCell::new(0));
+    let k = t.clone();
+    *k.borrow_mut() = t.borrow() + 1; // On the same line, panics
+}
+```
+
+If the &mut and (sub_value | &mut) are used on the same line (that isn't the borrowing line)
+Cloning or raw ptrs are required.
+
+We then need to decide if changing the semantics of the program any amount is valid, such as placing a new item on the stack for the sake of memory safety
+
+This sounds really difficult, so
+
+eg.
+
+```rust
+fn main() -> () {
+   let mut t = 0;
+   let t_tmp = t.clone();
+   let k = &mut t;
+   *k = t_tmp + 1;
+}
+```
+
+or
+
+```rust
+fn main() -> () {
+    let mut t = 0;
+    let k = &mut t as *mut i32;
+    unsafe {
+        *k = t + 1;
+    }
+}
+```
+
 ## Todo
 
 - Rethink reference tracking
