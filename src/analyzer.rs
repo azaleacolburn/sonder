@@ -154,6 +154,16 @@ impl AnalysisContext {
         }
         reference.unwrap()
     }
+
+    pub fn print_refs(&self) {
+        self.variables.iter().for_each(|(id, var_data)| {
+            println!("{id}:");
+            var_data
+                .non_borrowed_lines
+                .iter()
+                .for_each(|non_borrowed_range| println!("\t{:?}", non_borrowed_range))
+        })
+    }
 }
 /// Data of a specific instance of the address of a variable being taken
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -194,6 +204,7 @@ impl VarData {
         }
     }
     pub fn new_borrow(&mut self, line: usize) {
+        self.add_non_borrowed_line(line);
         self.non_borrowed_lines.push(Range {
             start: line,
             end: line,
@@ -410,6 +421,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             // We don't know if a variable owns this ref yet
             // that's for the ptr_declaration to figure out
             ctx.new_adr(adr_data, None);
+            println!("NEW BORROW: {}", id);
             ctx.mut_var(id.to_string(), |var_data| var_data.new_borrow(root.line));
         }
         NodeType::DeRef(adr) => {

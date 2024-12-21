@@ -47,7 +47,7 @@ pub enum NodeType {
     FunctionCall(String),
     Scope(Option<CType>), // <-- anything that has {} is a scope, scope is how we're handling multiple statements, scopes return the last statement's result or void
     Assignment(AssignmentOpType, String), // id
-    DerefAssignment(AssignmentOpType, Box<TokenNode>), // deref_node
+    DerefAssignment(AssignmentOpType, Box<TokenNode>), // deref_node, deref count
     Declaration(String, CType, usize), // id, type, additional_reserved_size (for arrays)
     PtrDeclaration(String, CType, Box<TokenNode>),
     Asm(String),
@@ -336,10 +336,7 @@ pub fn statement(
         Token::Type(t) => type_statement(token_handler, t.clone()),
         Token::Id(name) => id_statement(token_handler, name.to_string()),
         // TODO: Maybe split deref_assignment into two null-terminals
-        Token::Star => {
-            token_handler.next_token();
-            deref_assignment(token_handler, None)
-        }
+        Token::Star => deref_assignment(token_handler, None),
         Token::If => if_statement(token_handler),
         Token::While => while_statement(token_handler),
         Token::For => for_statement(token_handler),

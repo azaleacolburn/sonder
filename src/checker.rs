@@ -111,6 +111,7 @@ struct PtrInfo<'a> {
 
 // TODO: Figure out how to include line numbers in error reports
 pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
+    ctx.print_refs();
     ctx.variables
         .iter()
         .flat_map(|(var_id, var_data)| -> Vec<BorrowError> {
