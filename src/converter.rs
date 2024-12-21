@@ -20,13 +20,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 CType::Char => "u8",
             };
             let rust_adr = convert_annotated_ast(&adr);
-            let mut_binding = if *is_mut
-                && !(*rc || *adr_data.borrow().ptr_type.last().unwrap() == PtrType::RcRefClone)
-            {
-                "mut "
-            } else {
-                ""
-            };
+            let mut_binding = if *is_mut { "mut " } else { "" };
             // Only supports one reference at a time
             fn get_ref_type<T>(ptr_types: &mut T, rust_t: &str) -> String
             where
@@ -77,7 +71,12 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
         // = Rc::new({rust_adr})
         // = &{rust_adr} as *mut {rust_t}
         // = &{rust_adr} as *const {rust_t}
-        AnnotatedNodeT::DerefAssignment { op, id, rc, count } => {
+        AnnotatedNodeT::DerefAssignment {
+            op,
+            id,
+            rc,
+            ref_types,
+        } => {
             let rust_op = match op {
                 AssignmentOpType::Eq => "=",
                 AssignmentOpType::SubEq => "-=",
@@ -94,20 +93,19 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 .map(convert_annotated_ast)
                 .collect::<Vec<String>>()[0]
                 .clone();
-            let derefs: String =
-                (0..count.clone())
-                    .into_iter()
-                    .fold(String::new(), |mut acc, _| {
-                        acc.push_str("*");
-                        acc
-                    });
+            let mut l_side = id.clone();
+            ref_types
+                .into_iter()
+                .for_each(|deref_type| match deref_type {
+                    PtrType::RcRefClone => l_side.push_str(".borrow_mut()"),
+                    PtrType::MutRef => l_side = format!("*{l_side}"),
+                    t => panic!(
+                        "Invalid Ptr Type being Derefferenced on lside of deref assignment: {:?}",
+                        t
+                    ),
+                });
 
-            if *rc {
-                println!("DerefAssignment");
-                format!("{derefs}{id}.borrow_mut() {rust_op} {expr_child};")
-            } else {
-                format!("{derefs}{id} {rust_op} {expr_child};")
-            }
+            format!("{l_side} {rust_op} {expr_child};")
         }
         AnnotatedNodeT::Declaration { id, is_mut, t, rc } => {
             let rust_t = match t {

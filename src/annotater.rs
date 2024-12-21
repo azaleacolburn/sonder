@@ -57,7 +57,8 @@ pub enum AnnotatedNodeT {
         op: AssignmentOpType,
         id: String,
         rc: bool,
-        count: u8,
+        // This is the type of each reference being dereferenced, not in total
+        ref_types: Vec<PtrType>,
     },
     Declaration {
         id: String,
@@ -165,14 +166,27 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
         NodeType::DerefAssignment(op, adr) => {
             let ids = find_ids(&adr);
             let derefed_id = ids[0].clone();
-            let count = count_derefs(adr);
             let sub_id = ctx.find_which_ref_at_id(&derefed_id, root.line);
+            let count = count_derefs(adr);
+            // types of refs being dereffed in order
+            let mut ref_types = ctx
+                .get_var(&derefed_id)
+                .expect("dereffed id not in map")
+                .addresses
+                .iter()
+                .find(|adr_data| adr_data.borrow().adr_of == sub_id)
+                .expect("Sub id not found in adr list")
+                .borrow()
+                .ptr_type
+                .clone();
+            ref_types.truncate(count as usize);
+
             let rc = ctx.get_var(&sub_id).as_ref().expect("sub_id not in map").rc;
             AnnotatedNodeT::DerefAssignment {
                 op: op.clone(),
                 id: derefed_id.clone(),
                 rc,
-                count,
+                ref_types,
             }
         }
         NodeType::DeRef(expr) => {

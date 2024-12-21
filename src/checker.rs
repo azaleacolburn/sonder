@@ -21,9 +21,7 @@ pub enum BorrowError {
     },
 }
 
-fn set_rc(value_id: &str, ctx: &mut AnalysisContext) {
-    ctx.mut_var(value_id.to_string(), |var_data| var_data.rc = true);
-
+fn set_ptr_rc(value_id: &str, ctx: &mut AnalysisContext) {
     let sub_var_data = ctx.get_var(&value_id);
     let ptrs = sub_var_data
         .expect("sub_var not in map")
@@ -48,7 +46,13 @@ fn set_rc(value_id: &str, ctx: &mut AnalysisContext) {
             // For now we'll just make the top ptr_type be an RcClone
             ptr_to_value.ptr_type[other_ref_level_len] = PtrType::RcRefClone;
         });
+        set_ptr_rc(&ptr_id, ctx);
     });
+}
+
+fn set_rc(value_id: &str, ctx: &mut AnalysisContext) {
+    ctx.mut_var(value_id.to_string(), |var_data| var_data.rc = true);
+    set_ptr_rc(value_id, ctx);
 }
 
 // fn clone_solution<'a>(
