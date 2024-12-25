@@ -194,11 +194,24 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
                     .iter()
                     .filter(|other_ptr_data| mut_ptr_data.ptr_id != other_ptr_data.ptr_id)
                     .for_each(|other_ptr_data| {
-                        let test = both_ptr_active_range_overlap(
+                        let overlap_state = both_ptr_active_range_overlap(
                             mut_ptr_data.ptr_var_data.non_borrowed_lines.clone(),
                             other_ptr_data.ptr_var_data.non_borrowed_lines.clone(),
                         );
-                        if test == OverlapState::Overlap {}
+                        match (other_ptr_data.ptr_type.clone(), overlap_state) {
+                            (PtrType::MutRef, _) => BorrowError::MutMutOverlap {
+                                first_ptr_id: mut_ptr_data.ptr_id.clone(),
+                                second_ptr_id: other_ptr_data.ptr_id.clone(),
+                                value_id: var_id.clone(),
+                            },
+
+                            (PtrType::ImutRef, _) => BorrowError::MutImutOverlap {
+                                mut_ptr_id: mut_ptr_data.ptr_id.clone(),
+                                imut_ptr_id: other_ptr_data.ptr_id.clone(),
+                                value_id: var_id.clone(),
+                            },
+                            (_, _) => panic!("Basic ref should not have smart ptr type"),
+                        };
                     })
             });
 
