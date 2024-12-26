@@ -189,7 +189,7 @@ pub struct TokenHandler {
 impl TokenHandler {
     pub fn new(tokens: Vec<Token>, line_tracker: LineNumHandler) -> Self {
         TokenHandler {
-            tokens,
+            tokens: tokens.clone(),
             curr_token: 0,
             token_lines: line_tracker
                 .token_lines
@@ -197,7 +197,7 @@ impl TokenHandler {
                 .enumerate()
                 .map(|(line_number, start)| {
                     let end = match line_tracker.token_lines.len() - 1 == line_number {
-                        true => *start,
+                        true => tokens.len(),
                         false => line_tracker.token_lines[line_number + 1],
                     };
 
@@ -243,6 +243,8 @@ impl TokenHandler {
     }
 
     pub fn line(&self) -> usize {
+        println!("{:?}", self.tokens[self.curr_token]);
+        println!("{:?}", self.token_lines);
         self.token_lines
             .iter()
             .position(|range| range.start <= self.curr_token && self.curr_token <= range.end)
@@ -1112,21 +1114,24 @@ pub fn struct_declaration_handler(token_handler: &mut TokenHandler) -> Result<To
         );
         field_definitions.push(declaration);
         token_handler.next_token();
-        if *token_handler.get_token() != Token::Comma && *token_handler.get_token() != Token::CParen
-        {
+        if *token_handler.get_token() != Token::Semi {
             return Err(token_handler.new_err(ET::ExpectedSemi));
         }
+        token_handler.next_token();
     }
-
-    let struct_declaration_node = TokenNode::new(
-        NodeType::StructDeclaration(id),
-        Some(field_definitions),
-        token_handler.line(),
-    );
 
     if *token_handler.get_token() != Token::CCurl {
         return Err(token_handler.new_err(ET::ExpectedCCurl));
     }
 
-    Ok(struct_declaration_node)
+    token_handler.next_token();
+    if *token_handler.get_token() != Token::Semi {
+        return Err(token_handler.new_err(ET::ExpectedSemi));
+    }
+
+    Ok(TokenNode::new(
+        NodeType::StructDeclaration(id),
+        Some(field_definitions),
+        token_handler.line(),
+    ))
 }

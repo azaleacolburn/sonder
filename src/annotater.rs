@@ -65,6 +65,7 @@ pub enum AnnotatedNodeT {
         is_mut: bool,
         t: CType,
         rc: bool,
+        is_struct: bool,
     },
     PtrDeclaration {
         id: String,

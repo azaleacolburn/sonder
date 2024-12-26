@@ -99,6 +99,17 @@ fn crazy_multi_ref() {
     );
 }
 
+#[test]
+fn struct_basic() {
+    validate(
+        "struct test {
+            int m;
+            int j;
+        };",
+        "struct_basic",
+    );
+}
+
 fn validate(c_code: &str, test_name: &str) {
     let ast = parse_c(c_code.to_string());
     let rust_code = convert_to_rust_code(ast);

@@ -113,24 +113,40 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
 
             format!("{l_side} {rust_op} {expr_child};")
         }
-        AnnotatedNodeT::Declaration { id, is_mut, t, rc } => {
+        AnnotatedNodeT::Declaration {
+            id,
+            is_mut,
+            t,
+            rc,
+            is_struct,
+        } => {
             let rust_t = match t {
                 CType::Void => "()",
                 CType::Int => "i32",
                 CType::Char => "u8",
             };
-            let expr_child = root
+            let expr_children = root
                 .children
                 .iter()
                 .map(convert_annotated_ast)
-                .collect::<Vec<String>>()[0]
-                .clone();
+                .collect::<Vec<String>>();
+            if expr_children.len() > 0 {
+                let expr_child = expr_children[0].clone();
 
-            if *rc {
-                format!("let {id}: Rc<RefCell<{rust_t}>> = Rc::new(RefCell::new({expr_child}));")
+                if *rc {
+                    format!(
+                        "let {id}: Rc<RefCell<{rust_t}>> = Rc::new(RefCell::new({expr_child}));"
+                    )
+                } else {
+                    let binding = if *is_mut { "mut " } else { "" };
+                    format!("let {binding}{id}: {rust_t} = {expr_child};")
+                }
             } else {
-                let binding = if *is_mut { "mut " } else { "" };
-                format!("let {binding}{id}: {rust_t} = {expr_child};")
+                if is_struct {
+                    format!("{id}: {rust_t};")
+                } else {
+                    format!("let {id}: {rust_t};")
+                }
             }
         }
         AnnotatedNodeT::DeRef { id, rc, count } => {
@@ -236,6 +252,14 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
                     .join("\n"),
             );
             t.join("\n")
+        }
+        AnnotatedNodeT::StructDeclaration(struct_name) => {
+            let mut ret = format!("struct {struct_name} {{\n");
+            root.children.iter().for_each(|child| {
+                ret.push_str(format!("\t{}\n", &convert_annotated_ast(child)).as_str());
+            });
+            ret.push('}');
+            ret
         }
         AnnotatedNodeT::Scope(_) => root
             .children

@@ -82,6 +82,11 @@ fn set_rc(value_id: &str, ctx: &mut AnalysisContext) {
 //     // ctx.new_var(cloned_value_id, cloned_value_data);
 // }
 
+/// This function is problematic because it requires the ast to be changed :(
+/// Either that, or we could use some othe protocole for conveying a new variable
+/// Or, we could not add a new variable because we're weak and don't want to change business logic
+fn create_clone(_value_id: &str, _ptr_id: &str, _ctx: &mut AnalysisContext) {}
+
 pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext) {
     errors.iter().for_each(|error| {
         // A lot of work for nothing
@@ -105,7 +110,7 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext) {
                 // clone_solution(ptr_id, value_id, ctx, root)
             }
             BorrowError::MutValueSameLine { ptr_id, value_id } => {
-                // create_clone(value_id, ptr_id);
+                create_clone(value_id, ptr_id, ctx);
                 // set_raw(value_id, ptr_id);
             }
         };
