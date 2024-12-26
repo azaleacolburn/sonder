@@ -167,53 +167,50 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
                     value_id: var_id.clone(),
                 })
                 .collect();
-            // In this case, an Rc<RefCell> solution won't work, since the borrows will be taken
-            // on the same line.
-            let mut mutable_ref_eq_line: Vec<BorrowError> = vec![];
-            // In this caes, an Rc<RefCell> solution works, since they overlap and borrows can be
-            // made on different lines and both dropped after one line
-            let mut mutable_ref_overlaps: Vec<BorrowError> = vec![];
-            // .map(|other_ptr_data| match other_ptr_data.ptr_type {
-            //                     PtrType::MutRef => BorrowError::MutMutOverlap {
-            //                         first_ptr_id: mut_ptr_data.ptr_id.clone(),
-            //                         second_ptr_id: other_ptr_data.ptr_id.clone(),
-            //                         value_id: var_id.clone(),
-            //                     },
-            //                     PtrType::ImutRef => BorrowError::MutImutOverlap {
-            //                         mut_ptr_id: mut_ptr_data.ptr_id.clone(),
-            //                         imut_ptr_id: other_ptr_data.ptr_id.clone(),
-            //                         value_id: var_id.clone(),
-            //                     },
-            //                     _ => panic!("Basic ref should not have smart ptr type"),
-            //                 })
-            //                 .collect::<Vec<BorrowError>>()
-            //         })
-            //         .collect();
-            pointed_to_by_mutably.for_each(|mut_ptr_data| {
+                let mut mutable_ref_overlaps: Vec<BorrowError> = pointed_to_by_mutably.flat_map(|mut_ptr_data| {
                 pointed_to_by
                     .iter()
                     .filter(|other_ptr_data| mut_ptr_data.ptr_id != other_ptr_data.ptr_id)
-                    .for_each(|other_ptr_data| {
+                    .filter_map(|other_ptr_data| {
                         let overlap_state = both_ptr_active_range_overlap(
                             mut_ptr_data.ptr_var_data.non_borrowed_lines.clone(),
                             other_ptr_data.ptr_var_data.non_borrowed_lines.clone(),
                         );
                         match (other_ptr_data.ptr_type.clone(), overlap_state) {
-                            (PtrType::MutRef, _) => BorrowError::MutMutOverlap {
-                                first_ptr_id: mut_ptr_data.ptr_id.clone(),
-                                second_ptr_id: other_ptr_data.ptr_id.clone(),
-                                value_id: var_id.clone(),
-                            },
-
-                            (PtrType::ImutRef, _) => BorrowError::MutImutOverlap {
-                                mut_ptr_id: mut_ptr_data.ptr_id.clone(),
-                                imut_ptr_id: other_ptr_data.ptr_id.clone(),
-                                value_id: var_id.clone(),
-                            },
+                            // In this caes, an Rc<RefCell> solution works, since they overlap and borrows can be
+                            // made on different lines and both dropped after one line
+                            (PtrType::MutRef, OverlapState::Overlap) => {
+                                Some(BorrowError::MutMutOverlap {
+                                    first_ptr_id: mut_ptr_data.ptr_id.clone(),
+                                    second_ptr_id: other_ptr_data.ptr_id.clone(),
+                                    value_id: var_id.clone(),
+                                })
+                            }
+                            (PtrType::ImutRef, OverlapState::Overlap) => {
+                                Some(BorrowError::MutImutOverlap {
+                                    mut_ptr_id: mut_ptr_data.ptr_id.clone(),
+                                    imut_ptr_id: other_ptr_data.ptr_id.clone(),
+                                    value_id: var_id.clone(),
+                                })
+                            }
+                            // The solution won't work in this case, since the borrow will be made
+                            // on the same line, violating borrow checking rules at runtime
+                            (PtrType::MutRef, OverlapState::SameLine) => {
+                                Some(BorrowError::MutValueSameLine {
+                                    ptr_id: mut_ptr_data.ptr_id.clone(),
+                                    value_id: var_id.clone(),
+                                })
+                            }
+                            (PtrType::ImutRef, OverlapState::SameLine) => {
+                                panic!("ImutRef on same line, this is fine\n This actually might be a problem if we have a mutable and immutable reference overlapping on the same line");
+                            }
+                            (_, OverlapState::NoOverlap) => {
+                                None
+                            }
                             (_, _) => panic!("Basic ref should not have smart ptr type"),
-                        };
-                    })
-            });
+                        }
+                    }).collect::<Vec<BorrowError>>()
+            }).collect();
 
             println!(
                 "value_overlaps_with_mut_ptr {var_id}: {:?}\nmutable_ref_overlaps {var_id}: {:?}",
