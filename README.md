@@ -1,9 +1,9 @@
 # sonder
+Sonder is a static analyser and transpiler, for converting well-written C code to Rust.
 
 ## Scratch repo
 
-Sonder is a static analyser and transpiler, for converting well-written C code to Rust
-
+This project is incredible WIP and not at all intended for production-grade work. It exists purely as a proof of concept.
 ## What does well-written mean?
 
 For the purposes of sonder, well-written means that for any given pointer, the C code in question either
