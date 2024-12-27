@@ -65,7 +65,6 @@ pub enum AnnotatedNodeT {
         is_mut: bool,
         t: CType,
         rc: bool,
-        is_struct: bool,
     },
     PtrDeclaration {
         id: String,
@@ -99,8 +98,16 @@ pub enum AnnotatedNodeT {
     Assert,
     Return,
     PutChar,
-    StructDeclaration(String),
+    StructDeclaration(String, Vec<FieldDefinition>),
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldDefinition {
+    id: String,
+    ptr_type: Option<PtrType>,
+    c_type: CType,
+}
+
 impl Display for AnnotatedNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.token) // doesn't print values
@@ -121,7 +128,7 @@ impl AnnotatedNode {
 pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode {
     let token = match &root.token {
         NodeType::Declaration(id, t, _) => {
-            let declaration_info = ctx.get_var(id).expect("Declared id not in map");
+            let declaration_info = ctx.get_var(id);
             let is_mut = declaration_info.is_mut_by_ptr || declaration_info.is_mut_direct;
             let rc = declaration_info.rc;
             AnnotatedNodeT::Declaration {
@@ -253,6 +260,12 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
                 op: op.clone(),
                 rc,
             }
+        }
+        NodeType::StructDeclaration(id, field_declarations) => {
+            let field_definitions = ctx.get_struct(id);
+            field_definitions.declaration_ids.
+            let field_definitions = field_declarations.iter().flat_map(||)
+            AnnotatedNodeT::StructDeclaration(id.to_string(), field_definitions),
         }
         node => node.to_annotated_node(),
     };

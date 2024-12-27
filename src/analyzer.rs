@@ -6,7 +6,11 @@ use std::{
     rc::Rc,
 };
 
-use crate::parser::{NodeType, TokenNode as Node};
+use crate::{
+    annotater::FieldDefinition,
+    lexer::CType,
+    parser::{NodeType, TokenNode as Node},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PtrType {
@@ -25,6 +29,7 @@ pub enum PtrType {
 pub struct AnalysisContext {
     pub variables: HashMap<String, VarData>,
     pub addresses: Vec<Rc<RefCell<AdrData>>>,
+    pub structs: HashMap<String, StructData>,
 }
 
 impl AnalysisContext {
@@ -32,6 +37,7 @@ impl AnalysisContext {
         AnalysisContext {
             variables: HashMap::new(),
             addresses: vec![],
+            structs: HashMap::new(),
         }
     }
     pub fn new_var(&mut self, id: String, data: VarData) {
@@ -47,16 +53,25 @@ impl AnalysisContext {
         }
     }
 
-    pub fn get_var(&self, id: &str) -> Option<&VarData> {
-        self.variables.get(id)
+    pub fn new_struct(&mut self, id: String, struct_data: StructData) {
+        self.structs.insert(id, struct_data);
+    }
+
+    pub fn get_struct(&self, id: &str) -> &StructData {
+        self.structs.get(id).expect("Struct not in map")
+    }
+
+    pub fn get_var(&self, id: &str) -> &VarData {
+        self.variables.get(id).expect("Var not in map")
     }
 
     /// Gets an address, given the id the address points to
     /// If more than one exists, the first one is returned
-    pub fn get_adr(&self, var_id: &str) -> Option<&Rc<RefCell<AdrData>>> {
+    pub fn get_adr(&self, var_id: &str) -> &Rc<RefCell<AdrData>> {
         self.addresses
             .iter()
             .find(|adr_data| adr_data.borrow().adr_of == var_id)
+            .expect("Address not in map")
     }
 
     pub fn mut_var<F>(&mut self, id: String, f: F)
@@ -165,6 +180,12 @@ impl AnalysisContext {
         })
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StructData {
+    pub declarations: Vec<FieldDefinition>,
+}
+
 /// Data of a specific instance of the address of a variable being taken
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdrData {
@@ -433,6 +454,25 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             let id = ids[0].clone();
             ctx.mut_var(id, |var_data| var_data.add_non_borrowed_line(root.line));
         }
+        NodeType::StructDeclaration(struct_id, declarations) => {
+            let declaration_id_types: Vec<(String, CType, PtrType)> = declarations
+                .iter()
+                .flat_map(|node| (find_type_ids(node), find_addresses(node)))
+                .map(|((id, c_type), ptr_type)| (id, c_type, ptr_type))
+                .collect();
+            let ptrs = declarations.iter().for_eachfind_addresses(node)
+            let field_definitions: Vec<FieldDefinition> declaration_id_types.iter().flat_map(|(id, c_type)| FieldDefinition {
+                id,
+                c_type,
+                ptr_type
+            })
+            ctx.new_struct(
+                struct_id.to_string(),
+                StructData {
+                    declarations: ,
+                },
+            );
+        }
         _ => {}
     };
 }
@@ -452,6 +492,7 @@ pub fn find_addresses(root: &Node) -> Vec<String> {
     vec
 }
 
+
 pub fn count_derefs(root: &Node) -> u8 {
     let mut count = 0;
     let children = root.children.as_ref();
@@ -465,6 +506,21 @@ pub fn count_derefs(root: &Node) -> u8 {
         _ => {}
     };
     count
+}
+
+pub fn find_type_ids<'a>(root: &'a Node) -> Vec<(String, CType)> {
+    let mut type_ids: Vec<(String, CType)> = root
+        .children
+        .as_ref()
+        .unwrap_or(&vec![])
+        .iter()
+        .flat_map(find_type_ids)
+        .collect();
+    match &root.token {
+        NodeType::Declaration(id, c_type, _size) => type_ids.push((id.clone(), c_type.clone())),
+        _ => {}
+    };
+    type_ids
 }
 
 pub fn find_ids<'a>(root: &'a Node) -> Vec<String> {
@@ -485,4 +541,13 @@ pub fn find_ids<'a>(root: &'a Node) -> Vec<String> {
     }
 
     ids
+}
+
+pub fn count_declaration_ref(root: &Node) -> Vec<PtrType> {
+    let ptr = root.children.iter().map(count_declaration_ref).collect();
+    match root.token {
+        NodeType::PtrDeclaration(id, c_type, expr) => {
+            
+        }
+    }
 }

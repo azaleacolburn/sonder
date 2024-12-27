@@ -723,7 +723,7 @@ pub enum Token {
             // FuncCall(String, Vec<String>), // function name, args
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CType {
     Void,
     Int,

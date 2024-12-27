@@ -142,7 +142,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                     format!("let {binding}{id}: {rust_t} = {expr_child};")
                 }
             } else {
-                if is_struct {
+                if *is_struct {
                     format!("{id}: {rust_t};")
                 } else {
                     format!("let {id}: {rust_t};")

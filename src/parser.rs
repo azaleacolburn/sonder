@@ -58,7 +58,7 @@ pub enum NodeType {
     Assert,
     Return,
     PutChar,
-    StructDeclaration(String),
+    StructDeclaration(String, Vec<TokenNode>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -170,7 +170,6 @@ impl NodeType {
             NodeType::Assert => AnnotatedNodeT::Assert,
             NodeType::Return => AnnotatedNodeT::Return,
             NodeType::PutChar => AnnotatedNodeT::PutChar,
-            NodeType::StructDeclaration(id) => AnnotatedNodeT::StructDeclaration(id.to_string()),
             node => {
                 panic!("Should have been caught by parent match: {:?}", node)
             }
@@ -1130,8 +1129,8 @@ pub fn struct_declaration_handler(token_handler: &mut TokenHandler) -> Result<To
     }
 
     Ok(TokenNode::new(
-        NodeType::StructDeclaration(id),
-        Some(field_definitions),
+        NodeType::StructDeclaration(id, field_definitions),
+        None,
         token_handler.line(),
     ))
 }
