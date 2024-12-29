@@ -113,13 +113,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
 
             format!("{l_side} {rust_op} {expr_child};")
         }
-        AnnotatedNodeT::Declaration {
-            id,
-            is_mut,
-            t,
-            rc,
-            is_struct,
-        } => {
+        AnnotatedNodeT::Declaration { id, is_mut, t, rc } => {
             let rust_t = match t {
                 CType::Void => "()",
                 CType::Int => "i32",
@@ -142,11 +136,10 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                     format!("let {binding}{id}: {rust_t} = {expr_child};")
                 }
             } else {
-                if *is_struct {
-                    format!("{id}: {rust_t};")
-                } else {
-                    format!("let {id}: {rust_t};")
-                }
+                // NOTE:
+                // It should never be a struct field declaration because those are handled
+                // internally by the StructDeclaration node
+                format!("let {id}: {rust_t};")
             }
         }
         AnnotatedNodeT::DeRef { id, rc, count } => {
@@ -253,10 +246,28 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             );
             t.join("\n")
         }
-        AnnotatedNodeT::StructDeclaration(struct_name) => {
+        AnnotatedNodeT::StructDeclaration(struct_name, field_definitions) => {
             let mut ret = format!("struct {struct_name} {{\n");
-            root.children.iter().for_each(|child| {
-                ret.push_str(format!("\t{}\n", &convert_annotated_ast(child)).as_str());
+            field_definitions.iter().for_each(|field| {
+                let mut field_type = match field.c_type {
+                    CType::Void => "()",
+                    CType::Char => "u8",
+                    CType::Int => "u16",
+                }
+                .to_string();
+                field.ptr_type.iter().rev().for_each(|p| match p {
+                    PtrType::MutRef => field_type = format!("&mut {field_type}"),
+                    PtrType::ImutRef => field_type = format!("&{field_type}"),
+                    PtrType::RcRefClone => field_type = format!("Rc<RefCell<{field_type}>>"),
+                    // TODO Check if rc is used for original rc ptrs or if RcRefClone is used
+                    // for all
+                    PtrType::Rc => field_type = format!("Rc<{field_type}>"),
+                    PtrType::RefCell => field_type = format!("RefCell<{field_type}>"),
+                    PtrType::RawPtrMut => field_type = format!("*mut {field_type}"),
+                    PtrType::RawPtrImut => field_type = format!("*const {field_type}"),
+                });
+                let field_ret = format!("{}: {}", field.id, field_type);
+                ret.push_str(format!("\t{},\n", field_ret).as_str());
             });
             ret.push('}');
             ret

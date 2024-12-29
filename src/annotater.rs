@@ -103,9 +103,9 @@ pub enum AnnotatedNodeT {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldDefinition {
-    id: String,
-    ptr_type: Option<PtrType>,
-    c_type: CType,
+    pub id: String,
+    pub ptr_type: Vec<PtrType>,
+    pub c_type: CType,
 }
 
 impl Display for AnnotatedNode {
@@ -158,9 +158,7 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             // `&mut &mut &t` illegal
             // Unsafe assumption: Adresses are always immutable unless explicitely annotated otherwise by the ptr declaration
             // `list.append(&mut other_list)` isn't something we're going to worry about for now
-            let rc = ctx
-                .get_var(id)
-                .rc;
+            let rc = ctx.get_var(id).rc;
             AnnotatedNodeT::Adr {
                 id: id.to_string(),
                 rc,
@@ -247,20 +245,16 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             AnnotatedNodeT::Program { imports }
         }
         NodeType::Assignment(op, id) => {
-            let rc = ctx
-                .get_var(id)
-                .rc;
+            let rc = ctx.get_var(id).rc;
             AnnotatedNodeT::Assignment {
                 id: id.clone(),
                 op: op.clone(),
                 rc,
             }
         }
-        NodeType::StructDeclaration(id, field_declarations) => {
-            let field_definitions = ctx.get_struct(id);
-            field_definitions.declaration_ids.
-            let field_definitions = field_declarations.iter().flat_map(||)
-            AnnotatedNodeT::StructDeclaration(id.to_string(), field_definitions),
+        NodeType::StructDeclaration(id, _field_declarations) => {
+            let field_definitions = ctx.get_struct(id).field_definitions.clone();
+            AnnotatedNodeT::StructDeclaration(id.to_string(), field_definitions)
         }
         node => node.to_annotated_node(),
     };

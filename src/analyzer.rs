@@ -183,7 +183,7 @@ impl AnalysisContext {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructData {
-    pub declarations: Vec<FieldDefinition>,
+    pub field_definitions: Vec<FieldDefinition>,
 }
 
 /// Data of a specific instance of the address of a variable being taken
@@ -263,8 +263,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
         }
         NodeType::Assignment(_, id) => {
             // The first that we have to do is determine if what we're assigning to is a pointer
-            let var_data = ctx
-                .get_var(id.as_str());
+            let var_data = ctx.get_var(id.as_str());
             let is_ptr = var_data.addresses.len() > 0;
             if is_ptr {
                 let ids =
@@ -350,9 +349,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             }
             .unwrap();
 
-            let adr_data = ctx
-                .get_adr(&points_to)
-                .clone();
+            let adr_data = ctx.get_adr(&points_to).clone();
             adr_data.borrow_mut().held_by = Some(id.clone());
 
             let var = VarData {
@@ -453,23 +450,18 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             ctx.mut_var(id, |var_data| var_data.add_non_borrowed_line(root.line));
         }
         NodeType::StructDeclaration(struct_id, declarations) => {
-            let declaration_id_types: Vec<(String, CType, PtrType)> = declarations
-                .iter()
-                .flat_map(|node| (find_type_ids(node), find_addresses(node)))
-                .map(|((id, c_type), ptr_type)| (id, c_type, ptr_type))
+            let declaration_id_types = declarations.iter().flat_map(find_type_ids);
+            let declaration_adrs = declarations.iter().map(count_declaration_ref);
+
+            let declarations_data = declaration_id_types.zip(declaration_adrs);
+            let field_definitions: Vec<FieldDefinition> = declarations_data
+                .map(|((id, c_type), ptr_type)| FieldDefinition {
+                    id,
+                    c_type,
+                    ptr_type,
+                })
                 .collect();
-            let ptrs = declarations.iter().for_eachfind_addresses(node)
-            let field_definitions: Vec<FieldDefinition> declaration_id_types.iter().flat_map(|(id, c_type)| FieldDefinition {
-                id,
-                c_type,
-                ptr_type
-            })
-            ctx.new_struct(
-                struct_id.to_string(),
-                StructData {
-                    declarations: ,
-                },
-            );
+            ctx.new_struct(struct_id.to_string(), StructData { field_definitions });
         }
         _ => {}
     };
@@ -489,7 +481,6 @@ pub fn find_addresses(root: &Node) -> Vec<String> {
     }
     vec
 }
-
 
 pub fn count_derefs(root: &Node) -> u8 {
     let mut count = 0;
@@ -541,11 +532,24 @@ pub fn find_ids<'a>(root: &'a Node) -> Vec<String> {
     ids
 }
 
+// An empty vector represents a non ptr
 pub fn count_declaration_ref(root: &Node) -> Vec<PtrType> {
-    let ptr = root.children.iter().map(count_declaration_ref).collect();
-    match root.token {
-        NodeType::PtrDeclaration(id, c_type, expr) => {
-            
+    let mut ptr_types: Vec<PtrType> = root
+        .children
+        .as_ref()
+        .unwrap_or(&Vec::new())
+        .iter()
+        .flat_map(count_declaration_ref)
+        .collect();
+    match &root.token {
+        NodeType::PtrDeclaration(_id, _c_type, _expr) => {
+            // TODO
+            // This will be edited as we go by the analyzer
+            // Ideally, struct declarations will be handled first
+            // Meaning they'll be placed first in the ast by the parser
+            ptr_types.push(PtrType::ImutRef);
         }
-    }
+        _ => {}
+    };
+    ptr_types
 }
