@@ -139,7 +139,7 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             }
         }
         NodeType::PtrDeclaration(id, t, adr) => {
-            let ptr_var_info = ctx.get_var(id).expect("Ptr not found in info map");
+            let ptr_var_info = ctx.get_var(id);
             let is_mut = ptr_var_info.is_mut_by_ptr || ptr_var_info.is_mut_direct;
             let rc = ptr_var_info.rc;
             let annotated_adr = Box::new(annotate_ast(adr, ctx));
@@ -160,8 +160,6 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             // `list.append(&mut other_list)` isn't something we're going to worry about for now
             let rc = ctx
                 .get_var(id)
-                .as_ref()
-                .expect("Id of adr not found in map")
                 .rc;
             AnnotatedNodeT::Adr {
                 id: id.to_string(),
@@ -179,7 +177,6 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             // types of refs being dereffed in order
             let mut ref_types = ctx
                 .get_var(&derefed_id)
-                .expect("dereffed id not in map")
                 .addresses
                 .iter()
                 .find(|adr_data| adr_data.borrow().adr_of == sub_id)
@@ -189,7 +186,7 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
                 .clone();
             ref_types.truncate(count as usize);
 
-            let rc = ctx.get_var(&sub_id).as_ref().expect("sub_id not in map").rc;
+            let rc = ctx.get_var(&sub_id).rc;
             AnnotatedNodeT::DerefAssignment {
                 op: op.clone(),
                 id: derefed_id.clone(),
@@ -202,7 +199,7 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             let ids = find_ids(&expr);
             let derefed_id = ids[0].clone();
             let sub_id = ctx.find_which_ref_at_id(&derefed_id, root.line);
-            let rc = ctx.get_var(&sub_id).as_ref().expect("sub_id not in map").rc;
+            let rc = ctx.get_var(&sub_id).rc;
             AnnotatedNodeT::DeRef {
                 id: derefed_id.clone(),
                 rc,
@@ -210,7 +207,7 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             }
         }
         NodeType::Id(id) => {
-            let rc = ctx.get_var(id).as_ref().expect("Id not in map").rc;
+            let rc = ctx.get_var(id).rc;
             AnnotatedNodeT::Id {
                 id: id.to_string(),
                 rc,
@@ -252,8 +249,6 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
         NodeType::Assignment(op, id) => {
             let rc = ctx
                 .get_var(id)
-                .as_ref()
-                .expect("Id being assigned to not in map")
                 .rc;
             AnnotatedNodeT::Assignment {
                 id: id.clone(),

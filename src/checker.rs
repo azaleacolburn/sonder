@@ -27,10 +27,7 @@ pub enum BorrowError {
 
 fn set_ptr_rc(value_id: &str, ctx: &mut AnalysisContext) {
     let sub_var_data = ctx.get_var(&value_id);
-    let ptrs = sub_var_data
-        .expect("sub_var not in map")
-        .pointed_to_by
-        .clone();
+    let ptrs = sub_var_data.pointed_to_by.clone();
 
     ptrs.iter().for_each(|ptr_id| {
         ctx.mut_var(ptr_id.clone(), |ptr_data| {
@@ -136,7 +133,7 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
                 .pointed_to_by
                 .iter()
                 .map(|ptr_id| {
-                    let ptr_var_data = ctx.get_var(ptr_id).expect("ptr to var not in scope");
+                    let ptr_var_data = ctx.get_var(ptr_id);
                     let adr_data = ptr_var_data
                         .addresses
                         .iter()

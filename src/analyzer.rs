@@ -264,8 +264,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
         NodeType::Assignment(_, id) => {
             // The first that we have to do is determine if what we're assigning to is a pointer
             let var_data = ctx
-                .get_var(id.as_str())
-                .expect("variable being assigned to is not in map");
+                .get_var(id.as_str());
             let is_ptr = var_data.addresses.len() > 0;
             if is_ptr {
                 let ids =
@@ -353,7 +352,6 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
 
             let adr_data = ctx
                 .get_adr(&points_to)
-                .expect("Points to algorithm failed")
                 .clone();
             adr_data.borrow_mut().held_by = Some(id.clone());
 
