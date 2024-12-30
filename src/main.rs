@@ -1,11 +1,12 @@
 use std::fs::read_to_string;
 
 use analyzer::AnalysisContext;
-use parser::TokenNode;
+use ast::TokenNode;
 
 #[allow(dead_code)]
 mod analyzer;
 mod annotater;
+mod ast;
 mod checker;
 mod converter;
 mod error;

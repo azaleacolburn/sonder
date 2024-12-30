@@ -1,8 +1,8 @@
 use crate::{
     analyzer::PtrType,
     annotater::{AnnotatedNode, AnnotatedNodeT},
+    ast::AssignmentOpType,
     lexer::CType,
-    parser::AssignmentOpType,
 };
 pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
     match &root.token {

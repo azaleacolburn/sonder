@@ -1,7 +1,7 @@
 use crate::{
     analyzer::{count_derefs, find_ids, AdrData, AnalysisContext, PtrType},
+    ast::{AssignmentOpType, NodeType, TokenNode as Node},
     lexer::CType,
-    parser::{AssignmentOpType, NodeType, TokenNode as Node},
 };
 use std::{cell::RefCell, fmt::Display, rc::Rc};
 

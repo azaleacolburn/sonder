@@ -8,8 +8,8 @@ use std::{
 
 use crate::{
     annotater::FieldDefinition,
+    ast::{NodeType, TokenNode as Node},
     lexer::CType,
-    parser::{NodeType, TokenNode as Node},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -211,6 +211,16 @@ pub struct VarData {
     // The pattern of initializing and instantiating seperately is harder to analyze and requires a PtrAssignment node
     // Line ranges when the var isn't borrowed
     pub non_borrowed_lines: Vec<Range<usize>>,
+
+    // Struct handling
+    pub instanceof_struct: Option<String>,
+    pub fieldof_struct: Option<FieldInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldInfo {
+    struct_id: String,
+    field_id: String,
 }
 
 impl VarData {
