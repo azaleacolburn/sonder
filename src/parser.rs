@@ -296,7 +296,17 @@ pub fn program(
     let mut token_handler = TokenHandler::new(tokens, line_tracker);
 
     let mut program_node = TokenNode::new(NodeType::Program, Some(vec![]), 0);
-    let top_scope = scope(&mut token_handler, ScopeType::Program)?;
+    let mut top_scope = scope(&mut token_handler, ScopeType::Program)?;
+    if !top_scope.children.as_ref().unwrap().iter().any(|node| {
+        node.token == NodeType::FunctionDecaration("main".into(), CType::Int)
+            || node.token == NodeType::FunctionDecaration("main".into(), CType::Void)
+    }) {
+        top_scope.children.as_mut().unwrap().push(TokenNode::new(
+            NodeType::FunctionDecaration("main".into(), CType::Int),
+            Some(Vec::new()),
+            token_handler.line(),
+        ))
+    }
     program_node.children.as_mut().unwrap().push(top_scope);
 
     program_node.print(&mut 0);

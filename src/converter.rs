@@ -12,7 +12,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             adr_data,
             t,
             adr,
-            rc,
+            rc: _,
         } => {
             let rust_t = match t {
                 CType::Void => "()",
