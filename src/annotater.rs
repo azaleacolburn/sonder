@@ -91,7 +91,7 @@ pub enum AnnotatedNodeT {
         t: CType,
         size: usize,
     },
-    FunctionDecaration {
+    FunctionDeclaration {
         id: String,
         t: CType,
     },

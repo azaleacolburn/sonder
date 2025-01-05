@@ -13,11 +13,11 @@ pub fn program(
     let mut program_node = TokenNode::new(NodeType::Program, Some(vec![]), 0);
     let mut top_scope = scope(&mut token_handler, ScopeType::Program)?;
     if !top_scope.children.as_ref().unwrap().iter().any(|node| {
-        node.token == NodeType::FunctionDecaration("main".into(), CType::Int)
-            || node.token == NodeType::FunctionDecaration("main".into(), CType::Void)
+        node.token == NodeType::FunctionDeclaration("main".into(), CType::Int)
+            || node.token == NodeType::FunctionDeclaration("main".into(), CType::Void)
     }) {
         top_scope.children.as_mut().unwrap().push(TokenNode::new(
-            NodeType::FunctionDecaration("main".into(), CType::Int),
+            NodeType::FunctionDeclaration("main".into(), CType::Int),
             Some(Vec::new()),
             token_handler.line(),
         ))
@@ -384,7 +384,7 @@ fn function_declare_statement(
         token_handler.get_token()
     );
     let mut function_node = TokenNode::new(
-        NodeType::FunctionDecaration(id.clone(), t.clone()),
+        NodeType::FunctionDeclaration(id.clone(), t.clone()),
         Some(vec![]),
         token_handler.line(),
     );

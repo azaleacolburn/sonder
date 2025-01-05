@@ -221,7 +221,7 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
                 format!("{id} {rust_op} {rust_expr};")
             }
         }
-        AnnotatedNodeT::FunctionDecaration { id, t } => {
+        AnnotatedNodeT::FunctionDeclaration { id, t } => {
             let rust_t = match (id.as_str(), t) {
                 ("main", _) => "()",
                 (_, CType::Void) => "()",
@@ -230,9 +230,9 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
                 (_, CType::Struct(id)) => id.as_str(),
             };
 
-            let mut ret = format!("fn {id}() -> {rust_t} {{\n\t");
+            let mut ret = format!("fn {id}() -> {rust_t} {{\n");
             root.children.iter().for_each(|child| {
-                ret.push_str(&convert_annotated_ast(child));
+                ret.push_str(format!("\t{}", &convert_annotated_ast(child)).as_str());
             });
             ret.push_str("\n}");
             ret
@@ -278,13 +278,13 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
         }
         AnnotatedNodeT::StructDeclaration(struct_declaration) => {
             let mut ret = format!(
-                "let {} = {} {{\n",
+                "let {} = {} {{ ",
                 struct_declaration.var_id, struct_declaration.struct_id
             );
             struct_declaration.fields.iter().for_each(|(field, expr)| {
                 // NOTE: All the other fancy field stuff should be handled by expr
                 let expr = convert_annotated_ast(expr);
-                ret.push_str(format!("\t{}: {},\n", field.id, expr).as_str());
+                ret.push_str(format!("{}: {}, ", field.id, expr).as_str());
             });
             ret.push_str("};");
             ret

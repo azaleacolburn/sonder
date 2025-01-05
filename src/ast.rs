@@ -52,7 +52,7 @@ pub enum NodeType {
     Adr(String),
     DeRef(Box<TokenNode>),
     ArrayDeclaration(String, CType, usize), // id, type, count
-    FunctionDecaration(String, CType),
+    FunctionDeclaration(String, CType),
     Assert,
     Return,
     PutChar,
@@ -169,7 +169,7 @@ impl NodeType {
                 t: t.clone(),
                 size: *size,
             },
-            NodeType::FunctionDecaration(id, t) => AnnotatedNodeT::FunctionDecaration {
+            NodeType::FunctionDeclaration(id, t) => AnnotatedNodeT::FunctionDeclaration {
                 id: id.to_string(),
                 t: t.clone(),
             },
