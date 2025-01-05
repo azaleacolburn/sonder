@@ -1,6 +1,6 @@
 use crate::{
     analyzer::{count_derefs, find_ids, AdrData, AnalysisContext, PtrType},
-    ast::{AssignmentOpType, NodeType, TokenNode as Node},
+    ast::{AssignmentOpType, NodeType, StructDeclaration, TokenNode as Node},
     lexer::CType,
 };
 use std::{cell::RefCell, fmt::Display, rc::Rc};
@@ -98,7 +98,15 @@ pub enum AnnotatedNodeT {
     Assert,
     Return,
     PutChar,
-    StructDeclaration(String, Vec<FieldDefinition>),
+    StructDefinition(String, Vec<FieldDefinition>),
+    StructDeclaration(AnnotatedStructDeclaration),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnnotatedStructDeclaration {
+    pub var_id: String,
+    pub struct_id: String,
+    pub fields: Vec<(FieldDefinition, AnnotatedNode)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -252,9 +260,30 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
                 rc,
             }
         }
-        NodeType::StructDeclaration(id, _field_declarations) => {
+        NodeType::StructDefinition(id, _field_definitions) => {
             let field_definitions = ctx.get_struct(id).field_definitions.clone();
-            AnnotatedNodeT::StructDeclaration(id.to_string(), field_definitions)
+            AnnotatedNodeT::StructDefinition(id.to_string(), field_definitions)
+        }
+        NodeType::StructDeclaration(struct_declaration) => {
+            let field_definitions = ctx
+                .get_struct(&struct_declaration.struct_id)
+                .field_definitions
+                .clone();
+            // TODO: Annotate node properly for ptrs
+            // NOTE: Will panic is invalid compound literal
+            // TODO: Add checks for compound literal
+            let fields: Vec<(FieldDefinition, AnnotatedNode)> = struct_declaration
+                .exprs
+                .clone()
+                .into_iter()
+                .enumerate()
+                .map(|(i, node)| (field_definitions[i].clone(), annotate_ast(&node, ctx)))
+                .collect();
+            AnnotatedNodeT::StructDeclaration(AnnotatedStructDeclaration {
+                var_id: struct_declaration.var_id.clone(),
+                struct_id: struct_declaration.struct_id.clone(),
+                fields,
+            })
         }
         node => node.to_annotated_node(),
     };

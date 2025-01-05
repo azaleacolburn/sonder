@@ -139,8 +139,8 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 }
             } else {
                 // NOTE:
-                // It should never be a struct field declaration because those are handled
-                // internally by the StructDeclaration node
+                // It should never be a struct field definitions because those are handled
+                // internally by the StructDefinition node
                 format!("let {id}: {rust_t};")
             }
         }
@@ -249,7 +249,7 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             );
             t.join("\n")
         }
-        AnnotatedNodeT::StructDeclaration(struct_name, field_definitions) => {
+        AnnotatedNodeT::StructDefinition(struct_name, field_definitions) => {
             let mut ret = format!("struct {struct_name} {{\n");
             field_definitions.iter().for_each(|field| {
                 let mut field_type = match &field.c_type {
@@ -274,6 +274,19 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
                 ret.push_str(format!("\t{},\n", field_ret).as_str());
             });
             ret.push('}');
+            ret
+        }
+        AnnotatedNodeT::StructDeclaration(struct_declaration) => {
+            let mut ret = format!(
+                "let {} = {} {{\n",
+                struct_declaration.var_id, struct_declaration.struct_id
+            );
+            struct_declaration.fields.iter().for_each(|(field, expr)| {
+                // NOTE: All the other fancy field stuff should be handled by expr
+                let expr = convert_annotated_ast(expr);
+                ret.push_str(format!("\t{}: {},\n", field.id, expr).as_str());
+            });
+            ret.push_str("};");
             ret
         }
         AnnotatedNodeT::Scope(_) => root

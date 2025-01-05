@@ -110,6 +110,21 @@ fn struct_basic() {
     );
 }
 
+#[test]
+fn struct_init_test() {
+    validate(
+        "struct Test {
+            int m;
+            int j;
+        };
+
+        int main() {
+            struct Test my_test = { 0, 2 };
+        }",
+        "struct_init_test",
+    );
+}
+
 fn validate(c_code: &str, test_name: &str) {
     let ast = parse_c(c_code.to_string());
     let rust_code = convert_to_rust_code(ast);

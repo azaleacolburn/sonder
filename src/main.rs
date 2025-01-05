@@ -14,6 +14,7 @@ mod lexer;
 mod parser;
 #[cfg(test)]
 mod test;
+mod token_handler;
 
 fn main() {
     let contents = read_to_string("test.c").expect("Please provide a valid file for parsing");

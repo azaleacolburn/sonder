@@ -1,83 +1,7 @@
-use std::ops::Range;
-
-use crate::ast::{AssignmentOpType, NodeType, ScopeType, TokenNode};
+use crate::ast::{AssignmentOpType, NodeType, ScopeType, StructDeclaration, TokenNode};
 use crate::error::{ErrType as ET, RhErr};
 use crate::lexer::{CType, LineNumHandler, Token};
-
-pub struct TokenHandler {
-    tokens: Vec<Token>,
-    curr_token: usize,
-    // Index is line number, range is start and end of line
-    token_lines: Vec<Range<usize>>,
-}
-
-#[allow(dead_code)]
-impl TokenHandler {
-    pub fn new(tokens: Vec<Token>, line_tracker: LineNumHandler) -> Self {
-        TokenHandler {
-            tokens: tokens.clone(),
-            curr_token: 0,
-            token_lines: line_tracker
-                .token_lines
-                .iter()
-                .enumerate()
-                .map(|(line_number, start)| {
-                    let end = match line_tracker.token_lines.len() - 1 == line_number {
-                        true => tokens.len(),
-                        false => line_tracker.token_lines[line_number + 1],
-                    };
-
-                    Range {
-                        start: *start - 1,
-                        end: end - 1,
-                    }
-                })
-                .collect(),
-        }
-    }
-
-    pub fn next_token(&mut self) {
-        self.curr_token += 1;
-    }
-
-    pub fn peek(&self, i: usize) -> &Token {
-        &self.tokens[self.curr_token + i]
-    }
-
-    pub fn prev_token(&mut self) {
-        self.curr_token -= 1;
-    }
-
-    pub fn get_token(&self) -> &Token {
-        &self.tokens[self.curr_token]
-    }
-
-    pub fn get_prev_token(&self) -> &Token {
-        &self.tokens[self.curr_token - 1]
-    }
-
-    pub fn len(&self) -> usize {
-        self.tokens.len()
-    }
-
-    pub fn new_err(&self, err: ET) -> RhErr {
-        println!("{:?}", err);
-        RhErr {
-            err,
-            line: self.line(),
-        }
-    }
-
-    pub fn line(&self) -> usize {
-        println!("{:?}", self.tokens[self.curr_token]);
-        println!("{:?}", self.token_lines);
-        self.token_lines
-            .iter()
-            .position(|range| range.start <= self.curr_token && self.curr_token <= range.end)
-            .expect("Token outside of line number range")
-            + 1
-    }
-}
+use crate::token_handler::TokenHandler;
 
 pub fn program(
     tokens: Vec<Token>,
@@ -153,7 +77,7 @@ pub fn statement(
         Token::Assert => assert_statement(token_handler),
         Token::Return => return_statement(token_handler),
         Token::PutChar => putchar_statement(token_handler),
-        Token::Struct => struct_declaration_handler(token_handler),
+        Token::Struct => struct_statement(token_handler),
         _ => Err(token_handler.new_err(ET::ExpectedStatement)),
     }
 }
@@ -886,39 +810,101 @@ pub fn return_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, R
     return Ok(return_token);
 }
 
-pub fn struct_declaration_handler(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
+pub fn compound_literal(token_handler: &mut TokenHandler) -> Result<Vec<TokenNode>, RhErr> {
     token_handler.next_token();
-    let id = if let Token::Id(id) = token_handler.get_token() {
-        id.to_string()
-    } else {
-        return Err(token_handler.new_err(ET::ExpectedId));
-    };
-
-    token_handler.next_token();
+    println!("compound_token: {:?}", token_handler.get_token());
     if *token_handler.get_token() != Token::OCurl {
         return Err(token_handler.new_err(ET::ExpectedOCurl));
     }
 
-    let mut field_definitions = vec![];
     token_handler.next_token();
-    while let Token::Type(t) = token_handler.get_token().clone() {
+    let mut fields = vec![];
+    loop {
+        let expr = condition_expr(token_handler)?;
+        println!("expr_tok: {:?}", token_handler.get_token());
+        fields.push(expr);
+        if *token_handler.get_token() != Token::Comma {
+            break;
+        }
+        token_handler.next_token()
+    }
+
+    if *token_handler.get_token() != Token::CCurl {
+        return Err(token_handler.new_err(ET::ExpectedCCurl));
+    }
+
+    Ok(fields)
+}
+
+pub fn struct_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
+    token_handler.next_token();
+    let struct_id = match token_handler.get_token() {
+        Token::Id(struct_id) => struct_id.clone(),
+        _ => return Err(token_handler.new_err(ET::ExpectedId)),
+    };
+
+    token_handler.next_token();
+    match token_handler.get_token() {
+        Token::OCurl => struct_definition(struct_id, token_handler),
+        Token::Id(var_id) => struct_variable_declaration(struct_id, var_id.clone(), token_handler),
+        _ => return Err(token_handler.new_err(ET::ExpectedId)),
+    }
+}
+
+pub fn struct_variable_declaration(
+    struct_id: String,
+    var_id: String,
+    token_handler: &mut TokenHandler,
+) -> Result<TokenNode, RhErr> {
+    token_handler.next_token();
+    let exprs = match token_handler.get_token() {
+        Token::Eq => compound_literal(token_handler)?,
+        Token::Semi => Vec::new(),
+        _ => return Err(token_handler.new_err(ET::ExpectedSemi)),
+    };
+
+    token_handler.next_token();
+    if *token_handler.get_token() != Token::Semi {
+        return Err(token_handler.new_err(ET::ExpectedSemi));
+    }
+
+    Ok(TokenNode::new(
+        NodeType::StructDeclaration(StructDeclaration {
+            var_id,
+            struct_id,
+            exprs,
+        }),
+        None,
+        token_handler.line(),
+    ))
+}
+
+pub fn struct_definition(
+    struct_id: String,
+    token_handler: &mut TokenHandler,
+) -> Result<TokenNode, RhErr> {
+    let mut field_definitions: Vec<(String, usize, CType)> = vec![];
+    token_handler.next_token();
+    while let Ok(t) = get_type_name(token_handler) {
         token_handler.next_token();
+        let mut ptr_count: usize = 0;
+        while *token_handler.get_token() == Token::Star {
+            ptr_count += 1;
+            token_handler.next_token();
+        }
         let id = match token_handler.get_token() {
             Token::Id(id) => id,
             _ => return Err(token_handler.new_err(ET::ExpectedId)),
         };
-        let declaration = TokenNode::new(
-            NodeType::Declaration(id.clone(), t.clone(), 0),
-            None,
-            token_handler.line(),
-        );
-        field_definitions.push(declaration);
+        field_definitions.push((id.clone(), ptr_count, t.clone()));
         token_handler.next_token();
         if *token_handler.get_token() != Token::Semi {
             return Err(token_handler.new_err(ET::ExpectedSemi));
         }
         token_handler.next_token();
     }
+
+    println!("token: {:?}", token_handler.get_token());
 
     if *token_handler.get_token() != Token::CCurl {
         return Err(token_handler.new_err(ET::ExpectedCCurl));
@@ -930,8 +916,22 @@ pub fn struct_declaration_handler(token_handler: &mut TokenHandler) -> Result<To
     }
 
     Ok(TokenNode::new(
-        NodeType::StructDeclaration(id, field_definitions),
+        NodeType::StructDefinition(struct_id, field_definitions),
         None,
         token_handler.line(),
     ))
+}
+
+pub fn get_type_name(token_handler: &mut TokenHandler) -> Result<CType, RhErr> {
+    match token_handler.get_token() {
+        Token::Struct => {
+            token_handler.next_token();
+            match token_handler.get_token() {
+                Token::Id(id) => Ok(CType::Struct(id.clone())),
+                _ => return Err(token_handler.new_err(ET::ExpectedType)),
+            }
+        }
+        Token::Type(t) => Ok(t.clone()),
+        _ => return Err(token_handler.new_err(ET::ExpectedType)),
+    }
 }

@@ -477,16 +477,17 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             let id = ids[0].clone();
             ctx.mut_var(id, |var_data| var_data.add_non_borrowed_line(root.line));
         }
-        NodeType::StructDeclaration(struct_id, declarations) => {
-            let declaration_id_types = declarations.iter().flat_map(find_type_ids);
-            let declaration_adrs = declarations.iter().map(count_declaration_ref);
-
-            let declarations_data = declaration_id_types.zip(declaration_adrs);
-            let field_definitions: Vec<FieldDefinition> = declarations_data
-                .map(|((id, c_type), ptr_type)| FieldDefinition {
-                    id,
-                    c_type,
-                    ptr_type,
+        NodeType::StructDefinition(struct_id, declarations) => {
+            let field_definitions: Vec<FieldDefinition> = declarations
+                .into_iter()
+                .map(|(id, ptr_count, c_type)| {
+                    // TODO: Update according to corresponding variables as we analyze
+                    let ptr_type = (0..*ptr_count).map(|_| PtrType::ImutRef).collect();
+                    FieldDefinition {
+                        id: id.clone(),
+                        c_type: c_type.clone(),
+                        ptr_type,
+                    }
                 })
                 .collect();
             ctx.new_struct(struct_id.to_string(), StructData { field_definitions });

@@ -56,7 +56,15 @@ pub enum NodeType {
     Assert,
     Return,
     PutChar,
-    StructDeclaration(String, Vec<TokenNode>),
+    StructDefinition(String, Vec<(String, usize, CType)>),
+    StructDeclaration(StructDeclaration), // expr nodes
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructDeclaration {
+    pub var_id: String,
+    pub struct_id: String,
+    pub exprs: Vec<TokenNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
