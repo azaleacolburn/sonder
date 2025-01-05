@@ -728,4 +728,5 @@ pub enum CType {
     Void,
     Int,
     Char,
+    Struct(String),
 }

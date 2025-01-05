@@ -14,10 +14,11 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             adr,
             rc: _,
         } => {
-            let rust_t = match t {
+            let rust_t = match &t {
                 CType::Void => "()",
                 CType::Int => "i32",
                 CType::Char => "u8",
+                CType::Struct(id) => id.as_str(),
             };
             let rust_adr = convert_annotated_ast(&adr);
             let mut_binding = if *is_mut { "mut " } else { "" };
@@ -114,10 +115,11 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             format!("{l_side} {rust_op} {expr_child};")
         }
         AnnotatedNodeT::Declaration { id, is_mut, t, rc } => {
-            let rust_t = match t {
+            let rust_t = match &t {
                 CType::Void => "()",
                 CType::Int => "i32",
                 CType::Char => "u8",
+                CType::Struct(id) => id.as_str(),
             };
             let expr_children = root
                 .children
@@ -225,6 +227,7 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
                 (_, CType::Void) => "()",
                 (_, CType::Int) => "i32",
                 (_, CType::Char) => "u8",
+                (_, CType::Struct(id)) => id.as_str(),
             };
 
             let mut ret = format!("fn {id}() -> {rust_t} {{\n\t");
@@ -249,10 +252,11 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
         AnnotatedNodeT::StructDeclaration(struct_name, field_definitions) => {
             let mut ret = format!("struct {struct_name} {{\n");
             field_definitions.iter().for_each(|field| {
-                let mut field_type = match field.c_type {
+                let mut field_type = match &field.c_type {
                     CType::Void => "()",
                     CType::Char => "u8",
                     CType::Int => "u16",
+                    CType::Struct(id) => id.as_str(),
                 }
                 .to_string();
                 field.ptr_type.iter().rev().for_each(|p| match p {

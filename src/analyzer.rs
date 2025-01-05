@@ -252,7 +252,12 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
     }
 
     match &root.token {
-        NodeType::Declaration(id, _, _) => {
+        NodeType::Declaration(id, c_type, _) => {
+            let instanceof_struct = if let CType::Struct(struct_id) = c_type {
+                Some(struct_id.clone())
+            } else {
+                None
+            };
             println!("Declaration: {id}");
             ctx.new_var(
                 id.to_string(),
@@ -268,6 +273,9 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                     }],
                     set_start_borrow: false,
                     clone: false,
+                    instanceof_struct,
+                    // A different node (StructFieldAssignment) will handle `my_struct.id = true`
+                    fieldof_struct: None,
                 },
             );
         }
@@ -323,7 +331,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                 var_data.add_non_borrowed_line(root.line);
             });
         }
-        NodeType::PtrDeclaration(id, _, expr) => {
+        NodeType::PtrDeclaration(id, c_type, expr) => {
             determine_var_mutability(expr, ctx);
 
             let ids = find_ids(&expr);
@@ -362,6 +370,13 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             let adr_data = ctx.get_adr(&points_to).clone();
             adr_data.borrow_mut().held_by = Some(id.clone());
 
+            // Check if struct ptr
+            let instanceof_struct = if let CType::Struct(struct_id) = c_type {
+                Some(struct_id.clone())
+            } else {
+                None
+            };
+
             let var = VarData {
                 addresses: vec![adr_data],
                 pointed_to_by: vec![],
@@ -374,6 +389,9 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                 }],
                 set_start_borrow: false,
                 clone: false,
+                instanceof_struct,
+                // This will be handled by other node (StructFieldPtrDeclaration)
+                fieldof_struct: None,
             };
             // TODO: Figure out how to annotate specific address call as mutable or immutable
             ctx.new_var(id.to_string(), var);
