@@ -1,4 +1,4 @@
-use crate::ast::{AssignmentOpType, NodeType, ScopeType, StructDeclaration, TokenNode};
+use crate::ast::{AssignmentOpType, NodeType, ScopeType, TokenNode};
 use crate::error::{ErrType as ET, RhErr};
 use crate::lexer::{CType, LineNumHandler, Token};
 use crate::token_handler::TokenHandler;
@@ -472,6 +472,7 @@ fn id_statement(token_handler: &mut TokenHandler, id: String) -> Result<TokenNod
     println!("id statement token: {:?}", token_handler.get_token());
     match token_handler.peek(1) {
         Token::OParen => function_call_statement(token_handler, id),
+        Token::Dot => struct_field_assignment(token_handler, id),
         _ => assignment(token_handler, id),
     }
 }
@@ -869,11 +870,11 @@ pub fn struct_variable_declaration(
     }
 
     Ok(TokenNode::new(
-        NodeType::StructDeclaration(StructDeclaration {
+        NodeType::StructDeclaration {
             var_id,
             struct_id,
             exprs,
-        }),
+        },
         None,
         token_handler.line(),
     ))
@@ -917,6 +918,45 @@ pub fn struct_definition(
 
     Ok(TokenNode::new(
         NodeType::StructDefinition(struct_id, field_definitions),
+        None,
+        token_handler.line(),
+    ))
+}
+
+pub fn struct_field_assignment(
+    token_handler: &mut TokenHandler,
+    var_id: String,
+) -> Result<TokenNode, RhErr> {
+    token_handler.next_token();
+    let field_id = match token_handler.get_token() {
+        Token::Id(id) => id,
+        _ => return Err(token_handler.new_err(ET::ExpectedId)),
+    }
+    .clone();
+
+    token_handler.next_token();
+    let assignment_op = match AssignmentOpType::from_token(token_handler.get_token()) {
+        Ok(op) if op != AssignmentOpType::Eq => return Err(token_handler.new_err(ET::ExpectedEq)),
+        Ok(op) => op,
+        Err(_) => return Err(token_handler.new_err(ET::ExpectedAssignment)),
+    };
+
+    token_handler.next_token();
+    let expr = Box::new(condition_expr(token_handler)?);
+
+    // TODO: Check if necessary to move ahead one
+    token_handler.next_token();
+    if *token_handler.get_token() != Token::Semi {
+        return Err(token_handler.new_err(ET::ExpectedSemi));
+    }
+
+    Ok(TokenNode::new(
+        NodeType::StructFieldAssignment {
+            var_id,
+            field_id,
+            assignment_op,
+            expr,
+        },
         None,
         token_handler.line(),
     ))

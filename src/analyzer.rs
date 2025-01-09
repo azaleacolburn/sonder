@@ -143,7 +143,6 @@ impl AnalysisContext {
     /// - Variable doesn't exist on given line
     /// - Variable not a ptr or never initialized
     pub fn find_which_ref_at_id(&self, var_id: &str, line: usize) -> String {
-        let mut reference: Option<String> = None;
         let init_at = self
             .variables
             .get(var_id)
@@ -153,21 +152,15 @@ impl AnalysisContext {
         // TODO: Check if this should be > or >=
         println!("var_id: {var_id} init_at: {init_at} line: {line}");
         assert!(init_at < line);
+
         self.variables
             .get(var_id)
             .expect("Variable given doesn't exist")
             .addresses
             .iter()
-            .for_each(|adr_data| {
-                let adr_data_ref = adr_data.borrow();
-                if adr_data_ref.line_taken < line {
-                    reference = Some(adr_data_ref.adr_of.clone());
-                }
-            });
-        if reference.is_none() {
-            panic!("Reference was none in finding ref function");
-        }
-        reference.unwrap()
+            .map(|adr_data| adr_data.borrow())
+            .filter(|adr_data_ref| adr_data_ref.line_taken < 1)
+            .fold(String::new(), |_, adr_data_ref| adr_data_ref.adr_of.clone())
     }
 
     pub fn print_refs(&self) {
@@ -312,9 +305,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                         }
                         addresses.last()
                     }
-                    _ => {
-                        panic!(".len() is a usize; expr_ptr.len: {}", expr_ptrs.len());
-                    }
+                    _ => panic!(".len() is a usize; expr_ptr.len: {}", expr_ptrs.len()),
                 }
                 .unwrap();
 
@@ -436,9 +427,9 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
 
                         adr.mutates = true;
 
-                        for type_chain_i in i..adr.ptr_type.len() {
+                        (i..adr.ptr_type.len()).for_each(|type_chain_i| {
                             adr.ptr_type[type_chain_i] = PtrType::MutRef;
-                        }
+                        });
                     });
                 }
                 ctx.mut_var(var, |var_data| var_data.is_mut_by_ptr = true);
@@ -492,6 +483,17 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                 .collect();
             ctx.new_struct(struct_id.to_string(), StructData { field_definitions });
         }
+        NodeType::StructFieldAssignment {
+            var_id,
+            field_id,
+            assignment_op,
+            expr,
+        } => {
+            let var_data = ctx.get_var(var_id);
+            let struct_data = var_data
+                .instanceof_struct
+                .expect("Struct defintion parent not instance of struct in ctx");
+        }
         _ => {}
     };
 }
@@ -518,9 +520,7 @@ pub fn count_derefs(root: &Node) -> u8 {
         count += children.iter().map(count_derefs).sum::<u8>();
     }
     match &root.token {
-        NodeType::DeRef(expr) => {
-            count += count_derefs(&expr) + 1;
-        }
+        NodeType::DeRef(expr) => count += count_derefs(&expr) + 1,
         _ => {}
     };
     count
@@ -552,9 +552,7 @@ pub fn find_ids<'a>(root: &'a Node) -> Vec<String> {
     match &root.token {
         NodeType::Id(id) => ids.push(id.to_string()),
         NodeType::Adr(id) => ids.push(id.to_string()),
-        NodeType::DeRef(node) => {
-            ids.append(&mut find_ids(&*node));
-        }
+        NodeType::DeRef(node) => ids.append(&mut find_ids(&*node)),
         _ => {}
     }
 

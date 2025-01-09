@@ -111,7 +111,7 @@ fn struct_basic() {
 }
 
 #[test]
-fn struct_init_test() {
+fn struct_init() {
     validate(
         "struct Test {
             int m;
@@ -121,7 +121,23 @@ fn struct_init_test() {
         int main() {
             struct Test my_test = { 0, 2 };
         }",
-        "struct_init_test",
+        "struct_init",
+    );
+}
+
+#[test]
+fn struct_field_assignment() {
+    validate(
+        "struct Test {
+            int m;
+            int j;
+        };
+
+        int main() {
+            struct Test my_test = { 0, 2 };
+            my_test.m = 1;
+        }",
+        "struct_field_assignment",
     );
 }
 

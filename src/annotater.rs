@@ -1,6 +1,6 @@
 use crate::{
     analyzer::{count_derefs, find_ids, AdrData, AnalysisContext, PtrType},
-    ast::{AssignmentOpType, NodeType, StructDeclaration, TokenNode as Node},
+    ast::{AssignmentOpType, NodeType, TokenNode as Node},
     lexer::CType,
 };
 use std::{cell::RefCell, fmt::Display, rc::Rc};
@@ -264,24 +264,24 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             let field_definitions = ctx.get_struct(id).field_definitions.clone();
             AnnotatedNodeT::StructDefinition(id.to_string(), field_definitions)
         }
-        NodeType::StructDeclaration(struct_declaration) => {
-            let field_definitions = ctx
-                .get_struct(&struct_declaration.struct_id)
-                .field_definitions
-                .clone();
+        NodeType::StructDeclaration {
+            var_id,
+            struct_id,
+            exprs,
+        } => {
+            let field_definitions = ctx.get_struct(&struct_id).field_definitions.clone();
             // TODO: Annotate node properly for ptrs
             // NOTE: Will panic is invalid compound literal
             // TODO: Add checks for compound literal
-            let fields: Vec<(FieldDefinition, AnnotatedNode)> = struct_declaration
-                .exprs
+            let fields: Vec<(FieldDefinition, AnnotatedNode)> = exprs
                 .clone()
                 .into_iter()
                 .enumerate()
                 .map(|(i, node)| (field_definitions[i].clone(), annotate_ast(&node, ctx)))
                 .collect();
             AnnotatedNodeT::StructDeclaration(AnnotatedStructDeclaration {
-                var_id: struct_declaration.var_id.clone(),
-                struct_id: struct_declaration.struct_id.clone(),
+                var_id: var_id.clone(),
+                struct_id: struct_id.clone(),
                 fields,
             })
         }
