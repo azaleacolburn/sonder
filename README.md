@@ -134,11 +134,14 @@ fn main() -> () {
 
 ## Todo
 
-- Rethink reference tracking
-- Write more test cases for the current prototype
-- Figure out how to represent scope
-- Create a system for managing scope
-- Write scope-based borrowing checking
+- [x] Rethink reference tracking
+- [x] Struct Support
+- [ ] Struct Analysis
+- [ ] Struct Checking, Annotation, Conversion
+- [ ] More test cases for the current prototype
+- [ ] Figure out how to represent scope
+- [ ] System for managing scope
+- [ ] Ccope-based borrowing checking
 
 ## How does all this work?
 
