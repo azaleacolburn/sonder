@@ -105,14 +105,12 @@ impl AnalysisContext {
             .len()
             > 0
     }
-    pub fn traverse_pointer_chain(
-        &self,
-        root: String,
-        total_depth: u8,
-        max_depth: u8,
-    ) -> Vec<String> {
+    pub fn traverse_pointer_chain<T>(&self, root: String, total_depth: u8, max_depth: u8) -> T
+    where
+        T: Iterator<Item = String> + Extend<String>,
+    {
         if total_depth == max_depth {
-            return vec![];
+            return [].into_iter() as T;
         }
         let ptr_data = &self
             .variables
@@ -123,17 +121,15 @@ impl AnalysisContext {
 
         match ptr_data.is_empty() {
             false => {
-                let mut vec = self.traverse_pointer_chain(
+                let t: T = self.traverse_pointer_chain::<T>(
                     ptr_data.last().unwrap().borrow().adr_of.clone(),
                     total_depth + 1,
                     max_depth,
                 );
-                vec.push(root.to_string());
-                vec
+                t.extend(std::iter::once(root.to_string()));
+                t
             }
-            true => {
-                vec![root.to_string()]
-            }
+            true => [root.to_string()].into_iter(),
         }
     }
     /// Finds which reference a specific variable held at the given line number

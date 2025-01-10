@@ -98,15 +98,15 @@ pub enum AnnotatedNodeT {
     Assert,
     Return,
     PutChar,
-    StructDefinition(String, Vec<FieldDefinition>),
-    StructDeclaration(AnnotatedStructDeclaration),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AnnotatedStructDeclaration {
-    pub var_id: String,
-    pub struct_id: String,
-    pub fields: Vec<(FieldDefinition, AnnotatedNode)>,
+    StructDefinition {
+        struct_id: String,
+        field_definitions: Vec<FieldDefinition>,
+    },
+    StructDeclaration {
+        var_id: String,
+        struct_id: String,
+        fields: Vec<(FieldDefinition, AnnotatedNode)>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -262,7 +262,10 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
         }
         NodeType::StructDefinition(id, _field_definitions) => {
             let field_definitions = ctx.get_struct(id).field_definitions.clone();
-            AnnotatedNodeT::StructDefinition(id.to_string(), field_definitions)
+            AnnotatedNodeT::StructDefinition {
+                struct_id: id.to_string(),
+                field_definitions,
+            }
         }
         NodeType::StructDeclaration {
             var_id,
@@ -279,11 +282,11 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
                 .enumerate()
                 .map(|(i, node)| (field_definitions[i].clone(), annotate_ast(&node, ctx)))
                 .collect();
-            AnnotatedNodeT::StructDeclaration(AnnotatedStructDeclaration {
+            AnnotatedNodeT::StructDeclaration {
                 var_id: var_id.clone(),
                 struct_id: struct_id.clone(),
                 fields,
-            })
+            }
         }
         node => node.to_annotated_node(),
     };
