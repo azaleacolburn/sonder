@@ -35,16 +35,6 @@ I'm aware that this includes legal array indexing if foo or bar aren't pointers,
 *not_ptr // illegal
 ```
 
-4. TEMPORARY ASSUMPTION: Mutable references can't be made unless they're tied to a ptr declaration.
-   Adresses are always immutable unless explicitely annotated otherwise by the ptr declaration.
-
-```rust
-list.append(&mut other_list) // not something we're going to worry about for now
-```
-
-In the future, we will treat arguments as being bound to parameters as variables
-So,`&mut other_list` will be treated as if it's bound to the variable value inside the function (see below)
-
 Any of these will immediantly result in raw pointers being used, although at the moment, they panic
 
 ## Refactoring reference tracking
