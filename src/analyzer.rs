@@ -1,4 +1,5 @@
 use std::{
+    borrow::BorrowMut,
     cell::{RefCell, RefMut},
     cmp,
     collections::HashMap,
@@ -105,12 +106,14 @@ impl AnalysisContext {
             .len()
             > 0
     }
-    pub fn traverse_pointer_chain<T>(&self, root: String, total_depth: u8, max_depth: u8) -> T
-    where
-        T: Iterator<Item = String> + Extend<String>,
-    {
+    pub fn traverse_pointer_chain(
+        &self,
+        root: String,
+        total_depth: u8,
+        max_depth: u8,
+    ) -> Box<dyn DoubleEndedIterator<Item = String> + 'static> {
         if total_depth == max_depth {
-            return [].into_iter() as T;
+            return Box::new([].into_iter());
         }
         let ptr_data = &self
             .variables
@@ -120,16 +123,15 @@ impl AnalysisContext {
             .addresses;
 
         match ptr_data.is_empty() {
-            false => {
-                let t: T = self.traverse_pointer_chain::<T>(
+            false => Box::new(
+                self.traverse_pointer_chain(
                     ptr_data.last().unwrap().borrow().adr_of.clone(),
                     total_depth + 1,
                     max_depth,
-                );
-                t.extend(std::iter::once(root.to_string()));
-                t
-            }
-            true => [root.to_string()].into_iter(),
+                )
+                .chain(std::iter::once(root.to_string())),
+            ),
+            true => Box::new([root.to_string()].into_iter()),
         }
     }
     /// Finds which reference a specific variable held at the given line number
@@ -269,6 +271,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             );
         }
         NodeType::Assignment(_, id) => {
+            // TODO Figure out where to
             // The first that we have to do is determine if what we're assigning to is a pointer
             let var_data = ctx.get_var(id.as_str());
             let is_ptr = var_data.addresses.len() > 0;
@@ -279,7 +282,6 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                 let mut ptr_type_chain: Vec<PtrType> = if expr_ptrs.len() == 1 {
                     // As we go, we replace certain elements in this vector with `PtrType::MutRef`
                     ctx.traverse_pointer_chain(expr_ptrs[0].clone(), 0, u8::MAX)
-                        .iter()
                         .map(|_| PtrType::ImutRef)
                         .collect()
                 } else if expr_ptrs.len() > 1 {
@@ -327,7 +329,6 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             let mut ptr_type_chain: Vec<PtrType> = if expr_ptrs.len() == 1 {
                 // As we go, we replace certain elements in this vector with `PtrType::MutRef`
                 ctx.traverse_pointer_chain(expr_ptrs[0].clone(), 0, u8::MAX)
-                    .iter()
                     .map(|_| PtrType::ImutRef)
                     .collect()
             } else if expr_ptrs.len() > 1 {
@@ -354,8 +355,9 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             }
             .unwrap();
 
+            // NOTE Using try_borrow_mut() because there's some ambiguity
             let adr_data = ctx.get_adr(&points_to).clone();
-            adr_data.borrow_mut().held_by = Some(id.clone());
+            adr_data.try_borrow_mut().unwrap().held_by = Some(id.clone());
 
             // Check if struct ptr
             let instanceof_struct = if let CType::Struct(struct_id) = c_type {
@@ -401,25 +403,27 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             let num_of_vars = count_derefs(&l_side) + 1;
             let mut ptr_chain = ctx
                 .traverse_pointer_chain(deref_ids[0].clone(), 0, num_of_vars)
-                .into_iter()
                 .rev();
             // eg. [m, p, n]
             let first_ptr = ptr_chain.next().expect("No pointers in chain");
             ctx.mut_var(first_ptr.clone(), |var_data| {
                 var_data.add_non_borrowed_line(root.line);
-                let adr = var_data.addresses.last().expect("Variable not ptr");
-                adr.borrow_mut().mutates = true;
-                adr.borrow_mut().ptr_type.fill(PtrType::MutRef);
+                let mut adr =
+                    RefCell::borrow_mut(var_data.addresses.last().expect("Variable not ptr"));
+
+                adr.mutates = true;
+                adr.ptr_type.fill(PtrType::MutRef);
             });
 
-            ptr_chain.clone().enumerate().for_each(|(i, var)| {
-                if i != ptr_chain.len() - 1 {
+            let mut len = 0;
+            ptr_chain.cloned().inspect(|_| len += 1);
+            ptr_chain.enumerate().for_each(|(i, var)| {
+                if i != len - 1 {
+                    // TODO See if size_hint() works here
                     ctx.mut_var(var.clone(), |var_data| {
-                        let mut adr = var_data
-                            .addresses
-                            .last()
-                            .expect("Variable not ptr")
-                            .borrow_mut();
+                        let mut adr = RefCell::borrow_mut(
+                            var_data.addresses.last().expect("Variable not ptr"),
+                        );
 
                         adr.mutates = true;
 
@@ -439,7 +443,6 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
         NodeType::Adr(id) => {
             let ptr_type_chain = ctx
                 .traverse_pointer_chain(id.clone(), 0, u8::MAX)
-                .iter()
                 .map(|_| PtrType::ImutRef)
                 .collect();
             let adr_data = Rc::new(RefCell::new(AdrData {
