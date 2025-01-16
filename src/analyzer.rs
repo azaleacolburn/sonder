@@ -492,59 +492,10 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             assignment_op,
             expr,
         } => {
-            let var_data = ctx.get_var(var_id);
             // Handle it as a ptr
-            let is_ptr = var_data.addresses.len() > 0;
-            if is_ptr {
-                let ids =
-                    find_ids(&root.children.as_ref().expect("Assignment missing children")[0]);
-                let expr_ptrs: Vec<&String> = ids.iter().filter(|id| ctx.is_ptr(id)).collect();
-                let mut ptr_type_chain: Vec<PtrType> = if expr_ptrs.len() == 1 {
-                    // As we go, we replace certain elements in this vector with `PtrType::MutRef`
-                    ctx.traverse_pointer_chain(expr_ptrs[0].clone(), 0, u8::MAX)
-                        .iter()
-                        .map(|_| PtrType::ImutRef)
-                        .collect()
-                } else if expr_ptrs.len() > 1 {
-                    // Ptr arithmatic outside the context of arrays is automatically a raw ptr
-                    vec![PtrType::RawPtrImut]
-                } else {
-                    vec![PtrType::ImutRef]
-                };
-
-                let addresses =
-                    find_addresses(&root.children.as_ref().expect("Assignment missing child")[0]);
-                // TODO: Add ptr chain len for non-overlapping ptrs
-                let points_to = match addresses.len() {
-                    1 => addresses.last(),
-                    0 if expr_ptrs.len() != 0 => expr_ptrs.last().map(|n| &**n),
-                    n if n > 1 => {
-                        if let Some(last) = ptr_type_chain.last_mut() {
-                            *last = PtrType::RawPtrImut;
-                        }
-                        addresses.last()
-                    }
-                    _ => panic!(".len() is a usize; expr_ptr.len: {}", expr_ptrs.len()),
-                }
-                .unwrap();
-
-                ctx.mut_adr(points_to.to_string(), |mut adr_data| {
-                    adr_data.held_by = Some(id.clone());
-                });
-                ctx.mut_var(points_to.to_string(), |var_data| {
-                    var_data.pointed_to_by.push(id.clone());
-                });
-            }
-
-            ctx.mut_var(id.to_string(), |var_data| {
-                var_data.is_mut_direct = true;
-                var_data.add_non_borrowed_line(root.line);
-            });
-
-            let struct_data = var_data
-                .instanceof_struct
-                .as_ref()
-                .expect("Struct defintion parent not instance of struct in ctx");
+            handle_assignment_ptr_analysis(ctx, var_id, &root);
+            // Handle put the types in
+            let var_data = ctx.get_var(var_id);
         }
         _ => {}
     };
@@ -633,6 +584,51 @@ pub fn count_declaration_ref(root: &Node) -> Vec<PtrType> {
     ptr_types
 }
 
-pub fn handle_assignment_ptr_analysis(ctx: &mut AnalysisContext, id: String) -> {
+pub fn handle_assignment_ptr_analysis(ctx: &mut AnalysisContext, id: &str, root: &Node) {
+    let var_data = ctx.get_var(id);
+    let is_ptr = var_data.addresses.len() > 0;
+    if is_ptr {
+        let ids = find_ids(&root.children.as_ref().expect("Assignment missing children")[0]);
+        let expr_ptrs: Vec<&String> = ids.iter().filter(|id| ctx.is_ptr(id)).collect();
+        let mut ptr_type_chain: Vec<PtrType> = if expr_ptrs.len() == 1 {
+            // As we go, we replace certain elements in this vector with `PtrType::MutRef`
+            ctx.traverse_pointer_chain(expr_ptrs[0].clone(), 0, u8::MAX)
+                .iter()
+                .map(|_| PtrType::ImutRef)
+                .collect()
+        } else if expr_ptrs.len() > 1 {
+            // Ptr arithmatic outside the context of arrays is automatically a raw ptr
+            vec![PtrType::RawPtrImut]
+        } else {
+            vec![PtrType::ImutRef]
+        };
 
+        let addresses =
+            find_addresses(&root.children.as_ref().expect("Assignment missing child")[0]);
+        // TODO: Add ptr chain len for non-overlapping ptrs
+        let points_to = match addresses.len() {
+            1 => addresses.last(),
+            0 if expr_ptrs.len() != 0 => expr_ptrs.last().map(|n| &**n),
+            n if n > 1 => {
+                if let Some(last) = ptr_type_chain.last_mut() {
+                    *last = PtrType::RawPtrImut;
+                }
+                addresses.last()
+            }
+            _ => panic!(".len() is a usize; expr_ptr.len: {}", expr_ptrs.len()),
+        }
+        .unwrap();
+
+        ctx.mut_adr(points_to.to_string(), |mut adr_data| {
+            adr_data.held_by = Some(id.to_string());
+        });
+        ctx.mut_var(points_to.to_string(), |var_data| {
+            var_data.pointed_to_by.push(id.to_string());
+        });
+    }
+
+    ctx.mut_var(id.to_string(), |var_data| {
+        var_data.is_mut_direct = true;
+        var_data.add_non_borrowed_line(root.line);
+    });
 }
