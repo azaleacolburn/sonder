@@ -249,8 +249,11 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             );
             t.join("\n")
         }
-        AnnotatedNodeT::StructDefinition(struct_name, field_definitions) => {
-            let mut ret = format!("struct {struct_name} {{\n");
+        AnnotatedNodeT::StructDefinition {
+            struct_id,
+            field_definitions,
+        } => {
+            let mut ret = format!("struct {struct_id} {{\n");
             field_definitions.iter().for_each(|field| {
                 let mut field_type = match &field.c_type {
                     CType::Void => "()",
@@ -276,12 +279,13 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             ret.push('}');
             ret
         }
-        AnnotatedNodeT::StructDeclaration(struct_declaration) => {
-            let mut ret = format!(
-                "let {} = {} {{ ",
-                struct_declaration.var_id, struct_declaration.struct_id
-            );
-            struct_declaration.fields.iter().for_each(|(field, expr)| {
+        AnnotatedNodeT::StructDeclaration {
+            var_id,
+            struct_id,
+            fields,
+        } => {
+            let mut ret = format!("let {var_id} = {struct_id} {{ ");
+            fields.iter().for_each(|(field, expr)| {
                 // NOTE: All the other fancy field stuff should be handled by expr
                 let expr = convert_annotated_ast(expr);
                 ret.push_str(format!("{}: {}, ", field.id, expr).as_str());

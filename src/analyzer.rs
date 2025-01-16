@@ -94,7 +94,7 @@ impl AnalysisContext {
             .find(|adr_data| adr_data.borrow().adr_of == id)
             .expect(format!("No adr that points to given id: {id}").as_str());
 
-        f(adr_data.borrow_mut())
+        f(RefCell::borrow_mut(&adr_data))
     }
 
     pub fn is_ptr(&self, id: &String) -> bool {
@@ -111,9 +111,9 @@ impl AnalysisContext {
         root: String,
         total_depth: u8,
         max_depth: u8,
-    ) -> Box<dyn DoubleEndedIterator<Item = String> + 'static> {
+    ) -> Vec<String> {
         if total_depth == max_depth {
-            return Box::new([].into_iter());
+            return vec![];
         }
         let ptr_data = &self
             .variables
@@ -123,15 +123,16 @@ impl AnalysisContext {
             .addresses;
 
         match ptr_data.is_empty() {
-            false => Box::new(
-                self.traverse_pointer_chain(
+            false => {
+                let mut chain = self.traverse_pointer_chain(
                     ptr_data.last().unwrap().borrow().adr_of.clone(),
                     total_depth + 1,
                     max_depth,
-                )
-                .chain(std::iter::once(root.to_string())),
-            ),
-            true => Box::new([root.to_string()].into_iter()),
+                );
+                chain.push(root.to_string());
+                chain
+            }
+            true => vec![root.to_string()],
         }
     }
     /// Finds which reference a specific variable held at the given line number
@@ -282,6 +283,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                 let mut ptr_type_chain: Vec<PtrType> = if expr_ptrs.len() == 1 {
                     // As we go, we replace certain elements in this vector with `PtrType::MutRef`
                     ctx.traverse_pointer_chain(expr_ptrs[0].clone(), 0, u8::MAX)
+                        .iter()
                         .map(|_| PtrType::ImutRef)
                         .collect()
                 } else if expr_ptrs.len() > 1 {
@@ -329,6 +331,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             let mut ptr_type_chain: Vec<PtrType> = if expr_ptrs.len() == 1 {
                 // As we go, we replace certain elements in this vector with `PtrType::MutRef`
                 ctx.traverse_pointer_chain(expr_ptrs[0].clone(), 0, u8::MAX)
+                    .iter()
                     .map(|_| PtrType::ImutRef)
                     .collect()
             } else if expr_ptrs.len() > 1 {
@@ -403,6 +406,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             let num_of_vars = count_derefs(&l_side) + 1;
             let mut ptr_chain = ctx
                 .traverse_pointer_chain(deref_ids[0].clone(), 0, num_of_vars)
+                .into_iter()
                 .rev();
             // eg. [m, p, n]
             let first_ptr = ptr_chain.next().expect("No pointers in chain");
@@ -415,8 +419,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                 adr.ptr_type.fill(PtrType::MutRef);
             });
 
-            let mut len = 0;
-            ptr_chain.cloned().inspect(|_| len += 1);
+            let len = ptr_chain.clone().count();
             ptr_chain.enumerate().for_each(|(i, var)| {
                 if i != len - 1 {
                     // TODO See if size_hint() works here
@@ -432,7 +435,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                         });
                     });
                 }
-                ctx.mut_var(var, |var_data| var_data.is_mut_by_ptr = true);
+                ctx.mut_var(var.to_string(), |var_data| var_data.is_mut_by_ptr = true);
             });
         }
         NodeType::Id(id) => {
@@ -443,6 +446,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
         NodeType::Adr(id) => {
             let ptr_type_chain = ctx
                 .traverse_pointer_chain(id.clone(), 0, u8::MAX)
+                .iter()
                 .map(|_| PtrType::ImutRef)
                 .collect();
             let adr_data = Rc::new(RefCell::new(AdrData {
@@ -489,8 +493,57 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             expr,
         } => {
             let var_data = ctx.get_var(var_id);
+            // Handle it as a ptr
+            let is_ptr = var_data.addresses.len() > 0;
+            if is_ptr {
+                let ids =
+                    find_ids(&root.children.as_ref().expect("Assignment missing children")[0]);
+                let expr_ptrs: Vec<&String> = ids.iter().filter(|id| ctx.is_ptr(id)).collect();
+                let mut ptr_type_chain: Vec<PtrType> = if expr_ptrs.len() == 1 {
+                    // As we go, we replace certain elements in this vector with `PtrType::MutRef`
+                    ctx.traverse_pointer_chain(expr_ptrs[0].clone(), 0, u8::MAX)
+                        .iter()
+                        .map(|_| PtrType::ImutRef)
+                        .collect()
+                } else if expr_ptrs.len() > 1 {
+                    // Ptr arithmatic outside the context of arrays is automatically a raw ptr
+                    vec![PtrType::RawPtrImut]
+                } else {
+                    vec![PtrType::ImutRef]
+                };
+
+                let addresses =
+                    find_addresses(&root.children.as_ref().expect("Assignment missing child")[0]);
+                // TODO: Add ptr chain len for non-overlapping ptrs
+                let points_to = match addresses.len() {
+                    1 => addresses.last(),
+                    0 if expr_ptrs.len() != 0 => expr_ptrs.last().map(|n| &**n),
+                    n if n > 1 => {
+                        if let Some(last) = ptr_type_chain.last_mut() {
+                            *last = PtrType::RawPtrImut;
+                        }
+                        addresses.last()
+                    }
+                    _ => panic!(".len() is a usize; expr_ptr.len: {}", expr_ptrs.len()),
+                }
+                .unwrap();
+
+                ctx.mut_adr(points_to.to_string(), |mut adr_data| {
+                    adr_data.held_by = Some(id.clone());
+                });
+                ctx.mut_var(points_to.to_string(), |var_data| {
+                    var_data.pointed_to_by.push(id.clone());
+                });
+            }
+
+            ctx.mut_var(id.to_string(), |var_data| {
+                var_data.is_mut_direct = true;
+                var_data.add_non_borrowed_line(root.line);
+            });
+
             let struct_data = var_data
                 .instanceof_struct
+                .as_ref()
                 .expect("Struct defintion parent not instance of struct in ctx");
         }
         _ => {}
@@ -578,4 +631,8 @@ pub fn count_declaration_ref(root: &Node) -> Vec<PtrType> {
         _ => {}
     };
     ptr_types
+}
+
+pub fn handle_assignment_ptr_analysis(ctx: &mut AnalysisContext, id: String) -> {
+
 }
