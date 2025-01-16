@@ -1,5 +1,4 @@
 use std::{
-    borrow::BorrowMut,
     cell::{RefCell, RefMut},
     cmp,
     collections::HashMap,
@@ -158,7 +157,7 @@ impl AnalysisContext {
             .addresses
             .iter()
             .map(|adr_data| adr_data.borrow())
-            .filter(|adr_data_ref| adr_data_ref.line_taken < 1)
+            .filter(|adr_data_ref| adr_data_ref.line_taken < line)
             .fold(String::new(), |_, adr_data_ref| adr_data_ref.adr_of.clone())
     }
 
@@ -358,9 +357,8 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             }
             .unwrap();
 
-            // NOTE Using try_borrow_mut() because there's some ambiguity
             let adr_data = ctx.get_adr(&points_to).clone();
-            adr_data.try_borrow_mut().unwrap().held_by = Some(id.clone());
+            RefCell::borrow_mut(&adr_data).held_by = Some(id.clone());
 
             // Check if struct ptr
             let instanceof_struct = if let CType::Struct(struct_id) = c_type {
@@ -368,6 +366,8 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             } else {
                 None
             };
+
+            println!("ADR_DATA: {:?}", adr_data);
 
             let var = VarData {
                 addresses: vec![adr_data],

@@ -592,6 +592,7 @@ fn condition(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
     }
 }
 
+/// Expression parsing always ends on the token after the expression, usually a semicolon
 fn condition_expr(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
     let mut left = condition_term(token_handler)?;
     println!("Condition Expr Left: {:?}", left);
@@ -927,7 +928,10 @@ pub fn struct_field_assignment(
     token_handler: &mut TokenHandler,
     var_id: String,
 ) -> Result<TokenNode, RhErr> {
+    // NOTE The dot is found with a peek(), so we have to the Dot token, then past it
     token_handler.next_token();
+    token_handler.next_token();
+    println!("token: {:?}", token_handler.get_token());
     let field_id = match token_handler.get_token() {
         Token::Id(id) => id,
         _ => return Err(token_handler.new_err(ET::ExpectedId)),
@@ -944,8 +948,6 @@ pub fn struct_field_assignment(
     token_handler.next_token();
     let expr = Box::new(condition_expr(token_handler)?);
 
-    // TODO: Check if necessary to move ahead one
-    token_handler.next_token();
     if *token_handler.get_token() != Token::Semi {
         return Err(token_handler.new_err(ET::ExpectedSemi));
     }

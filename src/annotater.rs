@@ -181,10 +181,12 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             let sub_id = ctx.find_which_ref_at_id(&derefed_id, root.line);
             let count = count_derefs(adr);
             // types of refs being dereffed in order
+            println!("dereffed_id: {derefed_id}\nsub_id: {sub_id}");
             let mut ref_types = ctx
                 .get_var(&derefed_id)
                 .addresses
                 .iter()
+                .inspect(|adr_data| println!("adr_of: {}", adr_data.borrow().adr_of))
                 .find(|adr_data| adr_data.borrow().adr_of == sub_id)
                 .expect("Sub id not found in adr list")
                 .borrow()
