@@ -82,7 +82,7 @@ impl AnalysisContext {
     }
 
     /// Applies a function to an adr_data given the underlying id the adr points to
-    pub fn mut_adr<F>(&mut self, id: String, f: F)
+    pub fn mut_adr<F>(&mut self, id: &str, f: F)
     where
         F: FnOnce(RefMut<AdrData>),
     {
@@ -94,6 +94,13 @@ impl AnalysisContext {
             .expect(format!("No adr that points to given id: {id}").as_str());
 
         f(RefCell::borrow_mut(&adr_data))
+    }
+
+    pub fn mut_struct<F>(&mut self, id: String, f: F)
+    where
+        F: FnOnce(&mut StructData),
+    {
+        self.structs.entry(id).and_modify(f);
     }
 
     pub fn is_ptr(&self, id: &String) -> bool {
@@ -544,8 +551,27 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
         } => {
             // Handle it as a ptr
             handle_assignment_ptr_analysis(ctx, var_id, &root);
-            // Handle put the types in the struct
+
+            // TODO Figure out if any of this should happen here
+            // or if it should all happen in checking
+            // If it needs to happen here, create a var_data-like instance for each struct field to
+            // keep track of the lowest safety level needed
+
             let var_data = ctx.get_var(var_id);
+            let struct_field_data = var_data
+                .fieldof_struct
+                .expect("struct field not field of struct in ctx");
+            ctx.mut_struct(var_id.clone(), |struct_data| {
+                let mut field = struct_data
+                    .field_definitions
+                    .iter()
+                    .find(|field| field.id == struct_field_data.field_id)
+                    .expect("Field not found in struct definition");
+
+                // if var_data.is_mut_by_ptr || var_data.is_mut_direct {
+                //     field.ptr_type.iter_mut().for_each(|t| *t = PtrType::MutRef);
+                // }
+            })
         }
         _ => {}
     };
