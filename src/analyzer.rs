@@ -486,6 +486,56 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                 .collect();
             ctx.new_struct(struct_id.to_string(), StructData { field_definitions });
         }
+        NodeType::StructDeclaration {
+            var_id,
+            struct_id,
+            exprs,
+        } => {
+            let struct_data = ctx.get_struct(struct_id).clone(); // ugh
+
+            assert_eq!(exprs.len(), struct_data.field_definitions.len());
+            struct_data
+                .field_definitions
+                .iter()
+                .enumerate()
+                .for_each(|(_i, field)| {
+                    ctx.new_var(
+                        format!("{}.{}", var_id, field.id),
+                        VarData {
+                            addresses: vec![],
+                            pointed_to_by: vec![],
+                            is_mut_by_ptr: false,
+                            is_mut_direct: false,
+                            rc: false,
+                            clone: false,
+                            set_start_borrow: false,
+                            non_borrowed_lines: vec![],
+                            // NOTE Right now we only support primitives as struct field types
+                            // Use this instead
+                            // Some(struct_data.field_definitions[i].c_type)
+                            instanceof_struct: None,
+                            fieldof_struct: Some(FieldInfo {
+                                struct_id: struct_id.clone(),
+                                field_id: field.id.clone(),
+                            }),
+                        },
+                    )
+                });
+
+            let var_data = VarData {
+                addresses: vec![],
+                pointed_to_by: vec![],
+                is_mut_by_ptr: false,
+                is_mut_direct: false,
+                rc: false,
+                clone: false,
+                set_start_borrow: false,
+                non_borrowed_lines: vec![],
+                instanceof_struct: Some(struct_id.clone()),
+                fieldof_struct: None,
+            };
+            ctx.new_var(var_id.clone(), var_data);
+        }
         NodeType::StructFieldAssignment {
             var_id,
             field_id,
@@ -494,7 +544,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
         } => {
             // Handle it as a ptr
             handle_assignment_ptr_analysis(ctx, var_id, &root);
-            // Handle put the types in
+            // Handle put the types in the struct
             let var_data = ctx.get_var(var_id);
         }
         _ => {}
