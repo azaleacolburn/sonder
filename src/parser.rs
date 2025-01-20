@@ -918,7 +918,10 @@ pub fn struct_definition(
     }
 
     Ok(TokenNode::new(
-        NodeType::StructDefinition(struct_id, field_definitions),
+        NodeType::StructDefinition {
+            struct_id,
+            field_definitions,
+        },
         None,
         token_handler.line(),
     ))

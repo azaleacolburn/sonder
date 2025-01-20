@@ -223,7 +223,7 @@ pub struct FieldInfo {
 
 impl VarData {
     pub fn add_non_borrowed_line(&mut self, line: usize) {
-        let len = self.non_borrowed_lines.len() - 1;
+        let len = self.non_borrowed_lines.len() - 1; // underflow
         let end = &mut self.non_borrowed_lines[len].end;
         *end = cmp::max(line, *end);
         if self.set_start_borrow {
@@ -272,62 +272,12 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                     set_start_borrow: false,
                     clone: false,
                     instanceof_struct,
-                    // A different node (StructFieldAssignment) will handle `my_struct.id = true`
+                    // A different node StructFieldAssignment) will handle `my_struct.id = true`
                     fieldof_struct: None,
                 },
             );
         }
-        NodeType::Assignment(_, id) => {
-            // TODO Figure out where to
-            // The first that we have to do is determine if what we're assigning to is a pointer
-            let var_data = ctx.get_var(id.as_str());
-            let is_ptr = var_data.addresses.len() > 0;
-            if is_ptr {
-                let ids =
-                    find_ids(&root.children.as_ref().expect("Assignment missing children")[0]);
-                let expr_ptrs: Vec<&String> = ids.iter().filter(|id| ctx.is_ptr(id)).collect();
-                let mut ptr_type_chain: Vec<PtrType> = if expr_ptrs.len() == 1 {
-                    // As we go, we replace certain elements in this vector with `PtrType::MutRef`
-                    ctx.traverse_pointer_chain(expr_ptrs[0].clone(), 0, u8::MAX)
-                        .iter()
-                        .map(|_| PtrType::ImutRef)
-                        .collect()
-                } else if expr_ptrs.len() > 1 {
-                    // Ptr arithmatic outside the context of arrays is automatically a raw ptr
-                    vec![PtrType::RawPtrImut]
-                } else {
-                    vec![PtrType::ImutRef]
-                };
-
-                let addresses =
-                    find_addresses(&root.children.as_ref().expect("Assignment missing child")[0]);
-                // TODO: Add ptr chain len for non-overlapping ptrs
-                let points_to = match addresses.len() {
-                    1 => addresses.last(),
-                    0 if expr_ptrs.len() != 0 => expr_ptrs.last().map(|n| &**n),
-                    n if n > 1 => {
-                        if let Some(last) = ptr_type_chain.last_mut() {
-                            *last = PtrType::RawPtrImut;
-                        }
-                        addresses.last()
-                    }
-                    _ => panic!(".len() is a usize; expr_ptr.len: {}", expr_ptrs.len()),
-                }
-                .unwrap();
-
-                ctx.mut_adr(points_to.to_string(), |mut adr_data| {
-                    adr_data.held_by = Some(id.clone());
-                });
-                ctx.mut_var(points_to.to_string(), |var_data| {
-                    var_data.pointed_to_by.push(id.clone());
-                });
-            }
-
-            ctx.mut_var(id.to_string(), |var_data| {
-                var_data.is_mut_direct = true;
-                var_data.add_non_borrowed_line(root.line);
-            });
-        }
+        NodeType::Assignment(_, id) => handle_assignment_analysis(ctx, id, root),
         NodeType::PtrDeclaration(id, c_type, expr) => {
             determine_var_mutability(expr, ctx);
 
@@ -426,10 +376,9 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                 adr.ptr_type.fill(PtrType::MutRef);
             });
 
-            let len = ptr_chain.clone().count();
+            let len = ptr_chain.clone().count(); // TODO Better solution
             ptr_chain.enumerate().for_each(|(i, var)| {
                 if i != len - 1 {
-                    // TODO See if size_hint() works here
                     ctx.mut_var(var.clone(), |var_data| {
                         let mut adr = RefCell::borrow_mut(
                             var_data.addresses.last().expect("Variable not ptr"),
@@ -478,8 +427,11 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             let id = ids[0].clone();
             ctx.mut_var(id, |var_data| var_data.add_non_borrowed_line(root.line));
         }
-        NodeType::StructDefinition(struct_id, declarations) => {
-            let field_definitions: Vec<FieldDefinition> = declarations
+        NodeType::StructDefinition {
+            struct_id,
+            field_definitions,
+        } => {
+            let field_definitions: Vec<FieldDefinition> = field_definitions
                 .into_iter()
                 .map(|(id, ptr_count, c_type)| {
                     // TODO: Update according to corresponding variables as we analyze
@@ -516,7 +468,10 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                             rc: false,
                             clone: false,
                             set_start_borrow: false,
-                            non_borrowed_lines: vec![],
+                            non_borrowed_lines: vec![Range {
+                                start: root.line,
+                                end: root.line,
+                            }],
                             // NOTE Right now we only support primitives as struct field types
                             // Use this instead
                             // Some(struct_data.field_definitions[i].c_type)
@@ -537,7 +492,10 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                 rc: false,
                 clone: false,
                 set_start_borrow: false,
-                non_borrowed_lines: vec![],
+                non_borrowed_lines: vec![Range {
+                    start: root.line,
+                    end: root.line,
+                }],
                 instanceof_struct: Some(struct_id.clone()),
                 fieldof_struct: None,
             };
@@ -546,32 +504,24 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
         NodeType::StructFieldAssignment {
             var_id,
             field_id,
-            assignment_op,
-            expr,
+            assignment_op: _,
+            expr: _,
         } => {
-            // Handle it as a ptr
-            handle_assignment_ptr_analysis(ctx, var_id, &root);
+            let field_var_id = format!("{var_id}.{field_id}");
+            // Handle the field as a variable itself
+            handle_assignment_analysis(ctx, field_var_id.as_str(), &root);
 
-            // TODO Figure out if any of this should happen here
-            // or if it should all happen in checking
-            // If it needs to happen here, create a var_data-like instance for each struct field to
-            // keep track of the lowest safety level needed
+            // Apply mutability checking to the struct instance itself as well
 
-            let var_data = ctx.get_var(var_id);
-            let struct_field_data = var_data
-                .fieldof_struct
-                .expect("struct field not field of struct in ctx");
-            ctx.mut_struct(var_id.clone(), |struct_data| {
-                let mut field = struct_data
-                    .field_definitions
-                    .iter()
-                    .find(|field| field.id == struct_field_data.field_id)
-                    .expect("Field not found in struct definition");
+            let var_data = ctx.get_var(format!("{var_id}.{field_id}").as_str());
+            let (direct, ptr) = (var_data.is_mut_direct, var_data.is_mut_by_ptr);
 
-                // if var_data.is_mut_by_ptr || var_data.is_mut_direct {
-                //     field.ptr_type.iter_mut().for_each(|t| *t = PtrType::MutRef);
-                // }
-            })
+            ctx.mut_var(var_id.clone(), |var_data| {
+                var_data.is_mut_direct |= direct;
+                var_data.is_mut_by_ptr |= ptr;
+            });
+
+            // NOTE We don't need to apply mutability checking to the struct fields themselves
         }
         _ => {}
     };
@@ -660,7 +610,7 @@ pub fn count_declaration_ref(root: &Node) -> Vec<PtrType> {
     ptr_types
 }
 
-pub fn handle_assignment_ptr_analysis(ctx: &mut AnalysisContext, id: &str, root: &Node) {
+pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &Node) {
     let var_data = ctx.get_var(id);
     let is_ptr = var_data.addresses.len() > 0;
     if is_ptr {
@@ -695,7 +645,7 @@ pub fn handle_assignment_ptr_analysis(ctx: &mut AnalysisContext, id: &str, root:
         }
         .unwrap();
 
-        ctx.mut_adr(points_to.to_string(), |mut adr_data| {
+        ctx.mut_adr(points_to, |mut adr_data| {
             adr_data.held_by = Some(id.to_string());
         });
         ctx.mut_var(points_to.to_string(), |var_data| {

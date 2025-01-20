@@ -1,7 +1,6 @@
 use crate::{
     analyzer::PtrType,
     annotater::{AnnotatedNode, AnnotatedNodeT},
-    ast::AssignmentOpType,
     lexer::CType,
 };
 pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
@@ -78,16 +77,6 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             rc,
             ref_types,
         } => {
-            let rust_op = match op {
-                AssignmentOpType::Eq => "=",
-                AssignmentOpType::SubEq => "-=",
-                AssignmentOpType::DivEq => "/=",
-                AssignmentOpType::AddEq => "+=",
-                AssignmentOpType::MulEq => "*=",
-                AssignmentOpType::BOrEq => "|=",
-                AssignmentOpType::BXorEq => "^=",
-                AssignmentOpType::BAndEq => "&=",
-            };
             let expr_child = root
                 .children
                 .iter()
@@ -112,7 +101,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 l_side = format!("*{l_side}");
             }
 
-            format!("{l_side} {rust_op} {expr_child};")
+            format!("{l_side} {op} {expr_child};")
         }
         AnnotatedNodeT::Declaration { id, is_mut, t, rc } => {
             let rust_t = match &t {
@@ -202,23 +191,12 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             format!("{n}")
         }
         AnnotatedNodeT::Assignment { op, id, rc } => {
-            let rust_op = match op {
-                AssignmentOpType::Eq => "=",
-                AssignmentOpType::SubEq => "-=",
-                AssignmentOpType::DivEq => "/=",
-                AssignmentOpType::AddEq => "+=",
-                AssignmentOpType::MulEq => "*=",
-                AssignmentOpType::BOrEq => "|=",
-                AssignmentOpType::BXorEq => "^=",
-                AssignmentOpType::BAndEq => "&=",
-            };
-
             let rust_expr = convert_annotated_ast(&root.children[0]);
 
             if *rc {
-                format!("*{id}.borrow_mut() {rust_op} {rust_expr};")
+                format!("*{id}.borrow_mut() {op} {rust_expr};")
             } else {
-                format!("{id} {rust_op} {rust_expr};")
+                format!("{id} {op} {rust_expr};")
             }
         }
         AnnotatedNodeT::FunctionDeclaration { id, t } => {
@@ -282,9 +260,14 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
         AnnotatedNodeT::StructDeclaration {
             var_id,
             struct_id,
+            is_mut,
             fields,
         } => {
-            let mut ret = format!("let {var_id} = {struct_id} {{ ");
+            let mut_binding = match is_mut {
+                true => "mut",
+                false => "",
+            };
+            let mut ret = format!("let {mut_binding} {var_id} = {struct_id} {{ ");
             fields.iter().for_each(|(field, expr)| {
                 // NOTE: All the other fancy field stuff should be handled by expr
                 let expr = convert_annotated_ast(expr);
@@ -293,6 +276,16 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             ret.push_str("};");
             ret
         }
+        AnnotatedNodeT::StructFieldAssignment {
+            var_id,
+            field_id,
+            op,
+            expr,
+        } => {
+            let rust_expr = convert_annotated_ast(expr);
+            format!("{var_id}.{field_id} {op} {rust_expr};")
+        }
+
         AnnotatedNodeT::Scope(_) => root
             .children
             .iter()

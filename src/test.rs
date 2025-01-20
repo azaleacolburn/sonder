@@ -2,6 +2,17 @@ use std::{fs, process::Command};
 
 use crate::{convert_to_rust_code, parse_c};
 
+#[test]
+fn test_basic_assignment() {
+    validate(
+        "int main() {
+            int n = 0;
+            n = 2;
+        }",
+        "basic_assignment",
+    )
+}
+
 /// Valid use of pointers as if they were Rust references
 /// Translates one-to-one
 #[test]
@@ -153,10 +164,11 @@ fn validate(c_code: &str, test_name: &str) {
         .arg("--out-dir")
         .arg("./translated/exe")
         .spawn()
-        .expect("Rust compilation failed")
+        .expect("Rust compilation failed to start")
         .wait()
     {
-        Ok(o) => println!("Test passed: {o}"),
-        Err(err) => panic!("Test failed, {err}"),
+        Ok(o) if o.success() => println!("Test passed!"),
+        Ok(_) => panic!("Compilation Failed"),
+        Err(err) => panic!("RustC Panicked, {err}"),
     };
 }

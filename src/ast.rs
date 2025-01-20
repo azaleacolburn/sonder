@@ -56,7 +56,10 @@ pub enum NodeType {
     Assert,
     Return,
     PutChar,
-    StructDefinition(String, Vec<(String, usize, CType)>),
+    StructDefinition {
+        struct_id: String,
+        field_definitions: Vec<(String, usize, CType)>, // id, ptr_count, underlying type
+    },
     StructDeclaration {
         var_id: String,
         struct_id: String,
@@ -98,6 +101,23 @@ impl AssignmentOpType {
                 return Err(());
             }
         }
+    }
+}
+
+impl std::fmt::Display for AssignmentOpType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let op = match self {
+            AssignmentOpType::Eq => "=",
+            AssignmentOpType::SubEq => "-=",
+            AssignmentOpType::DivEq => "/=",
+            AssignmentOpType::AddEq => "+=",
+            AssignmentOpType::MulEq => "*=",
+            AssignmentOpType::BOrEq => "|=",
+            AssignmentOpType::BXorEq => "^=",
+            AssignmentOpType::BAndEq => "&=",
+        };
+
+        write!(f, "{}", op)
     }
 }
 

@@ -105,7 +105,14 @@ pub enum AnnotatedNodeT {
     StructDeclaration {
         var_id: String,
         struct_id: String,
+        is_mut: bool,
         fields: Vec<(FieldDefinition, AnnotatedNode)>,
+    },
+    StructFieldAssignment {
+        var_id: String,
+        field_id: String,
+        op: AssignmentOpType,
+        expr: Box<AnnotatedNode>,
     },
 }
 
@@ -262,11 +269,15 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
                 rc,
             }
         }
-        NodeType::StructDefinition(id, _field_definitions) => {
-            let field_definitions = ctx.get_struct(id).field_definitions.clone();
+        NodeType::StructDefinition {
+            struct_id,
+            field_definitions: _, // Field Definitions gathered by the parser
+        } => {
+            // Field definitions gathered by the analyzer (smart ptr type chain)
+            let analyzed_field_definitions = ctx.get_struct(struct_id).field_definitions.clone();
             AnnotatedNodeT::StructDefinition {
-                struct_id: id.to_string(),
-                field_definitions,
+                struct_id: struct_id.clone(),
+                field_definitions: analyzed_field_definitions,
             }
         }
         NodeType::StructDeclaration {
@@ -274,6 +285,8 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             struct_id,
             exprs,
         } => {
+            let var_data = ctx.get_var(var_id);
+            let is_mut = var_data.is_mut_by_ptr || var_data.is_mut_direct;
             let field_definitions = ctx.get_struct(&struct_id).field_definitions.clone();
             // TODO: Annotate node properly for ptrs
             // NOTE: Will panic is invalid compound literal
@@ -287,9 +300,21 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             AnnotatedNodeT::StructDeclaration {
                 var_id: var_id.clone(),
                 struct_id: struct_id.clone(),
+                is_mut,
                 fields,
             }
         }
+        NodeType::StructFieldAssignment {
+            var_id,
+            field_id,
+            assignment_op,
+            expr,
+        } => AnnotatedNodeT::StructFieldAssignment {
+            var_id: var_id.clone(),
+            field_id: field_id.clone(),
+            op: assignment_op.clone(),
+            expr: Box::new(annotate_ast(expr, ctx)),
+        },
         node => node.to_annotated_node(),
     };
     let children = root.children.as_ref();
