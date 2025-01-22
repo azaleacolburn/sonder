@@ -15,14 +15,25 @@ pub enum BorrowError {
         imut_ptr_id: String,
         value_id: String,
     },
-    MutValueOverlap {
+    MutMutSameLine {
+        first_ptr_id: String,
+        second_ptr_id: String,
+        value_id: String,
+    },
+    MutImutSameLine {
+        mut_ptr_id: String,
+        imut_ptr_id: String,
+        value_id: String,
+    },
+
+    ValueMutOverlap {
         ptr_id: String,
         value_id: String,
     },
-    MutValueSameLine {
+    ValueMutSameLine {
         ptr_id: String,
         value_id: String,
-    },
+    }
 }
 
 fn set_ptr_rc(value_id: &str, ctx: &mut AnalysisContext) {
@@ -55,6 +66,8 @@ fn set_rc(value_id: &str, ctx: &mut AnalysisContext) {
     ctx.mut_var(value_id.to_string(), |var_data| var_data.rc = true);
     set_ptr_rc(value_id, ctx);
 }
+
+fn set_raw(ptr_id: &str, ctx: &mut AnalysisContext) {}
 
 // fn clone_solution<'a>(
 //     mut_ptr_id: &str,
@@ -98,15 +111,22 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext) {
                 imut_ptr_id: _,
                 value_id,
             } => set_rc(value_id, ctx),
+            BorrowError::MutMutSameLine { first_ptr_id, second_ptr_id, value_id: _ } => 
+            {set_raw(first_ptr_id, ctx); set_raw(second_ptr_id, ctx)},
+            
+            BorrowError::MutImutSameLine { mut_ptr_id, imut_ptr_id, value_id: _ } => {
+                set_raw(mut_ptr_id, ctx);
+                set_raw(imut_ptr_id, ctx);
+            }
             // TODO: if the id is the value, we can clone
-            BorrowError::MutValueOverlap {
+            BorrowError::ValueMutOverlap {
                 ptr_id: _,
                 value_id,
             } => {
                 set_rc(value_id, ctx)
                 // clone_solution(ptr_id, value_id, ctx, root)
             }
-            BorrowError::MutValueSameLine { ptr_id, value_id } => {
+            BorrowError::ValueMutSameLine { ptr_id, value_id } => {
                 create_clone(value_id, ptr_id, ctx);
                 // set_raw(value_id, ptr_id);
             }
@@ -155,21 +175,28 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
                 .filter(|ptr_info| ptr_info.ptr_type == PtrType::MutRef);
             let mut value_overlaps_with_mut_ptr: Vec<BorrowError> = pointed_to_by_mutably
                 .clone()
-                .filter(|mut_ptr_info| {
-                    // This fails because the value and the pointer are going to overlap on the line
+                .filter_map(|mut_ptr_info| {
+                    // NOTE This fails because the value and the pointer are going to overlap on the line
                     // the ref to the pointer is taken
                     // eg. `let m = &mut n`
-                    var_active_range_overlap(
+                    let overlap_state = var_active_range_overlap(
                         mut_ptr_info.ptr_var_data.non_borrowed_lines.clone(),
                         var_data.non_borrowed_lines.clone(),
-                    )
-                })
-                .map(|mut_ptr_info| BorrowError::MutValueOverlap {
-                    ptr_id: mut_ptr_info.ptr_id.clone(),
-                    value_id: var_id.clone(),
+                    );
+
+                    match overlap_state {
+                        OverlapState::Overlap => 
+                            Some(BorrowError::ValueMutOverlap {
+                            ptr_id: mut_ptr_info.ptr_id.clone(),
+                            value_id: var_id.clone(),
+                        }
+                        ),
+                        OverlapState::SameLine => Some(BorrowError::ValueMutSameLine { ptr_id: mut_ptr_info.ptr_id.clone(), value_id: var_id.clone() }),
+                    _ => None,
+                    }
                 })
                 .collect();
-                let mut mutable_ref_overlaps: Vec<BorrowError> = pointed_to_by_mutably.flat_map(|mut_ptr_data| {
+                let mut mutable_ref_overlaps_with_ptr: Vec<BorrowError> = pointed_to_by_mutably.flat_map(|mut_ptr_data| {
                 pointed_to_by
                     .iter()
                     .filter(|other_ptr_data| mut_ptr_data.ptr_id != other_ptr_data.ptr_id)
@@ -178,8 +205,11 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
                             mut_ptr_data.ptr_var_data.non_borrowed_lines.clone(),
                             other_ptr_data.ptr_var_data.non_borrowed_lines.clone(),
                         );
+                        // NOTE All of these represent the ptr type and the overlap state
+                        // between some ptr (other_ptr) and mutable reference (mut_ptr)
+                        // to the same symbol
                         match (other_ptr_data.ptr_type.clone(), overlap_state) {
-                            // In this caes, an Rc<RefCell> solution works, since they overlap and borrows can be
+                            // NOTE In these cases, an Rc<RefCell> solution works, since they overlap and borrows can be
                             // made on different lines and both dropped after one line
                             (PtrType::MutRef, OverlapState::Overlap) => {
                                 Some(BorrowError::MutMutOverlap {
@@ -195,11 +225,13 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
                                     value_id: var_id.clone(),
                                 })
                             }
-                            // The solution won't work in this case, since the borrow will be made
-                            // on the same line, violating borrow checking rules at runtime
+                            // NOTE The solution won't work in these case, since the borrow 
+                            // will be made on the same line,violating borrow checking
+                            // rules at runtime. Doing so causes the Rc to panic
                             (PtrType::MutRef, OverlapState::SameLine) => {
-                                Some(BorrowError::MutValueSameLine {
-                                    ptr_id: mut_ptr_data.ptr_id.clone(),
+                                Some(BorrowError::MutMutSameLine {
+                                    first_ptr_id: mut_ptr_data.ptr_id.clone(),
+                                    second_ptr_id: other_ptr_data.ptr_id.clone(),
                                     value_id: var_id.clone(),
                                 })
                             }
@@ -216,9 +248,9 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
 
             println!(
                 "value_overlaps_with_mut_ptr {var_id}: {:?}\nmutable_ref_overlaps {var_id}: {:?}",
-                value_overlaps_with_mut_ptr, mutable_ref_overlaps
+                value_overlaps_with_mut_ptr, mutable_ref_overlaps_with_ptr
             );
-            value_overlaps_with_mut_ptr.append(&mut mutable_ref_overlaps);
+            value_overlaps_with_mut_ptr.append(&mut mutable_ref_overlaps_with_ptr);
             value_overlaps_with_mut_ptr
         })
         .collect()
@@ -261,10 +293,28 @@ pub fn both_ptr_active_range_overlap(
         OverlapState::NoOverlap
     }
 }
-pub fn var_active_range_overlap(l_1: Vec<Range<usize>>, l_2: Vec<Range<usize>>) -> bool {
-    let ranges_overlap =
-        |l_1: &Range<usize>, l_2: &Range<usize>| l_1.start < l_2.end && l_2.start < l_1.end;
-    l_1.iter()
-        .flat_map(|l_1| l_2.iter().map(|l_2| ranges_overlap(l_1, l_2)))
-        .any(|overlaps| overlaps)
+
+pub fn var_active_range_overlap(value: Vec<Range<usize>>, ptr: Vec<Range<usize>>) -> OverlapState {
+    let ranges_overlap = |value: &Range<usize>, ptr: &Range<usize>| -> OverlapState {
+        if value.start < ptr.end && ptr.start < value.end {
+            OverlapState::Overlap
+            // `ptr.start == value.end` is fine because that's what happends when we init a reference
+        } else if value.start == ptr.end {
+            OverlapState::SameLine
+        } else {
+            OverlapState::NoOverlap
+        }
+    };
+
+    let overlaps_list: Vec<OverlapState> = value
+        .iter()
+        .flat_map(|value| ptr.iter().map(|ptr| ranges_overlap(value, ptr)))
+        .collect();
+    if overlaps_list.contains(&OverlapState::SameLine) {
+        OverlapState::SameLine
+    } else if overlaps_list.contains(&OverlapState::Overlap) {
+        OverlapState::Overlap
+    } else {
+        OverlapState::NoOverlap
+    }
 }
