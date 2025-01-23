@@ -74,15 +74,14 @@ fn set_raw(ptr_id: &str, ctx: &mut AnalysisContext) {}
 /// Or, we could not add a new variable because we're weak and don't want to change business logic
 /// If we insert, we need to be able to modify the ast here
 fn create_clone(value_id: &str, _ptr_id: &str, ctx: &mut AnalysisContext, root: &mut Node) {
-    println!("CREATING CLONE");
     let var_data = ctx.get_var(value_id);
     // TODO The make this to be cloned in annotation
     let clone_expr = Node::new(NodeType::Id(value_id.to_string()), None, 0);
     // TODO Get CType
-    let clone_declaration = Node::new(NodeType::Declaration(format!("{}_clone", value_id), CType::Void, var_data.addresses.len()), Some(vec![clone_expr]), 0);
+    let clone_id = format!("{}_clone", value_id);
+    let clone_declaration = Node::new(NodeType::Declaration(clone_id.clone(), CType::Void, var_data.addresses.len()), Some(vec![clone_expr]), 0);
     // This symbol goes after the new node
     let place_before_symbol = &var_data.pointed_to_by[0];
-    println!("place before: {}", place_before_symbol);
 
     fn search(root: &Node, place_before_symbol: &str) -> Option<(Node, usize)> {
         for (i, child) in root.children.as_ref().unwrap_or(&Vec::new()).iter().enumerate() {
@@ -103,10 +102,13 @@ crate::ast::NodeType::PtrDeclaration(var_id, _, _) if *var_id == place_before_sy
 
     let ret = search(root, place_before_symbol);
     if let Some((mut parent, i)) = ret {
-        println!("putting clone under node: ");
-        // TODO Check if this changes the actual ast
         let children = parent.children.as_mut().expect("Parent doesn't have children");
         children.insert(i, clone_declaration);
+
+        // TODO Replace the marked usage of the value symbol with the clone
+        // We might be able to do this by finding the first line where they're on the same line
+
+        // NOTE Run the analyzer and checker again with the new variable
     }
 }
 

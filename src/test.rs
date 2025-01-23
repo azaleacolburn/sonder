@@ -31,6 +31,8 @@ fn three_mut_layered() {
 
 /// Invalid rust code if directly translated
 /// Should be caught by the checker and a safe solution should be applied
+/// We can only ever use `*t.borrow()` or `*t.borrow_mut()` when using t
+/// Because it has to act exactly like the value t would in C.
 /// eg.
 /// ```rust
 /// fn main() -> () {
@@ -38,6 +40,11 @@ fn three_mut_layered() {
 ///     let g: Rc<RefCell<i32>> = t.clone();
 ///     *t.borrow_mut() = 1;
 ///     *g.borrow_mut() = 2;
+///     // When function calls come about
+///     f(*t.borrow())
+///     f(g)
+///     f(g, t.borrow_mut()) // this is fine
+///     f(*g.borrow(), *t.borrow_mut) // this is not ok
 /// }
 /// ```
 #[test]
