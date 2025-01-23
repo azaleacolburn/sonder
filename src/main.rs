@@ -31,7 +31,7 @@ fn parse_c(contents: String) -> TokenNode {
     parser::program(tokens, line_numbers, true).expect("Failed to parse token stream")
 }
 
-fn convert_to_rust_code(ast: TokenNode) -> String {
+fn convert_to_rust_code(mut ast: TokenNode) -> String {
     ast.print(&mut 0);
     let mut ctx: AnalysisContext = AnalysisContext::new();
 
@@ -42,7 +42,7 @@ fn convert_to_rust_code(ast: TokenNode) -> String {
 
     let temp_ctx = ctx.clone();
     let errors = checker::borrow_check(&temp_ctx);
-    checker::adjust_ptr_type(errors, &mut ctx);
+    checker::adjust_ptr_type(errors, &mut ctx, &mut ast);
 
     let annotated_ast = annotater::annotate_ast(&ast, &ctx);
     annotated_ast.print(&mut 0);

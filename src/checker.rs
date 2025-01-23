@@ -1,4 +1,4 @@
-use crate::analyzer::{AnalysisContext, PtrType, VarData};
+use crate::{analyzer::{AnalysisContext, PtrType, VarData}, ast::{TokenNode as Node, NodeType}, lexer::CType};
 use std::ops::Range;
 
 // TODO: Derermine if overlapping value uses mutate or don't mutate
@@ -69,35 +69,48 @@ fn set_rc(value_id: &str, ctx: &mut AnalysisContext) {
 
 fn set_raw(ptr_id: &str, ctx: &mut AnalysisContext) {}
 
-// fn clone_solution<'a>(
-//     mut_ptr_id: &str,
-//     value_id: &str,
-//     ctx: &mut AnalysisContext<'a>,
-//     root: &mut Node,
-// ) {
-//     let clone_id = format!("{value_id}_clone");
-//     let clone_declaration_node = Node::new(NodeType::Declaration(clone_id, CType::Int, 0), vec![]);
-//     // TODO: Figure out how to annotated cloning
-//     // let value_data = ctx.get_var(value_id).expect("value id not in map");
-//     // let cloned_value_id = format!("{}_clone", value_id);
-//     // let cloned_value_data = VarData {
-//     //     addresses: value_data.addresses.clone(),
-//     //     pointed_to_by: value_data.pointed_to_by.clone(),
-//     //     is_mut_direct: false,
-//     //     is_mut_by_ptr: false,
-//     //     non_borrowed_lines: vec![],
-//     //     rc: false,
-//     //     set_start_borrow: false,
-//     // };
-//     // ctx.new_var(cloned_value_id, cloned_value_data);
-// }
-
 /// This function is problematic because it requires the ast to be changed :(
 /// Either that, or we could use some othe protocole for conveying a new variable
 /// Or, we could not add a new variable because we're weak and don't want to change business logic
-fn create_clone(_value_id: &str, _ptr_id: &str, _ctx: &mut AnalysisContext) {}
+/// If we insert, we need to be able to modify the ast here
+fn create_clone(value_id: &str, _ptr_id: &str, ctx: &mut AnalysisContext, root: &mut Node) {
+    println!("CREATING CLONE");
+    let var_data = ctx.get_var(value_id);
+    // TODO The make this to be cloned in annotation
+    let clone_expr = Node::new(NodeType::Id(value_id.to_string()), None, 0);
+    // TODO Get CType
+    let clone_declaration = Node::new(NodeType::Declaration(format!("{}_clone", value_id), CType::Void, var_data.addresses.len()), Some(vec![clone_expr]), 0);
+    // This symbol goes after the new node
+    let place_before_symbol = &var_data.pointed_to_by[0];
+    println!("place before: {}", place_before_symbol);
 
-pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext) {
+    fn search(root: &Node, place_before_symbol: &str) -> Option<(Node, usize)> {
+        for (i, child) in root.children.as_ref().unwrap_or(&Vec::new()).iter().enumerate() {
+            println!("child token: {:?}", child.token);
+        match &child.token {
+            crate::ast::NodeType::Declaration(var_id, _, _) if *var_id == place_before_symbol => {
+                return Some((root.clone(), i));
+            }
+crate::ast::NodeType::PtrDeclaration(var_id, _, _) if *var_id == place_before_symbol => {
+                return Some((root.clone(), i));
+            }
+            _ => {}
+        }
+            if let Some(parent) = search(child, place_before_symbol) {return Some(parent)};
+    }
+        None
+    }
+
+    let ret = search(root, place_before_symbol);
+    if let Some((mut parent, i)) = ret {
+        println!("putting clone under node: ");
+        // TODO Check if this changes the actual ast
+        let children = parent.children.as_mut().expect("Parent doesn't have children");
+        children.insert(i, clone_declaration);
+    }
+}
+
+pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root: &mut Node) {
     errors.iter().for_each(|error| {
         // A lot of work for nothing
         match &error {
@@ -127,8 +140,7 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext) {
                 // clone_solution(ptr_id, value_id, ctx, root)
             }
             BorrowError::ValueMutSameLine { ptr_id, value_id } => {
-                create_clone(value_id, ptr_id, ctx);
-                // set_raw(value_id, ptr_id);
+                create_clone(value_id, ptr_id, ctx, root);
             }
         };
 
@@ -180,8 +192,8 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
                     // the ref to the pointer is taken
                     // eg. `let m = &mut n`
                     let overlap_state = var_active_range_overlap(
-                        mut_ptr_info.ptr_var_data.non_borrowed_lines.clone(),
                         var_data.non_borrowed_lines.clone(),
+                        mut_ptr_info.ptr_var_data.non_borrowed_lines.clone(),
                     );
 
                     match overlap_state {
@@ -298,7 +310,7 @@ pub fn var_active_range_overlap(value: Vec<Range<usize>>, ptr: Vec<Range<usize>>
     let ranges_overlap = |value: &Range<usize>, ptr: &Range<usize>| -> OverlapState {
         if value.start < ptr.end && ptr.start < value.end {
             OverlapState::Overlap
-            // `ptr.start == value.end` is fine because that's what happends when we init a reference
+            // NOTE `ptr.start == value.end` is fine because that's what happends when we init a reference
         } else if value.start == ptr.end {
             OverlapState::SameLine
         } else {
