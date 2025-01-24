@@ -1,4 +1,4 @@
-use crate::{analyzer::{AnalysisContext, PtrType, VarData}, ast::{TokenNode as Node, NodeType}, lexer::CType};
+use crate::{analyzer::{self, AnalysisContext, PtrType, VarData}, ast::{NodeType, TokenNode as Node}, checker, lexer::CType};
 use std::ops::Range;
 
 // TODO: Derermine if overlapping value uses mutate or don't mutate
@@ -106,9 +106,14 @@ crate::ast::NodeType::PtrDeclaration(var_id, _, _) if *var_id == place_before_sy
         children.insert(i, clone_declaration);
 
         // TODO Replace the marked usage of the value symbol with the clone
+
         // We might be able to do this by finding the first line where they're on the same line
 
         // NOTE Run the analyzer and checker again with the new variable
+        *ctx = AnalysisContext::new();
+        analyzer::determine_var_mutability(root, ctx);
+        let new_errors = checker::borrow_check(ctx);
+        adjust_ptr_type(new_errors, ctx, root);
     }
 }
 
