@@ -86,15 +86,15 @@ fn create_clone(value_id: &str, _ptr_id: &str, ctx: &mut AnalysisContext, root: 
     fn search(root: &Node, place_before_symbol: &str) -> Option<(Node, usize)> {
         for (i, child) in root.children.as_ref().unwrap_or(&Vec::new()).iter().enumerate() {
             println!("child token: {:?}", child.token);
-        match &child.token {
-            crate::ast::NodeType::Declaration(var_id, _, _) if *var_id == place_before_symbol => {
-                return Some((root.clone(), i));
+            match &child.token {
+                NodeType::Declaration(var_id, _, _) if *var_id == place_before_symbol => {
+                    return Some((root.clone(), i));
+                }
+    NodeType::PtrDeclaration(var_id, _, _) if *var_id == place_before_symbol => {
+                    return Some((root.clone(), i));
+                }
+                _ => {}
             }
-crate::ast::NodeType::PtrDeclaration(var_id, _, _) if *var_id == place_before_symbol => {
-                return Some((root.clone(), i));
-            }
-            _ => {}
-        }
             if let Some(parent) = search(child, place_before_symbol) {return Some(parent)};
     }
         None
