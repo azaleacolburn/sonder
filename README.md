@@ -10,6 +10,8 @@ For the purposes of sonder, well-written means that for any given pointer, the C
 
 - Treats it like a Rust reference in accordance with borrow-checking rules or
 - Treats it a cloned `Rc<RefCell<T>>`
+  
+- It also means that any mutable pointer to a value and the value itself that are used on the same line can be made to fit borrow checking rules by substituting the value for a clone
 
 If the code isn't "well-written", sonder will fall back on unsafe raw pointers in the generated code, although at the moment, it instead panics.
 
