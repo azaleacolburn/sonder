@@ -126,12 +126,12 @@ fn main() -> () {
 
 - [x] Rethink reference tracking
 - [x] Struct Support
-- [ ] Struct Analysis
-- [ ] Struct Checking, Annotation, Conversion
+- [x] Struct Analysis (wip)
+- [ ] Struct Checking, Annotation, Conversion (wip)
 - [ ] More test cases for the current prototype
 - [ ] Figure out how to represent scope
 - [ ] System for managing scope
-- [ ] Ccope-based borrowing checking
+- [ ] Scope-based borrowing checking
 
 ## How does all this work?
 
