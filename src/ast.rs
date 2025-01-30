@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::{
     annotater::AnnotatedNodeT,
     lexer::{CType, Token},
@@ -210,7 +212,7 @@ impl NodeType {
 pub struct TokenNode {
     pub token: NodeType,
     pub line: usize,
-    pub children: Option<Vec<TokenNode>>,
+    pub children: Option<Rc<RefCell<[TokenNode]>>>,
 }
 
 impl std::fmt::Display for TokenNode {
@@ -220,7 +222,11 @@ impl std::fmt::Display for TokenNode {
 }
 
 impl TokenNode {
-    pub fn new(token: NodeType, children: Option<Vec<TokenNode>>, line: usize) -> TokenNode {
+    pub fn new(
+        token: NodeType,
+        children: Option<Rc<RefCell<[TokenNode]>>>,
+        line: usize,
+    ) -> TokenNode {
         TokenNode {
             token,
             line,
@@ -232,11 +238,9 @@ impl TokenNode {
         (0..*n).into_iter().for_each(|_| print!("  "));
         println!("{}", self);
         *n += 1;
-        if let Some(children) = &self.children {
-            children.iter().for_each(|node| {
-                node.print(n);
-            })
-        }
+        self.children.borrow().iter().for_each(|node| {
+            node.print(n);
+        });
         *n -= 1;
         // println!("End Children");
     }

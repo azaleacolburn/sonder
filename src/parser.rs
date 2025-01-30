@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use crate::ast::{AssignmentOpType, NodeType, ScopeType, TokenNode};
 use crate::error::{ErrType as ET, RhErr};
 use crate::lexer::{CType, LineNumHandler, Token};
@@ -9,47 +12,56 @@ pub fn program(
     _debug: bool,
 ) -> Result<TokenNode, RhErr> {
     let mut token_handler = TokenHandler::new(tokens, line_tracker);
-
-    let mut program_node = TokenNode::new(NodeType::Program, Some(vec![]), 0);
     let mut top_scope = scope(&mut token_handler, ScopeType::Program)?;
-    if !top_scope.children.as_ref().unwrap().iter().any(|node| {
+
+    if !top_scope.iter().any(|node| {
         node.token == NodeType::FunctionDeclaration("main".into(), CType::Int)
             || node.token == NodeType::FunctionDeclaration("main".into(), CType::Void)
     }) {
-        top_scope.children.as_mut().unwrap().push(TokenNode::new(
+        top_scope.push(TokenNode::new(
+            // TODO Figure out if we need a vector
             NodeType::FunctionDeclaration("main".into(), CType::Int),
-            Some(Vec::new()),
+            None,
             token_handler.line(),
         ))
     }
-    program_node.children.as_mut().unwrap().push(top_scope);
+    let refcell: RefCell<[TokenNode]> = Box::top_scope.into_boxed_slice();
+    let program_children = Rc::new(RefCell::new(
+            .iter()
+            .cloned()
+            .collect::<[TokenNode]>(),
+    ));
+    let mut program_node = TokenNode::new(NodeType::Program, Some(program_children), 0);
 
     program_node.print(&mut 0);
     Ok(program_node)
 }
 
-pub fn scope(token_handler: &mut TokenHandler, scope_type: ScopeType) -> Result<TokenNode, RhErr> {
-    let mut scope_node = TokenNode::new(NodeType::Scope(None), Some(vec![]), token_handler.line());
+pub fn scope(
+    token_handler: &mut TokenHandler,
+    scope_type: ScopeType,
+) -> Result<Vec<TokenNode>, RhErr> {
+    // Result<TokenNode, RhErr> {
+    let mut scope_children: Vec<TokenNode> = vec![];
     while *token_handler.get_token() != Token::CCurl {
         if token_handler.curr_token > token_handler.len() {
             return Err(token_handler.new_err(ET::ExpectedCParen));
         }
 
-        scope_node
-            .children
-            .as_mut()
-            .expect("Scope has no children")
-            .push(statement(token_handler, scope_type.clone())?);
-        println!();
+        scope_children.push(statement(token_handler, scope_type.clone())?);
+
         if token_handler.curr_token == token_handler.len() - 1 {
-            return Ok(scope_node);
+            return Ok(scope_children);
         }
         token_handler.next_token();
     }
-    if *token_handler.get_prev_token() == Token::Semi {
-        scope_node.token = NodeType::Scope(Some(CType::Int)) // TODO: Change this to evaluate the  type of the last statement
-    }
-    Ok(scope_node)
+    Ok(scope_children)
+    // let mut scope_node = TokenNode::new(NodeType::Scope(None), None, token_handler.line());
+    // if *token_handler.get_prev_token() == Token::Semi {
+    //     scope_node.token = NodeType::Scope(Some(CType::Int)) // TODO: Change this to evaluate the  type of the last statement
+    // }
+    //
+    // Ok(scope_node)
 }
 
 pub fn statement(
@@ -109,7 +121,7 @@ fn scalar_declaration_statement(
     } else {
         TokenNode::new(
             NodeType::Declaration(id, t, 0),
-            Some(vec![expr]),
+            Some(Rc::new(RefCell::new([expr]))),
             token_handler.line(),
         )
     })
@@ -124,7 +136,7 @@ fn arithmetic_expression(token_handler: &mut TokenHandler) -> Result<TokenNode, 
         let right = arithmetic_term(token_handler)?;
         left = TokenNode::new(
             NodeType::from_token(&curr).unwrap(),
-            Some(vec![left, right]),
+            Some(Rc::new(RefCell::new([left, right]))),
             token_handler.line(),
         );
         curr = token_handler.get_token().clone();
@@ -141,7 +153,7 @@ fn arithmetic_term(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr>
         let right = arithmetic_factor(token_handler)?;
         left = TokenNode::new(
             NodeType::from_token(&curr).unwrap(),
-            Some(vec![left, right]),
+            Some(Rc::new(RefCell::new([left, right]))),
             token_handler.line(),
         );
         curr = token_handler.get_token().clone();
@@ -154,7 +166,7 @@ fn arithmetic_factor(token_handler: &mut TokenHandler) -> Result<TokenNode, RhEr
     let ret = match token {
         Token::NumLiteral(num) => Ok(TokenNode::new(
             NodeType::NumLiteral(num),
-            None,
+            Some(Rc::new(RefCell::new([]))),
             token_handler.line(),
         )),
         Token::Id(id) => {
@@ -165,20 +177,18 @@ fn arithmetic_factor(token_handler: &mut TokenHandler) -> Result<TokenNode, RhEr
                 token_handler.next_token();
                 let post_mul = TokenNode::new(
                     NodeType::Mul,
-                    vec![
+                    Some(Rc::new(RefCell::new([
                         arithmetic_expression(token_handler)?,
                         TokenNode::new(NodeType::NumLiteral(8), None, token_handler.line()),
-                    ]
-                    .into(),
+                    ]))),
                     token_handler.line(),
                 );
                 let post_add = TokenNode::new(
                     NodeType::Sub,
-                    vec![
+                    Some(Rc::new(RefCell::new([
                         TokenNode::new(NodeType::Id(id.to_string()), None, token_handler.line()),
                         post_mul,
-                    ]
-                    .into(),
+                    ]))),
                     token_handler.line(),
                 );
                 if *token_handler.get_token() != Token::CSquare {
@@ -255,7 +265,9 @@ fn assignment(token_handler: &mut TokenHandler, name: String) -> Result<TokenNod
     token_handler.next_token();
     let token = TokenNode::new(
         NodeType::Assignment(assignment_tok, name.clone()),
-        Some(vec![arithmetic_expression(token_handler)?]),
+        Some(Rc::new(RefCell::new([arithmetic_expression(
+            token_handler,
+        )?]))),
         token_handler.line(),
     );
     if *token_handler.get_token() != Token::Semi {
@@ -280,16 +292,15 @@ fn deref_assignment(
             token_handler.next_token();
             let post_mul = TokenNode::new(
                 NodeType::Mul,
-                vec![
+                Some(Rc::new(RefCell::new([
                     arithmetic_expression(token_handler)?,
                     TokenNode::new(NodeType::NumLiteral(8), None, token_handler.line()),
-                ]
-                .into(),
+                ]))),
                 token_handler.line(),
             );
             let post_mul = TokenNode::new(
                 NodeType::Sub,
-                vec![
+                Some(Rc::new(RefCell::new([
                     TokenNode::new(
                         NodeType::Id(
                             name.expect("Array assignments must have ids with names")
@@ -299,8 +310,7 @@ fn deref_assignment(
                         token_handler.line(),
                     ),
                     post_mul,
-                ]
-                .into(),
+                ]))),
                 token_handler.line(),
             );
             if *token_handler.get_token() != Token::CSquare {
@@ -318,7 +328,9 @@ fn deref_assignment(
     token_handler.next_token();
     let token = TokenNode::new(
         NodeType::DerefAssignment(assignment_tok, Box::new(deref_token)),
-        vec![arithmetic_expression(token_handler)?].into(),
+        Some(Rc::new(RefCell::new([arithmetic_expression(
+            token_handler,
+        )?]))),
         token_handler.line(),
     );
     if *token_handler.get_token() != Token::Semi {
@@ -329,47 +341,35 @@ fn deref_assignment(
 }
 
 fn while_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
-    let mut while_node = TokenNode::new(NodeType::While, Some(vec![]), token_handler.line());
     token_handler.next_token();
     let condition_node = condition(token_handler)?;
-    while_node
-        .children
-        .as_mut()
-        .expect("While children to be some")
-        .push(condition_node);
 
     token_handler.next_token();
     token_handler.next_token();
-
     let scope_node = scope(token_handler, ScopeType::While)?;
-    while_node
-        .children
-        .as_mut()
-        .expect("While children to be some")
-        .push(scope_node);
-    Ok(while_node)
+
+    let while_children = [condition_node, scope_node];
+    Ok(TokenNode::new(
+        NodeType::While,
+        Some(Rc::new(RefCell::new(while_children))),
+        token_handler.line(),
+    ))
 }
 
 fn if_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
-    let mut if_node = TokenNode::new(NodeType::If, Some(vec![]), token_handler.line());
     token_handler.next_token(); // might make semi handled by the called functions instead
     let condition_node = condition(token_handler)?;
-    if_node
-        .children
-        .as_mut()
-        .expect("If children to be some")
-        .push(condition_node);
 
-    println!("Post condition if token: {:?}", token_handler.get_token());
     token_handler.next_token();
     token_handler.next_token();
-
     let scope_node = scope(token_handler, ScopeType::If)?;
-    if_node
-        .children
-        .as_mut()
-        .expect("children to be some")
-        .push(scope_node);
+
+    let if_children = [condition_node, scope_node];
+    let mut if_node = TokenNode::new(
+        NodeType::If,
+        Some(Rc::new(RefCell::new(if_children))),
+        token_handler.line(),
+    );
     Ok(if_node)
 }
 

@@ -25,7 +25,7 @@ pub enum PtrType {
 
 /// The top-level datastructure that stores data about all the variables and referencing
 /// Stores a vector of the instances of addresses being taken, in order
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct AnalysisContext {
     pub variables: HashMap<String, VarData>,
     pub addresses: Vec<Rc<RefCell<AdrData>>>,
@@ -194,7 +194,7 @@ pub struct AdrData {
     pub ptr_type: Vec<PtrType>,
     pub line_taken: usize,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct VarData {
     // An emptry vector indicates a non-ptr variable
     pub addresses: Vec<Rc<RefCell<AdrData>>>,
@@ -213,6 +213,7 @@ pub struct VarData {
     // Struct handling
     pub instanceof_struct: Option<String>,
     pub fieldof_struct: Option<FieldInfo>,
+    pub same_line_usage_array_and_index: Option<(Rc<RefCell<[Node]>>, usize)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -243,8 +244,8 @@ impl VarData {
 }
 
 pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
-    if root.children.is_some() {
-        root.children.as_ref().unwrap().iter().for_each(|node| {
+    if let Some(children) = root.children.as_ref() {
+        children.borrow().iter().for_each(|node| {
             determine_var_mutability(node, ctx);
         })
     }
@@ -274,6 +275,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                     instanceof_struct,
                     // A different node StructFieldAssignment) will handle `my_struct.id = true`
                     fieldof_struct: None,
+                    same_line_usage_array_and_index: None,
                 },
             );
         }
@@ -341,6 +343,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                 instanceof_struct,
                 // This will be handled by other node (StructFieldPtrDeclaration)
                 fieldof_struct: None,
+                same_line_usage_array_and_index: None,
             };
             // TODO: Figure out how to annotate specific address call as mutable or immutable
             ctx.new_var(id.to_string(), var);
@@ -480,6 +483,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                                 struct_id: struct_id.clone(),
                                 field_id: field.id.clone(),
                             }),
+                            same_line_usage_array_and_index: None,
                         },
                     )
                 });
@@ -498,6 +502,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                 }],
                 instanceof_struct: Some(struct_id.clone()),
                 fieldof_struct: None,
+                same_line_usage_array_and_index: None,
             };
             ctx.new_var(var_id.clone(), var_data);
         }
@@ -530,6 +535,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
 pub fn find_addresses(root: &Node) -> Vec<String> {
     let mut vec = match root.children.as_ref() {
         Some(children) => children
+            .borrow()
             .iter()
             .flat_map(find_addresses)
             .collect::<Vec<String>>(),
@@ -546,7 +552,7 @@ pub fn count_derefs(root: &Node) -> u8 {
     let mut count = 0;
     let children = root.children.as_ref();
     if let Some(children) = children {
-        count += children.iter().map(count_derefs).sum::<u8>();
+        count += children.borrow().iter().map(count_derefs).sum::<u8>();
     }
     match &root.token {
         NodeType::DeRef(expr) => count += count_derefs(&expr) + 1,
@@ -556,14 +562,18 @@ pub fn count_derefs(root: &Node) -> u8 {
 }
 
 pub fn find_type_ids<'a>(root: &'a Node) -> Vec<(String, CType)> {
-    let mut type_ids: Vec<(String, CType)> = root
+    let mut type_ids: Vec<(String, CType)> = if let Some(children) = root
         .children
-        .as_ref()
-        .unwrap_or(&vec![])
+        .as_ref() {
+children.borrow()
         .iter()
         .flat_map(find_type_ids)
-        .collect();
-    match &root.token {
+        .collect()
+
+        } else {
+        vec![]
+    }
+            match &root.token {
         NodeType::Declaration(id, c_type, _size) => type_ids.push((id.clone(), c_type.clone())),
         _ => {}
     };
@@ -574,7 +584,8 @@ pub fn find_ids<'a>(root: &'a Node) -> Vec<String> {
     let mut ids: Vec<String> = root
         .children
         .as_ref()
-        .unwrap_or(&vec![])
+        .unwrap_or(Rc::new(RefCell::new([])))
+        .borrow()
         .iter()
         .flat_map(find_ids)
         .collect();

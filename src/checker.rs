@@ -4,7 +4,7 @@ use std::ops::Range;
 // TODO: Derermine if overlapping value uses mutate or don't mutate
 // If it doesn't mutate, clone the underlying value instead
 #[derive(Debug, Clone)]
-pub enum BorrowError {
+pub enum BorrowError <'a> {
     MutMutOverlap {
         first_ptr_id: String,
         second_ptr_id: String,
@@ -33,6 +33,7 @@ pub enum BorrowError {
     ValueMutSameLine {
         ptr_id: String,
         value_id: String,
+        value_instance_node: &'a Node
     }
 }
 
@@ -73,7 +74,7 @@ fn set_raw(ptr_id: &str, ctx: &mut AnalysisContext) {}
 /// Either that, or we could use some othe protocole for conveying a new variable
 /// Or, we could not add a new variable because we're weak and don't want to change business logic
 /// If we insert, we need to be able to modify the ast here
-fn create_clone(value_id: &str, _ptr_id: &str, ctx: &mut AnalysisContext, root: &mut Node) {
+fn create_clone(value_id: &str, _ptr_id: &str, ctx: &mut AnalysisContext, root: &mut Node, value_instance_node: &mut Node) {
     let var_data = ctx.get_var(value_id);
     // TODO The make this to be cloned in annotation
     let clone_expr = Node::new(NodeType::Id(value_id.to_string()), None, 0);
@@ -106,13 +107,21 @@ fn create_clone(value_id: &str, _ptr_id: &str, ctx: &mut AnalysisContext, root: 
         children.insert(i, clone_declaration);
 
         // TODO Replace the marked usage of the value symbol with the clone
+        // NOTE Without this, it'll stack overflow
+        match &value_instance_node.token {
+            NodeType::Id(_id) => {}
+            _ => panic!("value instance node must be id")
+        }
+
+        value_instance_node.token = NodeType::Id(clone_id);
 
         // We might be able to do this by finding the first line where they're on the same line
 
         // NOTE Run the analyzer and checker again with the new variable
         *ctx = AnalysisContext::new();
+        let temp_ctx = ctx.clone();
         analyzer::determine_var_mutability(root, ctx);
-        let new_errors = checker::borrow_check(ctx);
+        let new_errors = checker::borrow_check(&temp_ctx);
         adjust_ptr_type(new_errors, ctx, root);
     }
 }
@@ -146,8 +155,8 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
                 set_rc(value_id, ctx)
                 // clone_solution(ptr_id, value_id, ctx, root)
             }
-            BorrowError::ValueMutSameLine { ptr_id, value_id } => {
-                create_clone(value_id, ptr_id, ctx, root);
+            BorrowError::ValueMutSameLine { ptr_id, value_id, value_instance_node} => {
+                create_clone(value_id, ptr_id, ctx, root, value_instance_node);
             }
         };
 
