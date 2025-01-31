@@ -212,7 +212,7 @@ impl NodeType {
 pub struct TokenNode {
     pub token: NodeType,
     pub line: usize,
-    pub children: Option<Rc<RefCell<[TokenNode]>>>,
+    pub children: Option<Rc<RefCell<Box<[TokenNode]>>>>,
 }
 
 impl std::fmt::Display for TokenNode {
@@ -224,7 +224,7 @@ impl std::fmt::Display for TokenNode {
 impl TokenNode {
     pub fn new(
         token: NodeType,
-        children: Option<Rc<RefCell<[TokenNode]>>>,
+        children: Option<Rc<RefCell<Box<[TokenNode]>>>>,
         line: usize,
     ) -> TokenNode {
         TokenNode {
@@ -236,12 +236,21 @@ impl TokenNode {
 
     pub fn print(&self, n: &mut i32) {
         (0..*n).into_iter().for_each(|_| print!("  "));
-        println!("{}", self);
+        println!("{:?}", self);
         *n += 1;
-        self.children.borrow().iter().for_each(|node| {
-            node.print(n);
-        });
+        if let Some(children) = self.children.as_ref() {
+            children.borrow().iter().for_each(|node| {
+                node.print(n);
+            });
+        }
         *n -= 1;
         // println!("End Children");
     }
+}
+
+impl<T> Into<RefCell<T>> for Box<T>
+where
+    T: ?Sized,
+{
+    fn into(self) -> RefCell<T> {}
 }
