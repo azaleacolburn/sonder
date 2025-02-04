@@ -247,10 +247,3 @@ impl TokenNode {
         // println!("End Children");
     }
 }
-
-impl<T> Into<RefCell<T>> for Box<T>
-where
-    T: ?Sized,
-{
-    fn into(self) -> RefCell<T> {}
-}

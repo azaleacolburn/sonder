@@ -320,6 +320,7 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
     let children = root.children.as_ref();
     let annotated_node_children = match children {
         Some(children) => children
+            .borrow()
             .iter()
             .map(|node| annotate_ast(node, ctx))
             .collect(),

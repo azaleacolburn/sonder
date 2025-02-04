@@ -728,7 +728,10 @@ fn for_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
         _ => return Err(token_handler.new_err(ET::ExpectedSemi)),
     };
 
-    let children = Box::new([iterator_init, condition_expr, assignment_token])
+    let children: Box<[TokenNode]> = [iterator_init, condition_expr, assignment_token]
+        .into_iter()
+        .filter_map(|n| n)
+        .collect();
 
     Ok(TokenNode::new(
         NodeType::For,
@@ -748,7 +751,7 @@ pub fn assert_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, R
 
     let node = TokenNode::new(
         NodeType::Assert,
-        vec![condition_node].into(),
+        Some(Rc::new(RefCell::new(Box::new([condition_node])))),
         token_handler.line(),
     );
 
@@ -772,7 +775,7 @@ pub fn putchar_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, 
     let expr_node = arithmetic_expression(token_handler)?;
     let putchar_node = TokenNode::new(
         NodeType::PutChar,
-        Some(vec![expr_node]),
+        Some(Rc::new(RefCell::new(Box::new([expr_node])))),
         token_handler.line(),
     );
     println!("putchar token after: {:?}", token_handler.get_token());
@@ -805,7 +808,7 @@ pub fn return_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, R
     }
     let return_token = TokenNode::new(
         NodeType::Return,
-        Some(vec![expr_node]),
+        Some(Rc::new(RefCell::new(Box::new([expr_node])))),
         token_handler.line(),
     );
     return Ok(return_token);

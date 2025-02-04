@@ -213,7 +213,10 @@ pub struct VarData {
     // Struct handling
     pub instanceof_struct: Option<String>,
     pub fieldof_struct: Option<FieldInfo>,
-    pub same_line_usage_array_and_index: Option<(Rc<RefCell<[Node]>>, usize)>,
+    // NOTE This is a list of instances when this variable is used
+    // A single instance is a `(Rc<RefCell<Box<[Node]>>>, usize)` where the usize the index in the
+    // parent array
+    pub same_line_usage_array_and_index: Vec<(Rc<RefCell<Box<[Node]>>>, usize)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -243,10 +246,18 @@ impl VarData {
     }
 }
 
-pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
+pub fn determine_var_mutability<'a>(
+    root: &'a Node,
+    ctx: &mut AnalysisContext,
+    parent_children: Rc<RefCell<Box<[Node]>>>,
+    root_index: usize,
+) {
     if let Some(children) = root.children.as_ref() {
-        children.borrow().iter().for_each(|node| {
-            determine_var_mutability(node, ctx);
+        children.borrow().iter().enumerate().for_each(|(i, node)| {
+            // WARNING This assumes that
+            // an rc can be cloned while the refcell is borrowed
+
+            determine_var_mutability(node, ctx, children.clone(), i);
         })
     }
 
@@ -275,7 +286,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                     instanceof_struct,
                     // A different node StructFieldAssignment) will handle `my_struct.id = true`
                     fieldof_struct: None,
-                    same_line_usage_array_and_index: None,
+                    same_line_usage_array_and_index: Vec::new(),
                 },
             );
         }
@@ -343,7 +354,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                 instanceof_struct,
                 // This will be handled by other node (StructFieldPtrDeclaration)
                 fieldof_struct: None,
-                same_line_usage_array_and_index: None,
+                same_line_usage_array_and_index: Vec::new(),
             };
             // TODO: Figure out how to annotate specific address call as mutable or immutable
             ctx.new_var(id.to_string(), var);
@@ -399,7 +410,10 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
         }
         NodeType::Id(id) => {
             ctx.mut_var(id.to_string(), |var_data| {
-                var_data.add_non_borrowed_line(root.line)
+                var_data.add_non_borrowed_line(root.line);
+                var_data
+                    .same_line_usage_array_and_index
+                    .push((root.clone(), root_index));
             });
         }
         NodeType::Adr(id) => {
@@ -483,7 +497,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                                 struct_id: struct_id.clone(),
                                 field_id: field.id.clone(),
                             }),
-                            same_line_usage_array_and_index: None,
+                            same_line_usage_array_and_index: Vec::new(),
                         },
                     )
                 });
@@ -502,7 +516,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                 }],
                 instanceof_struct: Some(struct_id.clone()),
                 fieldof_struct: None,
-                same_line_usage_array_and_index: None,
+                same_line_usage_array_and_index: Vec::new(),
             };
             ctx.new_var(var_id.clone(), var_data);
         }
@@ -562,18 +576,12 @@ pub fn count_derefs(root: &Node) -> u8 {
 }
 
 pub fn find_type_ids<'a>(root: &'a Node) -> Vec<(String, CType)> {
-    let mut type_ids: Vec<(String, CType)> = if let Some(children) = root
-        .children
-        .as_ref() {
-children.borrow()
-        .iter()
-        .flat_map(find_type_ids)
-        .collect()
-
-        } else {
+    let mut type_ids: Vec<(String, CType)> = if let Some(children) = root.children.as_ref() {
+        children.borrow().iter().flat_map(find_type_ids).collect()
+    } else {
         vec![]
-    }
-            match &root.token {
+    };
+    match &root.token {
         NodeType::Declaration(id, c_type, _size) => type_ids.push((id.clone(), c_type.clone())),
         _ => {}
     };
@@ -581,14 +589,11 @@ children.borrow()
 }
 
 pub fn find_ids<'a>(root: &'a Node) -> Vec<String> {
-    let mut ids: Vec<String> = root
-        .children
-        .as_ref()
-        .unwrap_or(Rc::new(RefCell::new([])))
-        .borrow()
-        .iter()
-        .flat_map(find_ids)
-        .collect();
+    let mut ids = match root.children.as_ref() {
+        Some(children) => children.borrow().iter().flat_map(find_ids).collect(),
+        None => vec![],
+    };
+
     match &root.token {
         NodeType::Id(id) => ids.push(id.to_string()),
         NodeType::Adr(id) => ids.push(id.to_string()),
@@ -601,13 +606,15 @@ pub fn find_ids<'a>(root: &'a Node) -> Vec<String> {
 
 // An empty vector represents a non ptr
 pub fn count_declaration_ref(root: &Node) -> Vec<PtrType> {
-    let mut ptr_types: Vec<PtrType> = root
-        .children
-        .as_ref()
-        .unwrap_or(&Vec::new())
-        .iter()
-        .flat_map(count_declaration_ref)
-        .collect();
+    let mut ptr_types = match root.children.as_ref() {
+        Some(children) => children
+            .borrow()
+            .iter()
+            .flat_map(count_declaration_ref)
+            .collect(),
+        None => vec![],
+    };
+
     match &root.token {
         NodeType::PtrDeclaration(_id, _c_type, _expr) => {
             // TODO
@@ -625,7 +632,13 @@ pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &No
     let var_data = ctx.get_var(id);
     let is_ptr = var_data.addresses.len() > 0;
     if is_ptr {
-        let ids = find_ids(&root.children.as_ref().expect("Assignment missing children")[0]);
+        let ids = find_ids(
+            &root
+                .children
+                .as_ref()
+                .expect("Assignment missing children")
+                .borrow()[0],
+        );
         let expr_ptrs: Vec<&String> = ids.iter().filter(|id| ctx.is_ptr(id)).collect();
         let mut ptr_type_chain: Vec<PtrType> = if expr_ptrs.len() == 1 {
             // As we go, we replace certain elements in this vector with `PtrType::MutRef`
@@ -640,8 +653,13 @@ pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &No
             vec![PtrType::ImutRef]
         };
 
-        let addresses =
-            find_addresses(&root.children.as_ref().expect("Assignment missing child")[0]);
+        let addresses = find_addresses(
+            &root
+                .children
+                .as_ref()
+                .expect("Assignment missing child")
+                .borrow()[0],
+        );
         // TODO: Add ptr chain len for non-overlapping ptrs
         let points_to = match addresses.len() {
             1 => addresses.last(),
