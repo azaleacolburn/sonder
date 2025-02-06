@@ -1,5 +1,10 @@
-use crate::{analyzer::{self, AnalysisContext, PtrType, VarData}, ast::{NodeType, TokenNode as Node}, checker, lexer::CType};
-use std::{ops::Range, cell::RefCell, rc::Rc};
+use crate::{
+    analyzer::{self, AnalysisContext, PtrType, VarData},
+    ast::{NodeType, TokenNode as Node},
+    checker,
+    lexer::CType,
+};
+use std::{cell::RefCell, ops::Range, rc::Rc};
 
 // TODO: Derermine if overlapping value uses mutate or don't mutate
 // If it doesn't mutate, clone the underlying value instead
@@ -33,9 +38,8 @@ pub enum BorrowError {
     ValueMutSameLine {
         ptr_id: String,
         value_id: String,
-        value_instance_nodes: Rc<RefCell<Box<[Node]>>>,
-        index: usize
-    }
+        value_instance_nodes: Vec<(Rc<RefCell<Box<[Node]>>>, usize)>,
+    },
 }
 
 fn set_ptr_rc(value_id: &str, ctx: &mut AnalysisContext) {
@@ -75,60 +79,80 @@ fn set_raw(ptr_id: &str, ctx: &mut AnalysisContext) {}
 /// Either that, or we could use some othe protocole for conveying a new variable
 /// Or, we could not add a new variable because we're weak and don't want to change business logic
 /// If we insert, we need to be able to modify the ast here
-fn create_clone(value_id: &str, _ptr_id: &str, ctx: &mut AnalysisContext, root: &mut Node, value_instance_nodes: &Rc<RefCell<Box<[Node]>>>, index_of_value_instance_node: usize) {
+fn create_clone(
+    value_id: &str,
+    _ptr_id: &str,
+    ctx: &mut AnalysisContext,
+    root: &mut Node,
+    value_instance_nodes: Vec<(Rc<RefCell<Box<[Node]>>>, usize)>,
+) {
     let var_data = ctx.get_var(value_id);
     // TODO The make this to be cloned in annotation
     let clone_expr = Node::new(NodeType::Id(value_id.to_string()), None, 0);
     // TODO Get CType
     let clone_id = format!("{}_clone", value_id);
-    let clone_declaration = Node::new(NodeType::Declaration(clone_id.clone(), CType::Void, var_data.addresses.len()), Some(Rc::new(RefCell::new(Box::new([clone_expr])))), 0);
+    let clone_declaration = Node::new(
+        NodeType::Declaration(clone_id.clone(), CType::Int, var_data.addresses.len()),
+        Some(Rc::new(RefCell::new(Box::new([clone_expr])))),
+        0,
+    );
     // This symbol goes after the new node
     let place_before_symbol = &var_data.pointed_to_by[0];
 
     fn search(root: &Node, place_before_symbol: &str) -> Option<(Node, usize)> {
         match root.children.as_ref() {
             Some(children) => {
-for (i, child) in children.borrow().iter().enumerate() {
-            println!("child token: {:?}", child.token);
-            match &child.token {
-                NodeType::Declaration(var_id, _, _) if *var_id == place_before_symbol => {
-                    return Some((root.clone(), i));
+                for (i, child) in children.borrow().iter().enumerate() {
+                    println!("child token: {:?}", child.token);
+                    match &child.token {
+                        NodeType::Declaration(var_id, _, _) if *var_id == place_before_symbol => {
+                            return Some((root.clone(), i));
+                        }
+                        NodeType::PtrDeclaration(var_id, _, _)
+                            if *var_id == place_before_symbol =>
+                        {
+                            return Some((root.clone(), i));
+                        }
+                        _ => {}
+                    }
+                    if let Some(parent) = search(child, place_before_symbol) {
+                        return Some(parent);
+                    };
                 }
-    NodeType::PtrDeclaration(var_id, _, _) if *var_id == place_before_symbol => {
-                    return Some((root.clone(), i));
-                }
-                _ => {}
             }
-            if let Some(parent) = search(child, place_before_symbol) {return Some(parent)};
-    }
-            }
-            None => return None
-    }
+            None => return None,
+        }
         None
     }
 
     let ret = search(root, place_before_symbol);
     if let Some((mut parent, i)) = ret {
-        let children = parent.children.as_mut().expect("Parent doesn't have children");
-        children.borrow_mut().to_vec().insert(i, clone_declaration);
+        let children = parent
+            .children
+            .as_mut()
+            .expect("Parent doesn't have children");
+        // TODO This doesn't work, find way to modify ast
+        let mut new = children.borrow().clone().to_vec();
+        new.insert(i, clone_declaration);
+        *children.borrow_mut() = new.into_boxed_slice();
 
-        // TODO Replace the marked usage of the value symbol with the clone
-        // NOTE Without this, it'll stack overflow
-        match &value_instance_nodes.borrow()[index_of_value_instance_node].token {
-            NodeType::Id(_id) => {}
-            _ => panic!("value instance node must be id")
+        println!("{:?}", children.borrow());
+
+        for (sibiling_nodes, i) in value_instance_nodes.iter() {
+            match &sibiling_nodes.borrow()[*i].token {
+                NodeType::Id(_id) => {}
+                _ => panic!("value instance node must be id"),
+            }
+
+            sibiling_nodes.borrow_mut()[*i].token = NodeType::Id(clone_id.clone());
+
+            // NOTE Run the analyzer and checker again with the new variable
+            *ctx = AnalysisContext::new();
+            println!("NEW ITERATION\n\n");
+            analyzer::determine_var_mutability(root, ctx, Rc::new(RefCell::new(Box::new([]))), 0);
+            let new_errors = checker::borrow_check(ctx);
+            adjust_ptr_type(new_errors, ctx, root);
         }
-
-        value_instance_nodes.borrow_mut()[index_of_value_instance_node].token = NodeType::Id(clone_id);
-
-        // We might be able to do this by finding the first line where they're on the same line
-
-        // NOTE Run the analyzer and checker again with the new variable
-        *ctx = AnalysisContext::new();
-        let temp_ctx = ctx.clone();
-        analyzer::determine_var_mutability(root, ctx);
-        let new_errors = checker::borrow_check(&temp_ctx);
-        adjust_ptr_type(new_errors, ctx, root);
     }
 }
 
@@ -146,10 +170,20 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
                 imut_ptr_id: _,
                 value_id,
             } => set_rc(value_id, ctx),
-            BorrowError::MutMutSameLine { first_ptr_id, second_ptr_id, value_id: _ } => 
-            {set_raw(first_ptr_id, ctx); set_raw(second_ptr_id, ctx)},
-            
-            BorrowError::MutImutSameLine { mut_ptr_id, imut_ptr_id, value_id: _ } => {
+            BorrowError::MutMutSameLine {
+                first_ptr_id,
+                second_ptr_id,
+                value_id: _,
+            } => {
+                set_raw(first_ptr_id, ctx);
+                set_raw(second_ptr_id, ctx)
+            }
+
+            BorrowError::MutImutSameLine {
+                mut_ptr_id,
+                imut_ptr_id,
+                value_id: _,
+            } => {
                 set_raw(mut_ptr_id, ctx);
                 set_raw(imut_ptr_id, ctx);
             }
@@ -161,8 +195,12 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
                 set_rc(value_id, ctx)
                 // clone_solution(ptr_id, value_id, ctx, root)
             }
-            BorrowError::ValueMutSameLine { ptr_id, value_id, value_instance_nodes, index} => {
-                create_clone(value_id, ptr_id, ctx, root, value_instance_nodes, *index);
+            BorrowError::ValueMutSameLine {
+                ptr_id,
+                value_id,
+                value_instance_nodes,
+            } => {
+                create_clone(value_id, ptr_id, ctx, root, value_instance_nodes.clone());
             }
         };
 
@@ -219,14 +257,12 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
                     );
 
                     match overlap_state {
-                        OverlapState::Overlap => 
-                            Some(BorrowError::ValueMutOverlap {
+                        OverlapState::Overlap => Some(BorrowError::ValueMutOverlap {
                             ptr_id: mut_ptr_info.ptr_id.clone(),
                             value_id: var_id.clone(),
-                        }
-                        ),
-                        OverlapState::SameLine => Some(BorrowError::ValueMutSameLine { ptr_id: mut_ptr_info.ptr_id.clone(), value_id: var_id.clone(), value_instance_nodes: var_data.same_line_usage_array_and_index.clone().expect("No value instance sibilings").0, index: var_data.clone().same_line_usage_array_and_index.unwrap().1}),
-                    _ => None,
+                        }),
+                        OverlapState::SameLine => Some(BorrowError::ValueMutSameLine { ptr_id: mut_ptr_info.ptr_id.clone(), value_id: var_id.clone(), value_instance_nodes: var_data.same_line_usage_array_and_index.clone()}),
+                        _ => None,
                     }
                 })
                 .collect();
@@ -269,12 +305,8 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
                                     value_id: var_id.clone(),
                                 })
                             }
-                            (PtrType::ImutRef, OverlapState::SameLine) => {
-                                panic!("ImutRef on same line, this is fine\n This actually might be a problem if we have a mutable and immutable reference overlapping on the same line");
-                            }
-                            (_, OverlapState::NoOverlap) => {
-                                None
-                            }
+                            (PtrType::ImutRef, OverlapState::SameLine) => panic!("ImutRef on same line, this is fine\n This actually might be a problem if we have a mutable and immutable reference overlapping on the same line"),
+                            (_, OverlapState::NoOverlap) => None,
                             (_, _) => panic!("Basic ref should not have smart ptr type"),
                         }
                     }).collect::<Vec<BorrowError>>()

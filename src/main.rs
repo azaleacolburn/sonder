@@ -1,4 +1,4 @@
-use std::fs::read_to_string;
+use std::{cell::RefCell, fs::read_to_string, rc::Rc};
 
 use analyzer::AnalysisContext;
 use ast::TokenNode;
@@ -35,7 +35,7 @@ fn convert_to_rust_code(mut ast: TokenNode) -> String {
     ast.print(&mut 0);
     let mut ctx: AnalysisContext = AnalysisContext::new();
 
-    analyzer::determine_var_mutability(&ast, &mut ctx);
+    analyzer::determine_var_mutability(&ast, &mut ctx, Rc::new(RefCell::new(Box::new([]))), 0);
 
     println!("variables: {:?}", ctx.variables);
     println!("addresses: {:?}", ctx.addresses);

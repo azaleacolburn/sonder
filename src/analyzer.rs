@@ -62,6 +62,7 @@ impl AnalysisContext {
     }
 
     pub fn get_var(&self, id: &str) -> &VarData {
+        println!("var_id: {id}");
         self.variables.get(id).expect("Var not in map")
     }
 
@@ -292,7 +293,7 @@ pub fn determine_var_mutability<'a>(
         }
         NodeType::Assignment(_, id) => handle_assignment_analysis(ctx, id, root),
         NodeType::PtrDeclaration(id, c_type, expr) => {
-            determine_var_mutability(expr, ctx);
+            determine_var_mutability(expr, ctx, parent_children, root_index);
 
             let ids = find_ids(&expr);
             let expr_ptrs: Vec<&String> = ids.iter().filter(|id| ctx.is_ptr(id)).collect();
@@ -365,7 +366,7 @@ pub fn determine_var_mutability<'a>(
             });
         }
         NodeType::DerefAssignment(_, l_side) => {
-            determine_var_mutability(&l_side, ctx);
+            determine_var_mutability(&l_side, ctx, parent_children, root_index);
             let deref_ids = find_ids(&l_side);
             // This breakes because `*(t + s) = bar` is not allowed
             // However, **m is fine
@@ -413,7 +414,7 @@ pub fn determine_var_mutability<'a>(
                 var_data.add_non_borrowed_line(root.line);
                 var_data
                     .same_line_usage_array_and_index
-                    .push((root.clone(), root_index));
+                    .push((parent_children, root_index));
             });
         }
         NodeType::Adr(id) => {

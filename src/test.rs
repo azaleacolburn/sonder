@@ -100,8 +100,7 @@ fn multi_ref() {
 /// higher node handle the rest, and deref_assignment_node isn't handling the address level, the
 /// address never gets taken in the generated rust code
 ///
-/// In addition to that, there's some cascading mutability issue that the checker isn't picking up
-/// on
+/// This sets off the cloning system
 #[test]
 fn crazy_multi_ref() {
     validate(
