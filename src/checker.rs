@@ -136,7 +136,8 @@ fn create_clone(
         new.insert(i, clone_declaration);
         *children.borrow_mut() = new.into_boxed_slice();
 
-        println!("{:?}", children.borrow());
+        println!("HERERERERERE {:?}", children.borrow());
+        println!("{:?}", value_instance_nodes);
 
         for (sibiling_nodes, i) in value_instance_nodes.iter() {
             match &sibiling_nodes.borrow()[*i].token {
