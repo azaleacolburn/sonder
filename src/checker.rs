@@ -125,6 +125,16 @@ fn create_clone(
         None
     }
 
+    // Nodes that are on the same line as other nodes that reference them
+    let same_line_nodes = value_instance_nodes.iter().filter(|nodes| {
+        let node = &nodes.0.borrow()[nodes.1];
+        value_instance_nodes
+            .iter()
+            .any(|other_nodes| other_nodes.0.borrow()[other_nodes.1].line == node.line)
+    });
+
+    // TODO Figure out what to do with this
+
     let ret = search(root, place_before_symbol);
     if let Some((mut parent, i)) = ret {
         let children = parent
@@ -137,6 +147,7 @@ fn create_clone(
         *children.borrow_mut() = new.into_boxed_slice();
 
         println!("HERERERERERE {:?}", children.borrow());
+        // TODO Consider when to take a value_instance_node
         println!("{:?}", value_instance_nodes);
 
         for (sibiling_nodes, i) in value_instance_nodes.iter() {

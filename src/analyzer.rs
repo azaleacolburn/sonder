@@ -412,6 +412,13 @@ pub fn determine_var_mutability<'a>(
         NodeType::Id(id) => {
             ctx.mut_var(id.to_string(), |var_data| {
                 var_data.add_non_borrowed_line(root.line);
+                // NOTE We had to figure out when we should take this
+                // Really more it's how you figure out that things are on the same line in the
+                // analyzer
+                //
+                // TLDR; you can't
+                // So instead, you collect every id usage's line, then you filter them in the
+                // checker
                 var_data
                     .same_line_usage_array_and_index
                     .push((parent_children, root_index));
