@@ -1,5 +1,9 @@
-use crate::data_model::VarData;
-use std::collections::HashMap;
+use crate::data_model::{LineNumber, Reference, VarData};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 /// The top-level datastructure that stores data about all the variables and referencing
 /// Stores a vector of the instances of addresses being taken, in order
@@ -16,10 +20,22 @@ impl AnalysisContext {
     }
     pub fn new_var(&mut self, id: String, data: VarData) {
         self.variables.insert(id, data);
+
+        // data.ptr_to.iter().for_each(|reference| reference)
     }
-    pub fn new_usage(&mut self, id: &str) {
-        let reference_var = self.variables.get(id);
+
+    pub fn new_usage(&mut self, id: &str, line: LineNumber) {
+        let initial_var = self.variables.get_mut(id).expect("Var not in ctx");
+        initial_var.new_usage(line);
     }
+
+    pub fn assignment(&mut self, id: &str) {
+        let l_value = self.variables.get_mut(id).expect("Var not in ctx");
+        l_value.is_mut = true;
+        if l_value.ptr_to
+        l_value.ptr
+    }
+
     pub fn new_adr(&mut self, adr: AdrData, var: Option<String>) {
         self.addresses.push(adr.clone());
 
