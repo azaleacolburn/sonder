@@ -3,12 +3,14 @@ use std::{cell::RefCell, fs::read_to_string, rc::Rc};
 use analyzer::AnalysisContext;
 use ast::TokenNode;
 
+mod analysis_ctx;
 #[allow(dead_code)]
 mod analyzer;
 mod annotater;
 mod ast;
 mod checker;
 mod converter;
+mod data_model;
 mod error;
 mod lexer;
 mod parser;
