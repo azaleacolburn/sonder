@@ -33,13 +33,17 @@ impl AnalysisContext {
         initial_var.new_usage(line);
     }
 
-    pub fn assignment(&mut self, id: &str, line: LineNumber) {
-        let l_value = self.variables.get_mut(id).expect("Var not in ctx");
+    pub fn assignment(&mut self, assigned_to: &str) {
+        let l_value = self.variables.get_mut(assigned_to).expect("Var not in ctx");
         l_value.is_mut = true;
-        if l_value.ptr_to.len() > 0 {
-            let new_reference = Rc::new(RefCell::new(Reference::new(id, line)));
-            l_value.references.push(new_reference)
-        }
+    }
+
+    pub fn ptr_assignment(&mut self, borrowed: &str, assigned_to: &str, line: LineNumber) {
+        let l_value = self.variables.get_mut(assigned_to).expect("Var not in ctx");
+        l_value.is_mut = true;
+
+        let new_reference = Rc::new(RefCell::new(Reference::new(borrowed, assigned_to, line)));
+        l_value.references.push(new_reference)
     }
 
     pub fn struct_declaration(&mut self, id: String, struct_data: StructData) {
@@ -69,15 +73,6 @@ impl AnalysisContext {
         self.structs.entry(id).and_modify(f);
     }
 
-    pub fn is_ptr(&self, id: &String) -> bool {
-        self.variables
-            .get(id)
-            .as_ref()
-            .expect("Checked ptr not in ctx")
-            .addresses
-            .len()
-            > 0
-    }
     pub fn traverse_pointer_chain(
         &self,
         root: String,
@@ -92,12 +87,17 @@ impl AnalysisContext {
             .get(&root)
             .as_ref()
             .expect("Root in traversing ptr chain not found in map")
-            .addresses;
+            .ptr_to;
 
         match ptr_data.is_empty() {
             false => {
                 let mut chain = self.traverse_pointer_chain(
-                    ptr_data.last().unwrap().borrow().adr_of.clone(),
+                    ptr_data
+                        .last()
+                        .unwrap()
+                        .borrow()
+                        .get_reference_to()
+                        .to_string(),
                     total_depth + 1,
                     max_depth,
                 );
@@ -106,31 +106,5 @@ impl AnalysisContext {
             }
             true => vec![root.to_string()],
         }
-    }
-    /// Finds which reference a specific variable held at the given line number
-    /// Panics if:
-    /// - Variable was declared on line given <- up for question
-    /// - Variable doesn't exist in variables
-    /// - Variable doesn't exist on given line
-    /// - Variable not a ptr or never initialized
-    pub fn find_which_ref_at_id(&self, var_id: &str, line: usize) -> String {
-        let init_at = self
-            .variables
-            .get(var_id)
-            .expect("Variable given doesn't exist")
-            .non_borrowed_lines[0]
-            .start;
-        // TODO: Check if this should be > or >=
-        println!("var_id: {var_id} init_at: {init_at} line: {line}");
-        assert!(init_at < line);
-
-        self.variables
-            .get(var_id)
-            .expect("Variable given doesn't exist")
-            .addresses
-            .iter()
-            .map(|adr_data| adr_data.borrow())
-            .filter(|adr_data_ref| adr_data_ref.line_taken < line)
-            .fold(String::new(), |_, adr_data_ref| adr_data_ref.adr_of.clone())
     }
 }

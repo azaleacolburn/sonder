@@ -60,6 +60,10 @@ impl VarData {
             reference.borrow_mut().end = line;
         }
     }
+
+    pub fn is_ptr(&self) -> bool {
+        self.ptr_to.len() > 0
+    }
 }
 
 /// Represents a singlular usage of a variable, not including its reference being taken
@@ -90,6 +94,7 @@ impl Usage {
 #[derive(Debug, Clone)]
 pub struct Reference {
     reference_type: ReferenceType,
+    ref_to: String,
     borrower: String,
     start: LineNumber,
     end: LineNumber,
@@ -102,9 +107,10 @@ pub enum ReferenceType {
 }
 
 impl Reference {
-    pub fn new(borrower: impl ToString, line: LineNumber) -> Self {
+    pub fn new(ref_to: impl ToString, borrower: impl ToString, line: LineNumber) -> Self {
         Reference {
             reference_type: ReferenceType::ConstBorrowed,
+            ref_to: ref_to.to_string(),
             borrower: borrower.to_string(),
             start: line,
             end: line,
@@ -112,9 +118,33 @@ impl Reference {
     }
 
     // Non-inclusive on either end
-    pub fn within_current_range(self, line: usize) -> bool {
+    pub fn within_current_range(&self, line: usize) -> bool {
         self.start < line && self.end > line
     }
+
+    pub fn get_reference_to(&self) -> &str {
+        &self.ref_to
+    }
+
+    pub fn get_borrower(&self) -> &str {
+        &self.borrower
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PtrType {
+    Rc,
+    RcRefClone,
+    RefCell,
+    RawPtrMut,
+    RawPtrImut,
+    MutRef,
+    ImutRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StructData {
+    pub field_definitions: Vec<FieldInfo>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

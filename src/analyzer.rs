@@ -10,31 +10,9 @@ use crate::{
     analysis_ctx::AnalysisContext,
     annotater::FieldDefinition,
     ast::{NodeType, TokenNode as Node},
-    data_model::VarData,
+    data_model::{FieldInfo, PtrType, StructData, VarData},
     lexer::CType,
 };
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PtrType {
-    Rc,
-    RcRefClone,
-    RefCell,
-    RawPtrMut,
-    RawPtrImut,
-    MutRef,
-    ImutRef,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StructData {
-    pub field_definitions: Vec<FieldDefinition>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FieldInfo {
-    struct_id: String,
-    field_id: String,
-}
 
 pub fn determine_var_mutability<'a>(
     root: &'a Node,
@@ -42,6 +20,12 @@ pub fn determine_var_mutability<'a>(
     parent_children: Rc<RefCell<Box<[Node]>>>,
     root_index: usize,
 ) {
+    // NOTE Let nodes handle their own children
+    // This is going to introduce a few bugs were I forget to recurse, but is necessary for
+    // ancestors to have access to child reference information and to avoid traversing pointer
+    // chains and pointer counting along nodes
+    //
+    //
     if let Some(children) = root.children.as_ref() {
         children.borrow().iter().enumerate().for_each(|(i, node)| {
             // WARNING This assumes that
@@ -53,17 +37,17 @@ pub fn determine_var_mutability<'a>(
 
     match &root.token {
         NodeType::Declaration(id, c_type, _) => {
-            let instanceof_struct = if let CType::Struct(struct_id) = c_type {
-                Some(struct_id.clone())
-            } else {
-                None
+            let instanceof_struct = match c_type {
+                CType::Struct(struct_id) => Some(struct_id.clone()),
+                _ => None,
             };
 
-            let v = VarData::new(c_type, false, instanceof_struct, fieldof_struct);
+            let variable = VarData::new(c_type.clone(), false, instanceof_struct, None);
 
-            ctx.declaration(id, v);
+            ctx.declaration(id, variable);
         }
-        NodeType::Assignment(_, id) => handle_assignment_analysis(ctx, id, root),
+        NodeType::Assignment(_, id) => handle_assignment_analysis(ctx, id, root)
+                    
         NodeType::PtrDeclaration(id, c_type, expr) => {
             determine_var_mutability(expr, ctx, parent_children, root_index);
 
@@ -409,9 +393,10 @@ pub fn count_declaration_ref(root: &Node) -> Vec<PtrType> {
 }
 
 pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &Node) {
+    let borrowed = ""; // TODO Placeholder, grab
+
     let var_data = ctx.get_var(id);
-    let is_ptr = var_data.addresses.len() > 0;
-    if is_ptr {
+    if var_data.is_ptr() {
         let ids = find_ids(
             &root
                 .children
@@ -460,10 +445,7 @@ pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &No
         ctx.mut_var(points_to.to_string(), |var_data| {
             var_data.pointed_to_by.push(id.to_string());
         });
+    } else {
+        ctx.assignment(id);
     }
-
-    ctx.mut_var(id.to_string(), |var_data| {
-        var_data.is_mut_direct = true;
-        var_data.add_non_borrowed_line(root.line);
-    });
 }
