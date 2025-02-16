@@ -23,7 +23,7 @@ pub struct VarData {
 }
 
 impl VarData {
-    fn new(
+    pub fn new(
         var_type: CType,
         clone: bool,
         instanceof_struct: Option<String>,

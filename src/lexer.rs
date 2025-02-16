@@ -323,7 +323,8 @@ pub fn string_to_tokens(
                         }
                         num.push(chars[j]);
                     }
-                    if chars[i] == '0' {
+                    if chars[i + 1] == '0' {
+                        i += 1;
                         // handles literals // TODO: DO LITERAL SHIT
                         // let string = chars.into_iter().collect::<String>();
 
@@ -352,7 +353,7 @@ pub fn string_to_tokens(
                                 Ok(value) => {
                                     ret.push(Token::NumLiteral(value));
                                 }
-                                Err(err) => {
+                                Err(_) => {
                                     continue;
                                 }
                             };
@@ -552,6 +553,7 @@ pub fn string_to_tokens(
             }
             'g' => {
                 if chars[i + 1] == 'o' && chars[i + 2] == 't' && chars[i + 3] == 'o' {
+                    i += 4;
                     for j in i..chars.len() {
                         if !chars[j].is_alphabetic() && chars[j] != '_' {
                             break;

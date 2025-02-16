@@ -7,8 +7,10 @@ use std::{
 };
 
 use crate::{
+    analysis_ctx::AnalysisContext,
     annotater::FieldDefinition,
     ast::{NodeType, TokenNode as Node},
+    data_model::VarData,
     lexer::CType,
 };
 
@@ -34,27 +36,6 @@ pub struct FieldInfo {
     field_id: String,
 }
 
-impl VarData {
-    pub fn add_non_borrowed_line(&mut self, line: usize) {
-        let len = self.non_borrowed_lines.len() - 1; // underflow
-        let end = &mut self.non_borrowed_lines[len].end;
-        *end = cmp::max(line, *end);
-        if self.set_start_borrow {
-            let start = &mut self.non_borrowed_lines[len].start;
-            *start = cmp::max(line, *start);
-            self.set_start_borrow = false;
-        }
-    }
-    pub fn new_borrow(&mut self, line: usize) {
-        self.add_non_borrowed_line(line);
-        self.non_borrowed_lines.push(Range {
-            start: line,
-            end: line,
-        });
-        self.set_start_borrow = true;
-    }
-}
-
 pub fn determine_var_mutability<'a>(
     root: &'a Node,
     ctx: &mut AnalysisContext,
@@ -77,27 +58,10 @@ pub fn determine_var_mutability<'a>(
             } else {
                 None
             };
-            println!("Declaration: {id}");
-            ctx.new_var(
-                id.to_string(),
-                VarData {
-                    addresses: vec![],
-                    pointed_to_by: vec![],
-                    is_mut_by_ptr: false,
-                    is_mut_direct: false,
-                    rc: false,
-                    non_borrowed_lines: vec![Range {
-                        start: root.line,
-                        end: root.line,
-                    }],
-                    set_start_borrow: false,
-                    clone: false,
-                    instanceof_struct,
-                    // A different node StructFieldAssignment) will handle `my_struct.id = true`
-                    fieldof_struct: None,
-                    same_line_usage_array_and_index: Vec::new(),
-                },
-            );
+
+            let v = VarData::new(c_type, false, instanceof_struct, fieldof_struct);
+
+            ctx.declaration(id, v);
         }
         NodeType::Assignment(_, id) => handle_assignment_analysis(ctx, id, root),
         NodeType::PtrDeclaration(id, c_type, expr) => {

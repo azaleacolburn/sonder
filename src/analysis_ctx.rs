@@ -1,4 +1,7 @@
-use crate::data_model::{LineNumber, Reference, VarData};
+use crate::{
+    analyzer::StructData,
+    data_model::{LineNumber, Reference, VarData},
+};
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
@@ -10,18 +13,19 @@ use std::{
 #[derive(Debug, Clone)]
 pub struct AnalysisContext {
     pub variables: HashMap<String, VarData>,
+    pub structs: HashMap<String, StructData>,
 }
 
 impl AnalysisContext {
     pub fn new() -> AnalysisContext {
         AnalysisContext {
             variables: HashMap::new(),
+            structs: HashMap::new(),
         }
     }
-    pub fn new_var(&mut self, id: String, data: VarData) {
-        self.variables.insert(id, data);
 
-        // data.ptr_to.iter().for_each(|reference| reference)
+    pub fn declaration(&mut self, id: impl ToString, data: VarData) {
+        self.variables.insert(id.to_string(), data);
     }
 
     pub fn new_usage(&mut self, id: &str, line: LineNumber) {
@@ -29,24 +33,16 @@ impl AnalysisContext {
         initial_var.new_usage(line);
     }
 
-    pub fn assignment(&mut self, id: &str) {
+    pub fn assignment(&mut self, id: &str, line: LineNumber) {
         let l_value = self.variables.get_mut(id).expect("Var not in ctx");
         l_value.is_mut = true;
-        if l_value.ptr_to
-        l_value.ptr
-    }
-
-    pub fn new_adr(&mut self, adr: AdrData, var: Option<String>) {
-        self.addresses.push(adr.clone());
-
-        if let Some(var) = var {
-            self.variables.entry(var).and_modify(|var_data| {
-                var_data.addresses.push(adr.clone());
-            });
+        if l_value.ptr_to.len() > 0 {
+            let new_reference = Rc::new(RefCell::new(Reference::new(id, line)));
+            l_value.references.push(new_reference)
         }
     }
 
-    pub fn new_struct(&mut self, id: String, struct_data: StructData) {
+    pub fn struct_declaration(&mut self, id: String, struct_data: StructData) {
         self.structs.insert(id, struct_data);
     }
 
@@ -59,35 +55,11 @@ impl AnalysisContext {
         self.variables.get(id).expect("Var not in map")
     }
 
-    /// Gets an address, given the id the address points to
-    /// If more than one exists, the first one is returned
-    pub fn get_adr(&self, var_id: &str) -> &Rc<RefCell<AdrData>> {
-        self.addresses
-            .iter()
-            .find(|adr_data| adr_data.borrow().adr_of == var_id)
-            .expect("Address not in map")
-    }
-
     pub fn mut_var<F>(&mut self, id: String, f: F)
     where
         F: FnOnce(&mut VarData),
     {
         self.variables.entry(id).and_modify(f);
-    }
-
-    /// Applies a function to an adr_data given the underlying id the adr points to
-    pub fn mut_adr<F>(&mut self, id: &str, f: F)
-    where
-        F: FnOnce(RefMut<AdrData>),
-    {
-        let adr_data = self
-            .addresses
-            .iter_mut()
-            .map(|adr_cell| adr_cell.clone())
-            .find(|adr_data| adr_data.borrow().adr_of == id)
-            .expect(format!("No adr that points to given id: {id}").as_str());
-
-        f(RefCell::borrow_mut(&adr_data))
     }
 
     pub fn mut_struct<F>(&mut self, id: String, f: F)
@@ -160,15 +132,5 @@ impl AnalysisContext {
             .map(|adr_data| adr_data.borrow())
             .filter(|adr_data_ref| adr_data_ref.line_taken < line)
             .fold(String::new(), |_, adr_data_ref| adr_data_ref.adr_of.clone())
-    }
-
-    pub fn print_refs(&self) {
-        self.variables.iter().for_each(|(id, var_data)| {
-            println!("{id}:");
-            var_data
-                .non_borrowed_lines
-                .iter()
-                .for_each(|non_borrowed_range| println!("\t{:?}", non_borrowed_range))
-        })
     }
 }
