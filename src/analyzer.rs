@@ -79,34 +79,37 @@ pub fn determine_var_mutability<'a>(
                 .traverse_pointer_chain(deref_ids[0].clone(), 0, num_of_vars)
                 .into_iter()
                 .rev();
-            // eg. [m, p, n]
             let first_ptr = ptr_chain.next().expect("No pointers in chain");
-            ctx.mut_var(first_ptr.clone(), |var_data| {
-                var_data.add_non_borrowed_line(root.line);
-                let mut adr =
-                    RefCell::borrow_mut(var_data.addresses.last().expect("Variable not ptr"));
 
-                adr.mutates = true;
-                adr.ptr_type.fill(PtrType::MutRef);
-            });
+            ctx.deref_assignment(&first_ptr, root.line);
 
-            let len = ptr_chain.clone().count(); // TODO Better solution
-            ptr_chain.enumerate().for_each(|(i, var)| {
-                if i != len - 1 {
-                    ctx.mut_var(var.clone(), |var_data| {
-                        let mut adr = RefCell::borrow_mut(
-                            var_data.addresses.last().expect("Variable not ptr"),
-                        );
-
-                        adr.mutates = true;
-
-                        (i..adr.ptr_type.len()).for_each(|type_chain_i| {
-                            adr.ptr_type[type_chain_i] = PtrType::MutRef;
-                        });
-                    });
-                }
-                ctx.mut_var(var.to_string(), |var_data| var_data.is_mut_by_ptr = true);
-            });
+            // TODO Figure out how assignment stuff needs to work
+            // ctx.mut_var(first_ptr.clone(), |var_data| {
+            //     var_data(root.line);
+            //     let mut adr =
+            //         RefCell::borrow_mut(var_data.addresses.last().expect("Variable not ptr"));
+            //
+            //     adr.mutates = true;
+            //     adr.ptr_type.fill(PtrType::MutRef);
+            // });
+            //
+            // let len = ptr_chain.clone().count(); // TODO Better solution
+            // ptr_chain.enumerate().for_each(|(i, var)| {
+            //     if i != len - 1 {
+            //         ctx.mut_var(var.clone(), |var_data| {
+            //             let mut adr = RefCell::borrow_mut(
+            //                 var_data.addresses.last().expect("Variable not ptr"),
+            //             );
+            //
+            //             adr.mutates = true;
+            //
+            //             (i..adr.ptr_type.len()).for_each(|type_chain_i| {
+            //                 adr.ptr_type[type_chain_i] = PtrType::MutRef;
+            //             });
+            //         });
+            //     }
+            //     ctx.mut_var(var.to_string(), |var_data| var_data.is_mut_by_ptr = true);
+            // });
         }
         NodeType::Id(id) => {
             ctx.mut_var(id.to_string(), |var_data| {

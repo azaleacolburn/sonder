@@ -39,11 +39,23 @@ impl AnalysisContext {
     }
 
     pub fn ptr_assignment(&mut self, borrowed: &str, assigned_to: &str, line: LineNumber) {
-        let l_value = self.variables.get_mut(assigned_to).expect("Var not in ctx");
-        l_value.is_mut = true;
+        self.assignment(assigned_to);
 
         let new_reference = Rc::new(RefCell::new(Reference::new(borrowed, assigned_to, line)));
+
+        let l_value = self.variables.get_mut(assigned_to).expect("Var not in ctx");
         l_value.references.push(new_reference)
+    }
+
+    pub fn deref_assignment(&mut self, assigned_to: &str, line: LineNumber) {
+        self.assignment(assigned_to);
+
+        let l_value = self.variables.get_mut(assigned_to).expect("Var not in ctx");
+        assert!(l_value.is_ptr());
+        l_value.new_usage(line);
+
+        let reference_data = l_value.current_reference_held().expect("Null ptr deref");
+        self.assignment(reference_data.borrow().get_reference_to());
     }
 
     pub fn struct_declaration(&mut self, id: String, struct_data: StructData) {
