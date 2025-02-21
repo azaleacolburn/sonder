@@ -48,44 +48,8 @@ pub fn determine_var_mutability<'a>(
         }
         NodeType::Assignment(_, id) => handle_assignment_analysis(ctx, id, root),
         NodeType::PtrDeclaration(id, c_type, expr) => {
-            determine_var_mutability(expr, ctx, parent_children, root_index);
-
-            let ids = find_ids(&expr);
-            let expr_ptrs: Vec<&String> =
-                ids.iter().filter(|id| ctx.get_var(id).is_ptr()).collect();
-
-            let mut ptr_type_chain: Vec<PtrType> = if expr_ptrs.len() == 1 {
-                // As we go, we replace certain elements in this vector with `PtrType::MutRef`
-                ctx.traverse_pointer_chain(expr_ptrs[0].clone(), 0, u8::MAX)
-                    .iter()
-                    .map(|_| PtrType::ImutRef)
-                    .collect()
-            } else if expr_ptrs.len() > 1 {
-                // Ptr arithmatic outside the context of arrays is automatically a raw ptr
-                vec![PtrType::RawPtrImut]
-            } else {
-                vec![PtrType::ImutRef]
-            };
-
-            let addresses = find_addresses(&expr);
-            // TODO: Add ptr chain len for non-overlapping ptrs
-            let points_to = match addresses.len() {
-                1 => addresses.last(),
-                0 if expr_ptrs.len() != 0 => expr_ptrs.last().map(|n| &**n),
-                n if n > 1 => {
-                    if let Some(last) = ptr_type_chain.last_mut() {
-                        *last = PtrType::RawPtrImut;
-                    }
-                    addresses.last()
-                }
-                _ => {
-                    panic!(".len() is a usize; expr_ptr.len: {}", expr_ptrs.len());
-                }
-            }
-            .unwrap();
-
-            let adr_data = ctx.get_adr(&points_to).clone();
-            RefCell::borrow_mut(&adr_data).held_by = Some(id.clone());
+            // TODO Determine if this is needed (I think not)
+            // determine_var_mutability(expr, ctx, parent_children, root_index);
 
             // Check if struct ptr
             let instanceof_struct = if let CType::Struct(struct_id) = c_type {
@@ -94,35 +58,14 @@ pub fn determine_var_mutability<'a>(
                 None
             };
 
-            println!("ADR_DATA: {:?}", adr_data);
+            let borrowed = ptr_from_expression(root, ctx);
+            let v = VarData::new(c_type.clone(), false, instanceof_struct, None);
 
-            let var = VarData::new(CType::Int, false, None, None);
-            //     addresses: vec![adr_data],
-            //     pointed_to_by: vec![],
-            //     is_mut_by_ptr: false,
-            //     is_mut_direct: false,
-            //     rc: false,
-            //     non_borrowed_lines: vec![Range {
-            //         start: root.line,
-            //         end: root.line,
-            //     }],
-            //     set_start_borrow: false,
-            //     clone: false,
-            //     instanceof_struct,
-            //     // This will be handled by other node (StructFieldPtrDeclaration)
-            //     fieldof_struct: None,
-            //     same_line_usage_array_and_index: Vec::new(),
-            // };
-            // TODO: Figure out how to annotate specific address call as mutable or immutable
-            ctx.new_var(id.to_string(), var);
-            // Doesn't support &that + &this
-            // This immediantly breakes borrow checking rules
-            ctx.mut_var(points_to.to_string(), |var_data| {
-                var_data.pointed_to_by.push(id.clone());
-            });
+            ctx.declaration(id, v);
+            ctx.ptr_assignment(&borrowed, id, root.line);
         }
         NodeType::DerefAssignment(_, l_side) => {
-            determine_var_mutability(&l_side, ctx, parent_children, root_index);
+            // determine_var_mutability(&l_side, ctx, parent_children, root_index);
             let deref_ids = find_ids(&l_side);
             // This breakes because `*(t + s) = bar` is not allowed
             // However, **m is fine
@@ -242,7 +185,6 @@ pub fn determine_var_mutability<'a>(
                     ctx.new_var(
                         format!("{}.{}", var_id, field.id),
                         VarData {
-                            addresses: vec![],
                             pointed_to_by: vec![],
                             is_mut_by_ptr: false,
                             is_mut_direct: false,
@@ -394,8 +336,6 @@ pub fn count_declaration_ref(root: &Node) -> Vec<PtrType> {
 }
 
 pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &Node) {
-    let borrowed = ""; // TODO Placeholder, grab
-
     let lvalue = ctx.get_var(id);
     if lvalue.is_ptr() {
         let points_to = &ptr_from_expression(root, ctx);
@@ -405,6 +345,7 @@ pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &No
     }
 }
 
+// All Refs are Adr
 fn ptr_type_chain(rvalue_ptrs: &Vec<String>, ctx: &mut AnalysisContext) -> Vec<PtrType> {
     if rvalue_ptrs.len() == 1 {
         // NOTE  As we go, we replace certain elements in this vector with `PtrType::MutRef`
@@ -421,6 +362,7 @@ fn ptr_type_chain(rvalue_ptrs: &Vec<String>, ctx: &mut AnalysisContext) -> Vec<P
 }
 
 /// Assumes that there are only ever either derefereces or refs in rvalue
+/// Returns the name of the variable this expression evaluates to
 fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext) -> String {
     let rvalue_ids = find_ids(
         &root
@@ -436,7 +378,7 @@ fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext) -> String {
         .collect();
 
     let mut ptr_type_chain = ptr_type_chain(&rvalue_ptrs, ctx);
-    let addresses = find_addresses(
+    let addresses: Vec<String> = find_addresses(
         &root
             .children
             .as_ref()
@@ -445,17 +387,13 @@ fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext) -> String {
     );
 
     match addresses.len() {
-        // TODO: Add ptr chain len for non-overlapping ptrs
-        1 => addresses.last(),
-        0 if rvalue_ptrs.len() != 0 => rvalue_ptrs.last(),
-        n if n > 1 => {
+        1 => addresses[0].clone(),
+        // 0 if rvalue_ptrs.len() != 0 => rvalue_ptrs.last(),
+        _ => {
             if let Some(last) = ptr_type_chain.last_mut() {
                 *last = PtrType::RawPtrImut;
             }
-            addresses.last()
+            addresses.last().unwrap().clone()
         }
-        _ => panic!(".len() is a usize; expr_ptr.len: {}", rvalue_ptrs.len()),
     }
-    .unwrap()
-    .clone()
 }
