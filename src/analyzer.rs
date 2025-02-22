@@ -50,6 +50,7 @@ pub fn determine_var_mutability<'a>(
         NodeType::PtrDeclaration(id, c_type, expr) => {
             // TODO Determine if this is needed (I think not)
             // determine_var_mutability(expr, ctx, parent_children, root_index);
+            let rm = 5;
 
             // Check if struct ptr
             let instanceof_struct = if let CType::Struct(struct_id) = c_type {
@@ -81,39 +82,25 @@ pub fn determine_var_mutability<'a>(
                 .rev();
             let first_ptr = ptr_chain.next().expect("No pointers in chain");
 
-            ctx.deref_assignment(&first_ptr, root.line);
+            // NOTE Sets every ptr + reference in chain to also be mut
+            let set_ptr_mut = |ptr_id: String| {
+                ctx.mut_var(ptr_id, |ptr_var| {
+                    ptr_var.is_mut = true;
+                    ptr_var
+                        .current_reference_held()
+                        .expect("No reference held by ptr in chain")
+                        .borrow_mut()
+                        .set_mut();
+                })
+            };
+            set_ptr_mut(first_ptr.clone());
+            ptr_chain.for_each(set_ptr_mut);
 
-            // TODO Figure out how assignment stuff needs to work
-            // ctx.mut_var(first_ptr.clone(), |var_data| {
-            //     var_data(root.line);
-            //     let mut adr =
-            //         RefCell::borrow_mut(var_data.addresses.last().expect("Variable not ptr"));
-            //
-            //     adr.mutates = true;
-            //     adr.ptr_type.fill(PtrType::MutRef);
-            // });
-            //
-            // let len = ptr_chain.clone().count(); // TODO Better solution
-            // ptr_chain.enumerate().for_each(|(i, var)| {
-            //     if i != len - 1 {
-            //         ctx.mut_var(var.clone(), |var_data| {
-            //             let mut adr = RefCell::borrow_mut(
-            //                 var_data.addresses.last().expect("Variable not ptr"),
-            //             );
-            //
-            //             adr.mutates = true;
-            //
-            //             (i..adr.ptr_type.len()).for_each(|type_chain_i| {
-            //                 adr.ptr_type[type_chain_i] = PtrType::MutRef;
-            //             });
-            //         });
-            //     }
-            //     ctx.mut_var(var.to_string(), |var_data| var_data.is_mut_by_ptr = true);
-            // });
+            ctx.deref_assignment(&first_ptr, root.line);
         }
         NodeType::Id(id) => {
             ctx.mut_var(id.to_string(), |var_data| {
-                var_data.add_non_borrowed_line(root.line);
+                var_data.new_usage(root.line);
                 // NOTE We had to figure out when we should take this
                 // Really more it's how you figure out that things are on the same line in the
                 // analyzer

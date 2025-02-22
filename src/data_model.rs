@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::lexer::CType;
+use crate::{ast::TokenNode as Node, lexer::CType};
 
 pub type LineNumber = usize;
 
@@ -104,6 +104,8 @@ pub struct Reference {
 pub enum ReferenceType {
     MutBorrowed,
     ConstBorrowed,
+    MutPtr,
+    ConstPtr,
 }
 
 impl Reference {
@@ -120,6 +122,10 @@ impl Reference {
     // Non-inclusive on either end
     pub fn within_current_range(&self, line: usize) -> bool {
         self.start < line && self.end > line
+    }
+
+    pub fn set_mut(&mut self) {
+        self.reference_type = ReferenceType::MutBorrowed;
     }
 
     pub fn get_reference_to(&self) -> &str {

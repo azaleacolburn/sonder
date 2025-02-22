@@ -47,9 +47,8 @@ impl AnalysisContext {
         l_value.references.push(new_reference)
     }
 
+    // TODO Figure out how to recursively mark things as mutable
     pub fn deref_assignment(&mut self, assigned_to: &str, line: LineNumber) {
-        self.assignment(assigned_to);
-
         let l_value = self.variables.get_mut(assigned_to).expect("Var not in ctx");
         assert!(l_value.is_ptr());
         l_value.new_usage(line);
