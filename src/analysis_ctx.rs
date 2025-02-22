@@ -84,12 +84,7 @@ impl AnalysisContext {
         self.structs.entry(id).and_modify(f);
     }
 
-    pub fn traverse_pointer_chain(
-        &self,
-        root: String,
-        total_depth: u8,
-        max_depth: u8,
-    ) -> Vec<String> {
+    pub fn construct_ptr_chain(&self, root: String, total_depth: u8, max_depth: u8) -> Vec<String> {
         if total_depth == max_depth {
             return vec![];
         }

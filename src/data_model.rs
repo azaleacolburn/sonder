@@ -53,6 +53,7 @@ impl VarData {
     }
 
     pub fn new_usage(&mut self, line: LineNumber) {
+        // TODO Figure out how we're going to handle referring back to usages
         let usage = Usage::new(line, UsageType::RValue);
         self.usages.push(usage);
 

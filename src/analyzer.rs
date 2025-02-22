@@ -68,16 +68,16 @@ pub fn determine_var_mutability<'a>(
         NodeType::DerefAssignment(_, l_side) => {
             // determine_var_mutability(&l_side, ctx, parent_children, root_index);
             let deref_ids = find_ids(&l_side);
-            // This breakes because `*(t + s) = bar` is not allowed
-            // However, **m is fine
+            // NOTE `*(t + s) = bar` is not allowed
+            // However, ``**m` is fine
             if deref_ids.len() > 1 {
                 panic!("Unsupported: Multiple items dereferenced");
             } else if deref_ids.len() != 1 {
                 panic!("Unsupported: no_ids being dereffed")
             }
-            let num_of_vars = count_derefs(&l_side) + 1;
+            let number_of_derefs = count_derefs(&l_side) + 1;
             let mut ptr_chain = ctx
-                .traverse_pointer_chain(deref_ids[0].clone(), 0, num_of_vars)
+                .construct_ptr_chain(deref_ids[0].clone(), 0, number_of_derefs)
                 .into_iter()
                 .rev();
             let first_ptr = ptr_chain.next().expect("No pointers in chain");
@@ -101,21 +101,11 @@ pub fn determine_var_mutability<'a>(
         NodeType::Id(id) => {
             ctx.mut_var(id.to_string(), |var_data| {
                 var_data.new_usage(root.line);
-                // NOTE We had to figure out when we should take this
-                // Really more it's how you figure out that things are on the same line in the
-                // analyzer
-                //
-                // TLDR; you can't
-                // So instead, you collect every id usage's line, then you filter them in the
-                // checker
-                var_data
-                    .same_line_usage_array_and_index
-                    .push((parent_children, root_index));
             });
         }
         NodeType::Adr(id) => {
             let ptr_type_chain = ctx
-                .traverse_pointer_chain(id.clone(), 0, u8::MAX)
+                .construct_ptr_chain(id.clone(), 0, u8::MAX)
                 .iter()
                 .map(|_| PtrType::ImutRef)
                 .collect();
@@ -339,7 +329,7 @@ pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &No
 fn ptr_type_chain(rvalue_ptrs: &Vec<String>, ctx: &mut AnalysisContext) -> Vec<PtrType> {
     if rvalue_ptrs.len() == 1 {
         // NOTE  As we go, we replace certain elements in this vector with `PtrType::MutRef`
-        ctx.traverse_pointer_chain(rvalue_ptrs[0].clone(), 0, u8::MAX)
+        ctx.construct_ptr_chain(rvalue_ptrs[0].clone(), 0, u8::MAX)
             .iter()
             .map(|_| PtrType::ImutRef)
             .collect()
