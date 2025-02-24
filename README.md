@@ -1,5 +1,5 @@
 # sonder
-Sonder is a static analyser and transpiler, for converting well-written C code to Rust.
+Sonder is a static analyzer and transpiler, for converting well-written C code to Rust.
 
 ## Scratch repo
 
@@ -141,14 +141,14 @@ fn main() -> () {
 Sonder is broken up into a few differenc components for performing different tasks; they are run sequentially.
 Note that all pointers are assumed to be either immutable or mutable references unless the checker deems otherwise
 
-### Analyser
+### Analyzer
 
-The Analyser determines the necessary variable semantics for performing borrow-checking on C code.
+The Analyzer determines the necessary variable semantics for performing borrow-checking on C code.
 The primary data-structure involved is a map related variable names to information that would be aparent in Rust code, but must be inferred in C code. This includes:
 
 - Is the variable mutated by via pointer, directly, or not at all?
 - Is the variable a pointer? If so, where does it point to, and does it mutate that variable.
-- For what line-ranges does the variable appear to be in scope and not "behind a reference" (note that whether or not this actually follows borrow-checking rules is irrelevent to the analyser, it simply collects information)
+- For what line-ranges does the variable appear to be in scope and not "behind a reference" (note that whether or not this actually follows borrow-checking rules is irrelevent to the analyzer, it simply collects information)
 
 ### Checker
 
@@ -158,7 +158,7 @@ This isn't comprehensive borrow-checking and must be extended in numerous ways, 
 
 ### Annotater
 
-The Annotater takes the information about variables produced by the Analyser and Checker and creates a new AST that includes this information in necessary places, for example:
+The Annotater takes the information about variables produced by the Analyzer and Checker and creates a new AST that includes this information in necessary places, for example:
 
 - All declarations are annotated with whether the variable is mutable
 - PtrDeclarations are annotated with the pointer type (`Rc<RefCell<T>>`, `&mut`, `&`, `*mut`, or `*const`)
