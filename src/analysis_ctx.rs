@@ -1,6 +1,6 @@
 use crate::{
     analyzer::StructData,
-    data_model::{LineNumber, Reference, VarData},
+    data_model::{LineNumber, Reference, StructData, VarData},
 };
 use std::{
     cell::RefCell,
@@ -61,6 +61,10 @@ impl AnalysisContext {
         self.structs.insert(id, struct_data);
     }
 
+    pub fn new_struct(&mut self, id: impl ToString, data: StructData) {
+        self.structs.insert(id.to_string(), data);
+    }
+
     pub fn get_struct(&self, id: &str) -> &StructData {
         self.structs.get(id).expect("Struct not in map")
     }
@@ -92,12 +96,12 @@ impl AnalysisContext {
             .variables
             .get(&root)
             .as_ref()
-            .expect("Root in traversing ptr chain not found in map")
+            .expect("Root in construct ptr chain not found in map")
             .ptr_to;
 
         match ptr_data.is_empty() {
             false => {
-                let mut chain = self.traverse_pointer_chain(
+                let mut chain = self.construct_ptr_chain(
                     ptr_data
                         .last()
                         .unwrap()

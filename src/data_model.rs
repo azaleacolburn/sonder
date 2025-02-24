@@ -151,11 +151,20 @@ pub enum PtrType {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructData {
-    pub field_definitions: Vec<FieldInfo>,
+    pub field_definitions: Vec<FieldDefinition>,
 }
 
+/// Collected during declaration
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldInfo {
-    struct_id: String,
-    field_id: String,
+    pub struct_id: String,
+    pub field_id: String,
+}
+
+/// Collected during definition
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldDefinition {
+    pub id: String,
+    pub ptr_type: Vec<PtrType>,
+    pub c_type: CType,
 }

@@ -1,6 +1,7 @@
 use crate::{
     analyzer::{count_derefs, find_ids, AdrData, AnalysisContext, PtrType},
     ast::{AssignmentOpType, NodeType, TokenNode as Node},
+    data_model::FieldDefinition,
     lexer::CType,
 };
 use std::{cell::RefCell, fmt::Display, rc::Rc};
@@ -114,13 +115,6 @@ pub enum AnnotatedNodeT {
         op: AssignmentOpType,
         expr: Box<AnnotatedNode>,
     },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FieldDefinition {
-    pub id: String,
-    pub ptr_type: Vec<PtrType>,
-    pub c_type: CType,
 }
 
 impl Display for AnnotatedNode {
