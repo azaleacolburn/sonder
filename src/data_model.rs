@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, ops::Range, rc::Rc};
 
 use crate::{ast::TokenNode as Node, lexer::CType};
 
@@ -86,6 +86,10 @@ impl Usage {
     pub fn new(line: LineNumber, usage_type: UsageType) -> Self {
         Usage { line, usage_type }
     }
+
+    pub fn get_line_number(&self) -> LineNumber {
+        self.line
+    }
 }
 
 /// Represents a span where a variable is behind a reference
@@ -101,7 +105,7 @@ pub struct Reference {
     end: LineNumber,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ReferenceType {
     MutBorrowed,
     ConstBorrowed,
@@ -136,18 +140,29 @@ impl Reference {
     pub fn get_borrower(&self) -> &str {
         &self.borrower
     }
+
+    pub fn get_reference_type(&self) -> ReferenceType {
+        self.reference_type.clone()
+    }
+
+    pub fn get_range(&self) -> Range<LineNumber> {
+        Range {
+            start: self.start,
+            end: self.end,
+        }
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PtrType {
-    Rc,
-    RcRefClone,
-    RefCell,
-    RawPtrMut,
-    RawPtrImut,
-    MutRef,
-    ImutRef,
-}
+// #[derive(Debug, Clone, PartialEq, Eq)]
+// pub enum PtrType {
+//     Rc,
+//     RcRefClone,
+//     RefCell,
+//     RawPtrMut,
+//     RawPtrImut,
+//     MutRef,
+//     ImutRef,
+// }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructData {
@@ -165,6 +180,6 @@ pub struct FieldInfo {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldDefinition {
     pub id: String,
-    pub ptr_type: Vec<PtrType>,
+    pub ptr_type: Vec<ReferenceType>,
     pub c_type: CType,
 }

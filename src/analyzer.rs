@@ -99,25 +99,26 @@ pub fn determine_var_mutability<'a>(
                 var_data.new_usage(root.line);
             });
         }
-        // NodeType::Adr(id) => {
-        //     let ptr_type_chain = ctx
-        //         .construct_ptr_chain(id.clone(), 0, u8::MAX)
-        //         .iter()
-        //         .map(|_| PtrType::ImutRef)
-        //         .collect();
-        //     let adr_data = Rc::new(RefCell::new(AdrData {
-        //         adr_of: id.to_string(),
-        //         mutates: false,
-        //         held_by: None,
-        //         ptr_type: ptr_type_chain,
-        //         line_taken: root.line,
-        //     }));
-        //     // We don't know if a variable owns this ref yet
-        //     // that's for the ptr_declaration to figure out
-        //     ctx.new_adr(adr_data, None);
-        //     println!("NEW BORROW: {}", id);
-        //     ctx.mut_var(id.to_string(), |var_data| var_data.new_borrow(root.line));
-        // }
+        NodeType::Adr(id) => {
+            // let ptr_type_chain = ctx
+            //     .construct_ptr_chain(id.clone(), 0, u8::MAX)
+            //     .iter()
+            //     .map(|_| PtrType::ImutRef)
+            //     .collect();
+            // let adr_data = Rc::new(RefCell::new(AdrData {
+            //     adr_of: id.to_string(),
+            //     mutates: false,
+            //     held_by: None,
+            //     ptr_type: ptr_type_chain,
+            //     line_taken: root.line,
+            // }));
+            // // We don't know if a variable owns this ref yet
+            // // that's for the ptr_declaration to figure out
+            // ctx.new_adr(adr_data, None);
+            // println!("NEW BORROW: {}", id);
+            // ctx.mut_var(id.to_string(), |var_data| var_data.new_borrow(root.line));
+            ctx.new_usage(id, root.line);
+        }
         NodeType::DeRef(adr) => {
             let ids = find_ids(&adr);
             // Panics if more than one id derefed

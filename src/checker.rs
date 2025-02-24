@@ -1,7 +1,11 @@
+use itertools::Itertools;
+
 use crate::{
-    analyzer::{self, AnalysisContext, PtrType, VarData},
+    analysis_ctx::AnalysisContext,
+    analyzer,
     ast::{NodeType, TokenNode as Node},
     checker,
+    data_model::{LineNumber, PtrType, Reference, ReferenceType, Usage, VarData},
     lexer::CType,
 };
 use std::{cell::RefCell, ops::Range, rc::Rc};
@@ -38,7 +42,7 @@ pub enum BorrowError {
     ValueMutSameLine {
         ptr_id: String,
         value_id: String,
-        value_instance_nodes: Vec<(Rc<RefCell<Box<[Node]>>>, usize)>,
+        // value_instance_nodes: Vec<(Rc<RefCell<Box<[Node]>>>, usize)>,
     },
 }
 
@@ -51,9 +55,9 @@ fn set_ptr_rc(value_id: &str, ctx: &mut AnalysisContext) {
             // TODO: Grab what the type was of the dpecific ref that pointed to the ref that we
             // care about
             let mut ptr_to_value = ptr_data
-                .addresses
+                .references
                 .iter()
-                .find(|other_ptr_data| other_ptr_data.borrow().adr_of == *value_id)
+                .find(|reference_block| reference_block.borrow().adr_of == *value_id)
                 .expect("value and ptr ctx disagree")
                 .borrow_mut();
             let other_ref_level_len = ptr_to_value.ptr_type.len() - 1;
@@ -79,94 +83,94 @@ fn set_raw(ptr_id: &str, ctx: &mut AnalysisContext) {}
 /// Either that, or we could use some othe protocole for conveying a new variable
 /// Or, we could not add a new variable because we're weak and don't want to change business logic
 /// If we insert, we need to be able to modify the ast here
-fn create_clone(
-    value_id: &str,
-    _ptr_id: &str,
-    ctx: &mut AnalysisContext,
-    root: &mut Node,
-    value_instance_nodes: Vec<(Rc<RefCell<Box<[Node]>>>, usize)>,
-) {
-    let var_data = ctx.get_var(value_id);
-    // TODO The make this to be cloned in annotation
-    let clone_expr = Node::new(NodeType::Id(value_id.to_string()), None, 0);
-    // TODO Get CType
-    let clone_id = format!("{}_clone", value_id);
-    let clone_declaration = Node::new(
-        NodeType::Declaration(clone_id.clone(), CType::Int, var_data.addresses.len()),
-        Some(Rc::new(RefCell::new(Box::new([clone_expr])))),
-        0,
-    );
-    // This symbol goes after the new node
-    let place_before_symbol = &var_data.pointed_to_by[0];
-
-    fn search(root: &Node, place_before_symbol: &str) -> Option<(Node, usize)> {
-        match root.children.as_ref() {
-            Some(children) => {
-                for (i, child) in children.borrow().iter().enumerate() {
-                    println!("child token: {:?}", child.token);
-                    match &child.token {
-                        NodeType::Declaration(var_id, _, _) if *var_id == place_before_symbol => {
-                            return Some((root.clone(), i));
-                        }
-                        NodeType::PtrDeclaration(var_id, _, _)
-                            if *var_id == place_before_symbol =>
-                        {
-                            return Some((root.clone(), i));
-                        }
-                        _ => {}
-                    }
-                    if let Some(parent) = search(child, place_before_symbol) {
-                        return Some(parent);
-                    };
-                }
-            }
-            None => return None,
-        }
-        None
-    }
-
-    // Nodes that are on the same line as other nodes that reference them
-    let same_line_nodes = value_instance_nodes.iter().filter(|nodes| {
-        let node = &nodes.0.borrow()[nodes.1];
-        value_instance_nodes
-            .iter()
-            .any(|other_nodes| other_nodes.0.borrow()[other_nodes.1].line == node.line)
-    });
-
-    // TODO Figure out what to do with this
-
-    let ret = search(root, place_before_symbol);
-    if let Some((mut parent, i)) = ret {
-        let children = parent
-            .children
-            .as_mut()
-            .expect("Parent doesn't have children");
-        // TODO This doesn't work, find way to modify ast
-        let mut new = children.borrow().clone().to_vec();
-        new.insert(i, clone_declaration);
-        *children.borrow_mut() = new.into_boxed_slice();
-
-        println!("HERERERERERE {:?}", children.borrow());
-        // TODO Consider when to take a value_instance_node
-        println!("{:?}", value_instance_nodes);
-
-        for (sibiling_nodes, i) in value_instance_nodes.iter() {
-            match &sibiling_nodes.borrow()[*i].token {
-                NodeType::Id(_id) => {}
-                _ => panic!("value instance node must be id"),
-            }
-
-            sibiling_nodes.borrow_mut()[*i].token = NodeType::Id(clone_id.clone());
-
-            // NOTE Run the analyzer and checker again with the new variable
-            *ctx = AnalysisContext::new();
-            println!("NEW ITERATION\n\n");
-            analyzer::determine_var_mutability(root, ctx, Rc::new(RefCell::new(Box::new([]))), 0);
-            let new_errors = checker::borrow_check(ctx);
-            adjust_ptr_type(new_errors, ctx, root);
-        }
-    }
-}
+// fn create_clone(
+//     value_id: &str,
+//     _ptr_id: &str,
+//     ctx: &mut AnalysisContext,
+//     root: &mut Node,
+//     value_instance_nodes: Vec<(Rc<RefCell<Box<[Node]>>>, usize)>,
+// ) {
+//     let var_data = ctx.get_var(value_id);
+//     // TODO The make this to be cloned in annotation
+//     let clone_expr = Node::new(NodeType::Id(value_id.to_string()), None, 0);
+//     // TODO Get CType
+//     let clone_id = format!("{}_clone", value_id);
+//     let clone_declaration = Node::new(
+//         NodeType::Declaration(clone_id.clone(), CType::Int, var_data.addresses.len()),
+//         Some(Rc::new(RefCell::new(Box::new([clone_expr])))),
+//         0,
+//     );
+//     // This symbol goes after the new node
+//     let place_before_symbol = &var_data.pointed_to_by[0];
+//
+//     fn search(root: &Node, place_before_symbol: &str) -> Option<(Node, usize)> {
+//         match root.children.as_ref() {
+//             Some(children) => {
+//                 for (i, child) in children.borrow().iter().enumerate() {
+//                     println!("child token: {:?}", child.token);
+//                     match &child.token {
+//                         NodeType::Declaration(var_id, _, _) if *var_id == place_before_symbol => {
+//                             return Some((root.clone(), i));
+//                         }
+//                         NodeType::PtrDeclaration(var_id, _, _)
+//                             if *var_id == place_before_symbol =>
+//                         {
+//                             return Some((root.clone(), i));
+//                         }
+//                         _ => {}
+//                     }
+//                     if let Some(parent) = search(child, place_before_symbol) {
+//                         return Some(parent);
+//                     };
+//                 }
+//             }
+//             None => return None,
+//         }
+//         None
+//     }
+//
+//     // Nodes that are on the same line as other nodes that reference them
+//     let same_line_nodes = value_instance_nodes.iter().filter(|nodes| {
+//         let node = &nodes.0.borrow()[nodes.1];
+//         value_instance_nodes
+//             .iter()
+//             .any(|other_nodes| other_nodes.0.borrow()[other_nodes.1].line == node.line)
+//     });
+//
+//     // TODO Figure out what to do with this
+//
+//     let ret = search(root, place_before_symbol);
+//     if let Some((mut parent, i)) = ret {
+//         let children = parent
+//             .children
+//             .as_mut()
+//             .expect("Parent doesn't have children");
+//         // TODO This doesn't work, find way to modify ast
+//         let mut new = children.borrow().clone().to_vec();
+//         new.insert(i, clone_declaration);
+//         *children.borrow_mut() = new.into_boxed_slice();
+//
+//         println!("HERERERERERE {:?}", children.borrow());
+//         // TODO Consider when to take a value_instance_node
+//         println!("{:?}", value_instance_nodes);
+//
+//         for (sibiling_nodes, i) in value_instance_nodes.iter() {
+//             match &sibiling_nodes.borrow()[*i].token {
+//                 NodeType::Id(_id) => {}
+//                 _ => panic!("value instance node must be id"),
+//             }
+//
+//             sibiling_nodes.borrow_mut()[*i].token = NodeType::Id(clone_id.clone());
+//
+//             // NOTE Run the analyzer and checker again with the new variable
+//             *ctx = AnalysisContext::new();
+//             println!("NEW ITERATION\n\n");
+//             analyzer::determine_var_mutability(root, ctx, Rc::new(RefCell::new(Box::new([]))), 0);
+//             let new_errors = checker::borrow_check(ctx);
+//             adjust_ptr_type(new_errors, ctx, root);
+//         }
+//     }
+// }
 
 pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root: &mut Node) {
     errors.iter().for_each(|error| {
@@ -210,9 +214,9 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
             BorrowError::ValueMutSameLine {
                 ptr_id,
                 value_id,
-                value_instance_nodes,
+                // value_instance_nodes,
             } => {
-                create_clone(value_id, ptr_id, ctx, root, value_instance_nodes.clone());
+                // create_clone(value_id, ptr_id, ctx, root, value_instance_nodes.clone());
             }
         };
 
@@ -224,100 +228,90 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
 struct PtrInfo<'a> {
     ptr_id: String,
     ptr_var_data: &'a VarData,
-    ptr_type: PtrType,
+    ptr_type: ReferenceType,
 }
 
 // TODO: Figure out how to include line numbers in error reports
 pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
-    ctx.print_refs();
+    // ctx.print_refs();
     ctx.variables
         .iter()
         .flat_map(|(var_id, var_data)| -> Vec<BorrowError> {
-            let pointed_to_by: Vec<PtrInfo> = var_data
-                .pointed_to_by
+            let pointed_to_by: Vec<Reference> = var_data
+                .references
                 .iter()
-                .map(|ptr_id| {
-                    let ptr_var_data = ctx.get_var(ptr_id);
-                    let adr_data = ptr_var_data
-                        .addresses
-                        .iter()
-                        .find(|ptr_data| ptr_data.borrow().adr_of == *var_id)
-                        .expect("Ptr does not record reference to var in map");
-                    PtrInfo {
-                        ptr_id: ptr_id.to_string(),
-                        ptr_var_data,
-                        // TODO: Check if this is a fine solution, if the top is mutable than all
-                        // the rest should be too
-                        // But is this ever what we want
-                        ptr_type: adr_data.borrow().ptr_type[0].clone(),
-                    }
+                .map(|reference_block| {
+                    reference_block.borrow().clone()
                 })
                 .collect();
             println!("{var_id} is pointed to by: {:?}", pointed_to_by);
+
             let pointed_to_by_mutably = pointed_to_by
                 .iter()
-                .filter(|ptr_info| ptr_info.ptr_type == PtrType::MutRef);
+                .filter(|ptr_info| ptr_info.get_reference_type() == ReferenceType::MutBorrowed);
+
             let mut value_overlaps_with_mut_ptr: Vec<BorrowError> = pointed_to_by_mutably
                 .clone()
-                .filter_map(|mut_ptr_info| {
-                    // NOTE This fails because the value and the pointer are going to overlap on the line
-                    // the ref to the pointer is taken
-                    // eg. `let m = &mut n`
-                    let overlap_state = var_active_range_overlap(
-                        var_data.non_borrowed_lines.clone(),
-                        mut_ptr_info.ptr_var_data.non_borrowed_lines.clone(),
+                .filter_map(|reference_block| {
+                    let overlap_state = var_ptr_range_overlap(
+                        var_data.usages,
+                        reference_block.get_range()
                     );
+
+                    let borrower_id = reference_block.get_borrower();
 
                     match overlap_state {
                         OverlapState::Overlap => Some(BorrowError::ValueMutOverlap {
-                            ptr_id: mut_ptr_info.ptr_id.clone(),
+                            ptr_id: borrower_id.to_string(),
                             value_id: var_id.clone(),
                         }),
-                        OverlapState::SameLine => Some(BorrowError::ValueMutSameLine { ptr_id: mut_ptr_info.ptr_id.clone(), value_id: var_id.clone(), value_instance_nodes: var_data.same_line_usage_array_and_index.clone()}),
+                        OverlapState::SameLine => Some(BorrowError::ValueMutSameLine { ptr_id: borrower_id.to_string(), value_id: var_id.clone()}),
                         _ => None,
                     }
                 })
                 .collect();
-                let mut mutable_ref_overlaps_with_ptr: Vec<BorrowError> = pointed_to_by_mutably.flat_map(|mut_ptr_data| {
+
+                let mut mutable_ref_overlaps_with_ptr: Vec<BorrowError> = pointed_to_by_mutably.flat_map(|mut_ref| {
                 pointed_to_by
                     .iter()
-                    .filter(|other_ptr_data| mut_ptr_data.ptr_id != other_ptr_data.ptr_id)
-                    .filter_map(|other_ptr_data| {
-                        let overlap_state = both_ptr_active_range_overlap(
-                            mut_ptr_data.ptr_var_data.non_borrowed_lines.clone(),
-                            other_ptr_data.ptr_var_data.non_borrowed_lines.clone(),
+                    .filter(|other_ref| mut_ref.get_borrower() != other_ref.get_borrower())
+                    .filter_map(|other_ref| {
+                        let overlap_state = ptr_range_overlap(
+                            mut_ref.get_range(),
+                            other_ref.get_range()
                         );
-                        // NOTE All of these represent the ptr type and the overlap state
-                        // between some ptr (other_ptr) and mutable reference (mut_ptr)
-                        // to the same symbol
-                        match (other_ptr_data.ptr_type.clone(), overlap_state) {
+
+                        let other_id = other_ref.get_borrower();
+                        let mut_id = mut_ref.get_borrower();
+
+                        match (other_ref.get_reference_type().clone(), overlap_state) {
                             // NOTE In these cases, an Rc<RefCell> solution works, since they overlap and borrows can be
                             // made on different lines and both dropped after one line
-                            (PtrType::MutRef, OverlapState::Overlap) => {
+                            (ReferenceType::MutBorrowed, OverlapState::Overlap) => {
                                 Some(BorrowError::MutMutOverlap {
-                                    first_ptr_id: mut_ptr_data.ptr_id.clone(),
-                                    second_ptr_id: other_ptr_data.ptr_id.clone(),
+                                    first_ptr_id: mut_id.to_string(),
+                                    second_ptr_id: other_id.to_string(),
                                     value_id: var_id.clone(),
                                 })
                             }
-                            (PtrType::ImutRef, OverlapState::Overlap) => {
+                            (ReferenceType::ConstBorrowed, OverlapState::Overlap) => {
                                 Some(BorrowError::MutImutOverlap {
-                                    mut_ptr_id: mut_ptr_data.ptr_id.clone(),
-                                    imut_ptr_id: other_ptr_data.ptr_id.clone(),
+                                    mut_ptr_id: mut_id.to_string(),
+                                    imut_ptr_id: other_id.to_string(),
                                     value_id: var_id.clone(),
                                 })
                             }
                             // NOTE The solution won't work in these case, since the borrow 
                             // will be made on the same line,violating borrow checking
                             // rules at runtime. Doing so causes the Rc to panic
-                            (PtrType::MutRef, OverlapState::SameLine) => {
+                            (ReferenceType::MutBorrowed, OverlapState::SameLine) => {
                                 Some(BorrowError::MutMutSameLine {
-                                    first_ptr_id: mut_ptr_data.ptr_id.clone(),
-                                    second_ptr_id: other_ptr_data.ptr_id.clone(),
+                                    first_ptr_id: mut_id.to_string(),
+                                    second_ptr_id: other_id.to_string(),
                                     value_id: var_id.clone(),
                                 })
                             }
-                            (PtrType::ImutRef, OverlapState::SameLine) => panic!("ImutRef on same line, this is fine\n This actually might be a problem if we have a mutable and immutable reference overlapping on the same line"),
+                            (ReferenceType::ConstBorrowed, OverlapState::SameLine) => panic!("ImutRef on same line, this is fine\n This actually might be a problem if we have a mutable and immutable reference overlapping on the same line"),
                             (_, OverlapState::NoOverlap) => None,
                             (_, _) => panic!("Basic ref should not have smart ptr type"),
                         }
@@ -345,52 +339,43 @@ pub enum OverlapState {
 // of an inequality
 //
 // Returns the function
-pub fn both_ptr_active_range_overlap(
-    l_1: Vec<Range<usize>>,
-    l_2: Vec<Range<usize>>,
-) -> OverlapState {
-    let ranges_overlap = |l_1: &Range<usize>, l_2: &Range<usize>| -> OverlapState {
-        if l_1.start < l_2.end && l_2.start < l_1.end {
-            OverlapState::Overlap
-        } else if l_1.start == l_2.end || l_2.start == l_1.end {
-            OverlapState::SameLine
-        } else {
-            OverlapState::NoOverlap
-        }
-    };
-
-    let overlaps_list: Vec<OverlapState> = l_1
-        .iter()
-        .flat_map(|l_1| l_2.iter().map(|l_2| ranges_overlap(l_1, l_2)))
-        .collect();
-    if overlaps_list.contains(&OverlapState::SameLine) {
-        OverlapState::SameLine
-    } else if overlaps_list.contains(&OverlapState::Overlap) {
+pub fn ptr_range_overlap(l_1: Range<LineNumber>, l_2: Range<LineNumber>) -> OverlapState {
+    if l_1.start < l_2.end && l_1.end > l_2.start {
         OverlapState::Overlap
+    } else if l_1.start == l_2.end
+        || l_1.end == l_2.start
+        || l_1.end == l_2.end
+        || l_1.start == l_2.start
+    {
+        OverlapState::SameLine
     } else {
         OverlapState::NoOverlap
     }
 }
 
-pub fn var_active_range_overlap(value: Vec<Range<usize>>, ptr: Vec<Range<usize>>) -> OverlapState {
-    let ranges_overlap = |value: &Range<usize>, ptr: &Range<usize>| -> OverlapState {
-        if value.start < ptr.end && ptr.start < value.end {
+pub fn var_ptr_range_overlap(
+    value_usages: Vec<Usage>,
+    ptr_range: Range<LineNumber>,
+) -> OverlapState {
+    let value_lines = value_usages.iter().map(|usage| usage.get_line_number());
+    // NOTE `ptr.start == value` is fine because that's what happends when we init a reference
+    let usage_in_block = |value: LineNumber, ptr: &Range<LineNumber>| -> OverlapState {
+        if value < ptr.end && ptr.start < value {
             OverlapState::Overlap
-            // NOTE `ptr.start == value.end` is fine because that's what happends when we init a reference
-        } else if value.start == ptr.end {
+        } else if value == ptr.end {
             OverlapState::SameLine
         } else {
             OverlapState::NoOverlap
         }
     };
 
-    let overlaps_list: Vec<OverlapState> = value
-        .iter()
-        .flat_map(|value| ptr.iter().map(|ptr| ranges_overlap(value, ptr)))
+    let overlaps: Vec<OverlapState> = value_lines
+        .map(|value_line| usage_in_block(value_line, &ptr_range))
         .collect();
-    if overlaps_list.contains(&OverlapState::SameLine) {
+
+    if overlaps.contains(&OverlapState::SameLine) {
         OverlapState::SameLine
-    } else if overlaps_list.contains(&OverlapState::Overlap) {
+    } else if overlaps.contains(&OverlapState::Overlap) {
         OverlapState::Overlap
     } else {
         OverlapState::NoOverlap
