@@ -1,18 +1,19 @@
 use crate::{
-    analyzer::{count_derefs, find_ids, AdrData, AnalysisContext, PtrType},
+    analysis_ctx::AnalysisContext,
+    analyzer::{count_derefs, find_ids},
     ast::{AssignmentOpType, NodeType, TokenNode as Node},
-    data_model::FieldDefinition,
+    data_model::{FieldDefinition, Reference, ReferenceType},
     lexer::CType,
 };
 use std::{cell::RefCell, fmt::Display, rc::Rc};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct AnnotatedNode {
     pub token: AnnotatedNodeT,
     pub children: Vec<AnnotatedNode>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum AnnotatedNodeT {
     Program {
         imports: Vec<String>,
@@ -59,7 +60,7 @@ pub enum AnnotatedNodeT {
         id: String,
         rc: bool,
         // This is the type of each reference being dereferenced, not in total
-        ref_types: Vec<PtrType>,
+        ref_types: Vec<ReferenceType>,
     },
     Declaration {
         id: String,
@@ -70,7 +71,7 @@ pub enum AnnotatedNodeT {
     PtrDeclaration {
         id: String,
         is_mut: bool,
-        adr_data: Rc<RefCell<AdrData>>,
+        reference: Rc<RefCell<Reference>>,
         t: CType,
         adr: Box<AnnotatedNode>,
         // Refers to it being an rc_ptr itself, not a
@@ -138,28 +139,28 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
     let token = match &root.token {
         NodeType::Declaration(id, t, _) => {
             let declaration_info = ctx.get_var(id);
-            let is_mut = declaration_info.is_mut_by_ptr || declaration_info.is_mut_direct;
-            let rc = declaration_info.rc;
+
             AnnotatedNodeT::Declaration {
                 id: id.to_string(),
-                is_mut,
+                is_mut: declaration_info.is_mut,
                 t: t.clone(),
-                rc,
+                rc: declaration_info.rc,
             }
         }
         NodeType::PtrDeclaration(id, t, adr) => {
             let ptr_var_info = ctx.get_var(id);
-            let is_mut = ptr_var_info.is_mut_by_ptr || ptr_var_info.is_mut_direct;
-            let rc = ptr_var_info.rc;
             let annotated_adr = Box::new(annotate_ast(adr, ctx));
-            let adr_data = ptr_var_info.addresses[0].clone();
+
+            // TODO Actually pass in the full vector
+            let reference = ptr_var_info.references[0].clone();
+
             AnnotatedNodeT::PtrDeclaration {
                 id: id.to_string(),
-                is_mut,
-                adr_data,
+                is_mut: ptr_var_info.is_mut,
+                reference,
                 t: t.clone(),
                 adr: annotated_adr,
-                rc,
+                rc: ptr_var_info.rc,
             }
         }
         NodeType::Adr(id) => {
@@ -177,22 +178,18 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
         // Unless we want Adr nodes to know what kind of reference they are (which actually is
         // sounding like the right decision now)
         NodeType::DerefAssignment(op, adr) => {
-            let ids = find_ids(&adr);
-            let derefed_id = ids[0].clone();
-            let sub_id = ctx.find_which_ref_at_id(&derefed_id, root.line);
             let count = count_derefs(adr);
-            // types of refs being dereffed in order
-            println!("dereffed_id: {derefed_id}\nsub_id: {sub_id}");
-            let mut ref_types = ctx
-                .get_var(&derefed_id)
-                .addresses
-                .iter()
-                .inspect(|adr_data| println!("adr_of: {}", adr_data.borrow().adr_of))
-                .find(|adr_data| adr_data.borrow().adr_of == sub_id)
-                .expect("Sub id not found in adr list")
-                .borrow()
-                .ptr_type
-                .clone();
+
+            let derefed_id = find_ids(&adr)[0].clone();
+
+            let ptr_data = ctx.get_var(&derefed_id);
+
+            let reference = ptr_data
+                .reference_at_line(root.line)
+                .expect("Non-ptr derefed on lside")
+                .borrow();
+
+            let mut ref_types = reference.construct_reference_children();
             ref_types.truncate(count as usize);
 
             let rc = ctx.get_var(&sub_id).rc;

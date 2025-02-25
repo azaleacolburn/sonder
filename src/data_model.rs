@@ -52,6 +52,17 @@ impl VarData {
         }
     }
 
+    pub fn reference_at_line(&self, line: LineNumber) -> Option<Rc<RefCell<Reference>>> {
+        match self
+            .references
+            .iter()
+            .find(|t| t.borrow().within_current_range(line))
+        {
+            Some(reference) => Some(reference.clone()),
+            None => None,
+        }
+    }
+
     pub fn new_usage(&mut self, line: LineNumber) {
         // TODO Figure out how we're going to handle referring back to usages
         let usage = Usage::new(line, UsageType::RValue);
@@ -111,6 +122,8 @@ pub enum ReferenceType {
     ConstBorrowed,
     MutPtr,
     ConstPtr,
+
+    RcRefClone,
 }
 
 impl Reference {
@@ -124,6 +137,10 @@ impl Reference {
         }
     }
 
+    pub fn construct_reference_chain(&self) -> Vec<Reference> {
+        while let refe = ctx.self.ref_to.
+    }
+
     // Non-inclusive on either end
     pub fn within_current_range(&self, line: usize) -> bool {
         self.start < line && self.end > line
@@ -131,6 +148,10 @@ impl Reference {
 
     pub fn set_mut(&mut self) {
         self.reference_type = ReferenceType::MutBorrowed;
+    }
+
+    pub fn set_rc(&mut self) {
+        self.reference_type = ReferenceType::RcRefClone;
     }
 
     pub fn get_reference_to(&self) -> &str {
@@ -153,7 +174,7 @@ impl Reference {
     }
 }
 
-// #[derive(Debug, Clone, PartialEq, Eq)]
+// #[derive(Debug, Clone, PartialEq)]
 // pub enum PtrType {
 //     Rc,
 //     RcRefClone,
@@ -164,20 +185,20 @@ impl Reference {
 //     ImutRef,
 // }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StructData {
     pub field_definitions: Vec<FieldDefinition>,
 }
 
 /// Collected during declaration
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldInfo {
     pub struct_id: String,
     pub field_id: String,
 }
 
 /// Collected during definition
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldDefinition {
     pub id: String,
     pub ptr_type: Vec<ReferenceType>,

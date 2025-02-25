@@ -47,37 +47,15 @@ pub enum BorrowError {
 }
 
 fn set_ptr_rc(value_id: &str, ctx: &mut AnalysisContext) {
-    let sub_var_data = ctx.get_var(&value_id);
-    let ptrs = sub_var_data.pointed_to_by.clone();
+    let var_data = ctx.get_var(&value_id);
+    let ptrs = var_data.references.clone();
 
-    ptrs.iter().for_each(|ptr_id| {
-        ctx.mut_var(ptr_id.clone(), |ptr_data| {
-            // TODO: Grab what the type was of the dpecific ref that pointed to the ref that we
-            // care about
-            let mut ptr_to_value = ptr_data
-                .references
-                .iter()
-                .find(|reference_block| reference_block.borrow().adr_of == *value_id)
-                .expect("value and ptr ctx disagree")
-                .borrow_mut();
-            let other_ref_level_len = ptr_to_value.ptr_type.len() - 1;
-
-            // TODO: We want the specific reference that applies at the same level of the
-            // problematic ptr
-            // This is a really hard problem
-            // For now we'll just make the top ptr_type be an RcClone
-            ptr_to_value.ptr_type[other_ref_level_len] = PtrType::RcRefClone;
-        });
-        set_ptr_rc(&ptr_id, ctx);
+    ptrs.iter().for_each(|reference_block| {
+        reference_block.borrow_mut().set_rc();
+        // TODO Check if we have to cascade RCs
+        // set_ptr_rc(reference_block.borrow().get_borrower(), ctx);
     });
 }
-
-fn set_rc(value_id: &str, ctx: &mut AnalysisContext) {
-    ctx.mut_var(value_id.to_string(), |var_data| var_data.rc = true);
-    set_ptr_rc(value_id, ctx);
-}
-
-fn set_raw(ptr_id: &str, ctx: &mut AnalysisContext) {}
 
 /// This function is problematic because it requires the ast to be changed :(
 /// Either that, or we could use some othe protocole for conveying a new variable
@@ -180,19 +158,19 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
                 first_ptr_id: _,
                 second_ptr_id: _,
                 value_id,
-            } => set_rc(value_id, ctx),
+            } => set_ptr_rc(value_id, ctx),
             BorrowError::MutImutOverlap {
                 mut_ptr_id: _,
                 imut_ptr_id: _,
                 value_id,
-            } => set_rc(value_id, ctx),
+            } => set_ptr_rc(value_id, ctx),
             BorrowError::MutMutSameLine {
                 first_ptr_id,
                 second_ptr_id,
                 value_id: _,
             } => {
-                set_raw(first_ptr_id, ctx);
-                set_raw(second_ptr_id, ctx)
+                set_ptr_rc(first_ptr_id, ctx);
+                // set_raw(second_ptr_id, ctx)
             }
 
             BorrowError::MutImutSameLine {
@@ -200,15 +178,15 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
                 imut_ptr_id,
                 value_id: _,
             } => {
-                set_raw(mut_ptr_id, ctx);
-                set_raw(imut_ptr_id, ctx);
+                // set_raw(mut_ptr_id, ctx);
+                // set_raw(imut_ptr_id, ctx);
             }
             // TODO: if the id is the value, we can clone
             BorrowError::ValueMutOverlap {
                 ptr_id: _,
                 value_id,
             } => {
-                set_rc(value_id, ctx)
+                set_ptr_rc(value_id, ctx)
                 // clone_solution(ptr_id, value_id, ctx, root)
             }
             BorrowError::ValueMutSameLine {
@@ -254,7 +232,7 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
                 .clone()
                 .filter_map(|reference_block| {
                     let overlap_state = var_ptr_range_overlap(
-                        var_data.usages,
+                        var_data.usages.clone(),
                         reference_block.get_range()
                     );
 
