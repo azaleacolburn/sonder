@@ -188,11 +188,15 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
                 .reference_at_line(root.line)
                 .expect("Non-ptr derefed on lside")
                 .borrow();
+            let mut ref_types: Vec<ReferenceType> = reference
+                .construct_reference_chain()
+                .iter()
+                .map(|r| r.get_reference_type())
+                .collect();
 
-            let mut ref_types = reference.construct_reference_children();
             ref_types.truncate(count as usize);
 
-            let rc = ctx.get_var(&sub_id).rc;
+            let rc = ctx.get_var(&derefed_id).rc;
             AnnotatedNodeT::DerefAssignment {
                 op: op.clone(),
                 id: derefed_id.clone(),
@@ -202,9 +206,17 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
         }
         NodeType::DeRef(expr) => {
             let count = count_derefs(expr) + 1;
+
             let ids = find_ids(&expr);
             let derefed_id = ids[0].clone();
-            let sub_id = ctx.find_which_ref_at_id(&derefed_id, root.line);
+
+            let var_data = ctx.get_var(&derefed_id);
+            let sub_id = var_data
+                .reference_at_line(root.line)
+                .expect("derefed id not ptr")
+                .borrow()
+                .get_reference_to();
+
             let rc = ctx.get_var(&sub_id).rc;
             AnnotatedNodeT::DeRef {
                 id: derefed_id.clone(),
@@ -225,18 +237,13 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             let mut refcell = false;
             let mut rcclone = false;
             ctx.variables.iter().for_each(|(_, data)| {
-                data.addresses.iter().for_each(|adr_data| {
-                    adr_data
-                        .as_ref()
-                        .borrow()
-                        .ptr_type
-                        .iter()
-                        .for_each(|ptr_type| match ptr_type {
-                            PtrType::Rc => rc = true,
-                            PtrType::RefCell => refcell = true,
-                            PtrType::RcRefClone => rcclone = true,
-                            _ => {}
-                        })
+                data.references.iter().for_each(|reference_block| {
+                    match reference_block.as_ref().borrow().get_reference_type() {
+                        ReferenceType::RcRefClone => rcclone = true,
+                        // PtrType::RefCell => refcell = true,
+                        // PtrType::RcRefClone => rcclone = true,
+                        _ => {}
+                    }
                 })
             });
             let mut imports: Vec<String> = vec![];
@@ -277,7 +284,6 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             exprs,
         } => {
             let var_data = ctx.get_var(var_id);
-            let is_mut = var_data.is_mut_by_ptr || var_data.is_mut_direct;
             let field_definitions = ctx.get_struct(&struct_id).field_definitions.clone();
             // TODO: Annotate node properly for ptrs
             // NOTE: Will panic is invalid compound literal
@@ -291,7 +297,7 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             AnnotatedNodeT::StructDeclaration {
                 var_id: var_id.clone(),
                 struct_id: struct_id.clone(),
-                is_mut,
+                is_mut: var_data.is_mut,
                 fields,
             }
         }
