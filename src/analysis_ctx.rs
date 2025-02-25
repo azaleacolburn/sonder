@@ -1,12 +1,5 @@
-use crate::{
-    analyzer::StructData,
-    data_model::{LineNumber, Reference, StructData, VarData},
-};
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    rc::Rc,
-};
+use crate::data_model::{LineNumber, Reference, StructData, VarData};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 /// The top-level datastructure that stores data about all the variables and referencing
 /// Stores a vector of the instances of addresses being taken, in order

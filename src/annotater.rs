@@ -71,7 +71,7 @@ pub enum AnnotatedNodeT {
     PtrDeclaration {
         id: String,
         is_mut: bool,
-        reference: Rc<RefCell<Reference>>,
+        references: Vec<Rc<RefCell<Reference>>>,
         t: CType,
         adr: Box<AnnotatedNode>,
         // Refers to it being an rc_ptr itself, not a
@@ -151,13 +151,12 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             let ptr_var_info = ctx.get_var(id);
             let annotated_adr = Box::new(annotate_ast(adr, ctx));
 
-            // TODO Actually pass in the full vector
-            let reference = ptr_var_info.references[0].clone();
+            let references = ptr_var_info.references.clone();
 
             AnnotatedNodeT::PtrDeclaration {
                 id: id.to_string(),
                 is_mut: ptr_var_info.is_mut,
-                reference,
+                references,
                 t: t.clone(),
                 adr: annotated_adr,
                 rc: ptr_var_info.rc,
@@ -186,10 +185,10 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
 
             let reference = ptr_data
                 .reference_at_line(root.line)
-                .expect("Non-ptr derefed on lside")
-                .borrow();
+                .expect("Non-ptr derefed on lside");
             let mut ref_types: Vec<ReferenceType> = reference
-                .construct_reference_chain()
+                .borrow()
+                .construct_reference_chain(ctx, root.line)
                 .iter()
                 .map(|r| r.get_reference_type())
                 .collect();
@@ -211,11 +210,12 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             let derefed_id = ids[0].clone();
 
             let var_data = ctx.get_var(&derefed_id);
-            let sub_id = var_data
+            let reference = var_data
                 .reference_at_line(root.line)
-                .expect("derefed id not ptr")
-                .borrow()
-                .get_reference_to();
+                .expect("derefed id not ptr");
+
+            let b = reference.borrow();
+            let sub_id = b.get_reference_to();
 
             let rc = ctx.get_var(&sub_id).rc;
             AnnotatedNodeT::DeRef {
@@ -233,8 +233,8 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
         }
         NodeType::Program => {
             // TODO: Check if some "count as we go" solution might work better
-            let mut rc = false;
-            let mut refcell = false;
+            let rc = false;
+            let refcell = false;
             let mut rcclone = false;
             ctx.variables.iter().for_each(|(_, data)| {
                 data.references.iter().for_each(|reference_block| {

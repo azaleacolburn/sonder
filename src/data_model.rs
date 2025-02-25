@@ -1,6 +1,6 @@
 use std::{cell::RefCell, ops::Range, rc::Rc};
 
-use crate::{ast::TokenNode as Node, lexer::CType};
+use crate::{analysis_ctx::AnalysisContext, ast::TokenNode as Node, lexer::CType};
 
 pub type LineNumber = usize;
 
@@ -137,8 +137,26 @@ impl Reference {
         }
     }
 
-    pub fn construct_reference_chain(&self) -> Vec<Reference> {
-        while let refe = ctx.self.ref_to.
+    pub fn construct_reference_chain(
+        &self,
+        ctx: &AnalysisContext,
+        line: LineNumber,
+    ) -> Vec<Reference> {
+        let mut references = Vec::with_capacity(6);
+
+        let mut sub_id = self.get_reference_to();
+        let mut maybe_reference = ctx.get_var(sub_id).reference_at_line(line);
+
+        while let Some(reference) = maybe_reference {
+            references.push(reference.borrow().clone());
+
+            let b = reference.borrow();
+            sub_id = b.get_reference_to();
+
+            maybe_reference = ctx.get_var(&sub_id).reference_at_line(line);
+        }
+
+        return references;
     }
 
     // Non-inclusive on either end

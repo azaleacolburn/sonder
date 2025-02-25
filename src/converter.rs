@@ -1,6 +1,6 @@
 use crate::{
-    analyzer::PtrType,
     annotater::{AnnotatedNode, AnnotatedNodeT},
+    data_model::ReferenceType,
     lexer::CType,
 };
 pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
@@ -8,7 +8,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
         AnnotatedNodeT::PtrDeclaration {
             id,
             is_mut,
-            adr_data,
+            references,
             t,
             adr,
             rc: _,
@@ -21,44 +21,16 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             };
             let rust_adr = convert_annotated_ast(&adr);
             let mut_binding = if *is_mut { "mut " } else { "" };
-            // Only supports one reference at a time
-            fn get_ref_type<T>(ptr_types: &mut T, rust_t: &str) -> String
-            where
-                T: Iterator<Item = PtrType>,
-            {
-                match ptr_types.next() {
-                    Some(PtrType::MutRef) => {
-                        format!("&mut {} ", get_ref_type(ptr_types, rust_t))
-                    }
-                    Some(PtrType::ImutRef) => {
-                        format!("&{}", get_ref_type(ptr_types, rust_t))
-                    }
-                    Some(PtrType::RcRefClone) => {
-                        format!("Rc<RefCell<{}>>", get_ref_type(ptr_types, rust_t))
-                    }
-                    Some(PtrType::RefCell) => {
-                        format!("RefCell<{}>", get_ref_type(ptr_types, rust_t))
-                    }
-                    Some(PtrType::Rc) => format!("Rc<{}>", get_ref_type(ptr_types, rust_t)),
-                    Some(PtrType::RawPtrMut) => format!("*mut {}", get_ref_type(ptr_types, rust_t)),
-                    Some(PtrType::RawPtrImut) => {
-                        format!("*const {}", get_ref_type(ptr_types, rust_t))
-                    }
-                    None => rust_t.to_string(),
-                }
-            }
 
-            let rust_ref_type =
-                get_ref_type(&mut adr_data.borrow().ptr_type.clone().into_iter(), rust_t);
-            let rust_reference = match adr_data.borrow().ptr_type[0] {
-                PtrType::MutRef => format!("&mut {rust_adr}"),
-                PtrType::ImutRef => format!("&{rust_adr}"),
-                PtrType::RefCell => format!("RefCell::new({rust_adr}) "),
-                PtrType::Rc => format!("Rc::new({rust_adr}) "),
-                // .clone() should be handled by the adr call iself
-                PtrType::RcRefClone => format!("{rust_adr}"),
-                PtrType::RawPtrMut => format!("&mut {rust_adr} as {rust_ref_type}"),
-                PtrType::RawPtrImut => {
+            let ref_types = &mut references.iter().map(|r| r.borrow().get_reference_type());
+
+            let rust_ref_type = construct_ptr_type(ref_types, rust_t);
+            let rust_reference = match references[0].borrow().get_reference_type() {
+                ReferenceType::MutBorrowed => format!("&mut {rust_adr}"),
+                ReferenceType::ConstBorrowed => format!("&{rust_adr}"),
+                ReferenceType::RcRefClone => format!("{rust_adr}"),
+                ReferenceType::MutPtr => format!("&mut {rust_adr} as {rust_ref_type}"),
+                ReferenceType::ConstPtr => {
                     format!("&{rust_adr} as {rust_ref_type}")
                 }
             };
@@ -84,14 +56,14 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 .collect::<Vec<String>>()[0]
                 .clone();
             let mut l_side = id.clone();
-            let is_rc_clone = ref_types.contains(&PtrType::RcRefClone);
+            let is_rc_clone = ref_types.contains(&ReferenceType::RcRefClone);
 
             ref_types
                 .into_iter()
                 .for_each(|deref_type| match deref_type {
-                    PtrType::RcRefClone => l_side = format!("{l_side}.borrow_mut()"),
-                    PtrType::MutRef if !is_rc_clone => l_side = format!("*{l_side}"),
-                    PtrType::MutRef => {}
+                    ReferenceType::RcRefClone => l_side = format!("{l_side}.borrow_mut()"),
+                    ReferenceType::MutBorrowed if !is_rc_clone => l_side = format!("*{l_side}"),
+                    ReferenceType::MutBorrowed => {}
                     t => panic!(
                         "Invalid Ptr Type being Derefferenced on lside of deref assignment: {:?}",
                         t
@@ -241,15 +213,13 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
                 }
                 .to_string();
                 field.ptr_type.iter().rev().for_each(|p| match p {
-                    PtrType::MutRef => field_type = format!("&mut {field_type}"),
-                    PtrType::ImutRef => field_type = format!("&{field_type}"),
-                    PtrType::RcRefClone => field_type = format!("Rc<RefCell<{field_type}>>"),
+                    ReferenceType::MutBorrowed => field_type = format!("&mut {field_type}"),
+                    ReferenceType::ConstBorrowed => field_type = format!("&{field_type}"),
+                    ReferenceType::RcRefClone => field_type = format!("Rc<RefCell<{field_type}>>"),
                     // TODO Check if rc is used for original rc ptrs or if RcRefClone is used
                     // for all
-                    PtrType::Rc => field_type = format!("Rc<{field_type}>"),
-                    PtrType::RefCell => field_type = format!("RefCell<{field_type}>"),
-                    PtrType::RawPtrMut => field_type = format!("*mut {field_type}"),
-                    PtrType::RawPtrImut => field_type = format!("*const {field_type}"),
+                    ReferenceType::MutPtr => field_type = format!("*mut {field_type}"),
+                    ReferenceType::ConstPtr => field_type = format!("*const {field_type}"),
                 });
                 let field_ret = format!("{}: {}", field.id, field_type);
                 ret.push_str(format!("\t{},\n", field_ret).as_str());
@@ -293,5 +263,27 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             .collect::<Vec<String>>()
             .join("\n\t"),
         _ => panic!("Unsupported AnnotatedNode"),
+    }
+}
+
+fn construct_ptr_type<T>(references: &mut T, rust_t: &str) -> String
+where
+    T: Iterator<Item = ReferenceType>,
+{
+    match references.next() {
+        Some(ReferenceType::MutBorrowed) => {
+            format!("&mut {} ", construct_ptr_type(references, rust_t))
+        }
+        Some(ReferenceType::ConstBorrowed) => {
+            format!("&{}", construct_ptr_type(references, rust_t))
+        }
+        Some(ReferenceType::RcRefClone) => {
+            format!("Rc<RefCell<{}>>", construct_ptr_type(references, rust_t))
+        }
+        Some(ReferenceType::MutPtr) => format!("*mut {}", construct_ptr_type(references, rust_t)),
+        Some(ReferenceType::ConstPtr) => {
+            format!("*const {}", construct_ptr_type(references, rust_t))
+        }
+        None => rust_t.to_string(),
     }
 }

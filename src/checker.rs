@@ -1,14 +1,9 @@
-use itertools::Itertools;
-
 use crate::{
     analysis_ctx::AnalysisContext,
-    analyzer,
-    ast::{NodeType, TokenNode as Node},
-    checker,
-    data_model::{LineNumber, PtrType, Reference, ReferenceType, Usage, VarData},
-    lexer::CType,
+    ast::TokenNode as Node,
+    data_model::{LineNumber, Reference, ReferenceType, Usage, VarData},
 };
-use std::{cell::RefCell, ops::Range, rc::Rc};
+use std::ops::Range;
 
 // TODO: Derermine if overlapping value uses mutate or don't mutate
 // If it doesn't mutate, clone the underlying value instead

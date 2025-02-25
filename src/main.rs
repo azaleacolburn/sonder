@@ -1,6 +1,6 @@
 use std::{cell::RefCell, fs::read_to_string, rc::Rc};
 
-use analyzer::AnalysisContext;
+use analysis_ctx::AnalysisContext;
 use ast::TokenNode;
 
 mod analysis_ctx;
@@ -40,7 +40,6 @@ fn convert_to_rust_code(mut ast: TokenNode) -> String {
     analyzer::determine_var_mutability(&ast, &mut ctx, Rc::new(RefCell::new(Box::new([]))), 0);
 
     println!("variables: {:?}", ctx.variables);
-    println!("addresses: {:?}", ctx.addresses);
 
     let temp_ctx = ctx.clone();
     let errors = checker::borrow_check(&temp_ctx);

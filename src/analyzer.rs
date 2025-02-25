@@ -1,12 +1,9 @@
-use std::{
-    cell::{RefCell, RefMut},
-    rc::Rc,
-};
+use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     analysis_ctx::AnalysisContext,
     ast::{NodeType, TokenNode as Node},
-    data_model::{FieldDefinition, FieldInfo, PtrType, StructData, VarData},
+    data_model::{FieldDefinition, FieldInfo, ReferenceType, StructData, VarData},
     lexer::CType,
 };
 
@@ -136,7 +133,9 @@ pub fn determine_var_mutability<'a>(
                 .into_iter()
                 .map(|(id, ptr_count, c_type)| {
                     // TODO: Update according to corresponding variables as we analyze
-                    let ptr_type = (0..*ptr_count).map(|_| PtrType::ImutRef).collect();
+                    let ptr_type = (0..*ptr_count)
+                        .map(|_| ReferenceType::ConstBorrowed)
+                        .collect();
                     FieldDefinition {
                         id: id.clone(),
                         c_type: c_type.clone(),
@@ -279,7 +278,7 @@ pub fn find_ids<'a>(root: &'a Node) -> Vec<String> {
 }
 
 // An empty vector represents a non ptr
-pub fn count_declaration_ref(root: &Node) -> Vec<PtrType> {
+pub fn count_declaration_ref(root: &Node) -> Vec<ReferenceType> {
     let mut ptr_types = match root.children.as_ref() {
         Some(children) => children
             .borrow()
@@ -295,7 +294,7 @@ pub fn count_declaration_ref(root: &Node) -> Vec<PtrType> {
             // This will be edited as we go by the analyzer
             // Ideally, struct declarations will be handled first
             // Meaning they'll be placed first in the ast by the parser
-            ptr_types.push(PtrType::ImutRef);
+            ptr_types.push(ReferenceType::ConstBorrowed);
         }
         _ => {}
     };
@@ -313,18 +312,18 @@ pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &No
 }
 
 // All Refs are Adr
-fn ptr_type_chain(rvalue_ptrs: &Vec<String>, ctx: &mut AnalysisContext) -> Vec<PtrType> {
+fn ptr_type_chain(rvalue_ptrs: &Vec<String>, ctx: &mut AnalysisContext) -> Vec<ReferenceType> {
     if rvalue_ptrs.len() == 1 {
         // NOTE  As we go, we replace certain elements in this vector with `PtrType::MutRef`
         ctx.construct_ptr_chain(rvalue_ptrs[0].clone(), 0, u8::MAX)
             .iter()
-            .map(|_| PtrType::ImutRef)
+            .map(|_| ReferenceType::ConstBorrowed)
             .collect()
     } else if rvalue_ptrs.len() > 1 {
         // Ptr arithmatic outside the context of arrays is automatically a raw ptr
-        vec![PtrType::RawPtrImut]
+        vec![ReferenceType::ConstPtr]
     } else {
-        vec![PtrType::ImutRef]
+        vec![ReferenceType::ConstBorrowed]
     }
 }
 
@@ -358,7 +357,7 @@ fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext) -> String {
         // 0 if rvalue_ptrs.len() != 0 => rvalue_ptrs.last(),
         _ => {
             if let Some(last) = ptr_type_chain.last_mut() {
-                *last = PtrType::RawPtrImut;
+                *last = ReferenceType::ConstPtr;
             }
             addresses.last().unwrap().clone()
         }
