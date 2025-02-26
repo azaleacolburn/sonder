@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use crate::{
     analysis_ctx::AnalysisContext,
     ast::{NodeType, TokenNode as Node},
-    data_model::{FieldDefinition, FieldInfo, ReferenceType, StructData, VarData},
+    data_model::{FieldDefinition, FieldInfo, LineNumber, ReferenceType, StructData, VarData},
     lexer::CType,
 };
 
@@ -52,7 +52,7 @@ pub fn determine_var_mutability<'a>(
                 None
             };
 
-            let borrowed = ptr_from_expression(root, ctx);
+            let borrowed = ptr_from_expression(root, ctx, root.line);
             let v = VarData::new(c_type.clone(), false, instanceof_struct, None);
 
             ctx.declaration(id, v);
@@ -220,12 +220,8 @@ pub fn determine_var_mutability<'a>(
 
 /// Finds Adrs taken in an expression
 pub fn find_addresses(root: &Node) -> Vec<String> {
-    let mut vec = match root.children.as_ref() {
-        Some(children) => children
-            .borrow()
-            .iter()
-            .flat_map(find_addresses)
-            .collect::<Vec<String>>(),
+    let mut vec: Vec<String> = match root.children.as_ref() {
+        Some(children) => children.borrow().iter().flat_map(find_addresses).collect(),
         None => vec![],
     };
     match &root.token {
@@ -304,7 +300,7 @@ pub fn count_declaration_ref(root: &Node) -> Vec<ReferenceType> {
 pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &Node) {
     let lvalue = ctx.get_var(id);
     if lvalue.is_ptr() {
-        let points_to = &ptr_from_expression(root, ctx);
+        let points_to = &ptr_from_expression(root, ctx, root.line);
         ctx.ptr_assignment(points_to, id, root.line);
     } else {
         ctx.assignment(id);
@@ -345,7 +341,7 @@ fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext, line: LineNumber)
     };
 
     // NOTE The pointed to variable names
-    let ptrs: Vec<String> = ids
+    let mut ptrs: Vec<String> = ids
         .into_iter()
         .filter(|id| ctx.get_var(id).is_ptr())
         .map(|ptr_id| {
@@ -358,13 +354,20 @@ fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext, line: LineNumber)
         })
         .collect();
 
-    let mut addresses: Vec<String> = match &root.children {
-        Some(children) => find_addresses(&children.borrow()[0]),
-        None => vec![],
+    match root {
+        NodeType::PtrDeclaration(id, t, lvalue) => {}
+    }
+
+    match &root.children {
+        Some(children) => {
+            let mut adrs: Vec<String> = children.borrow().iter().flat_map(find_addresses).collect();
+            ptrs.append(&mut adrs);
+        }
+        None => {}
     };
 
-    match addresses.len() {
-        1 => addresses[0].clone(),
+    match ptrs.len() {
+        1 => ptrs[0].clone(),
         // 0 if rvalue_ptrs.len() != 0 => rvalue_ptrs.last(),
         _ => {
             let mut ptr_type_chain = ptr_type_chain(&ptrs, ctx);
@@ -372,7 +375,7 @@ fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext, line: LineNumber)
                 // NOTE Make this a rawa ptr since like ya can't do that
                 *last = ReferenceType::MutPtr;
             }
-            addresses.last().unwrap().clone()
+            ptrs.last().unwrap().clone()
         }
     }
 }
