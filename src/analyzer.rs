@@ -328,36 +328,49 @@ fn ptr_type_chain(rvalue_ptrs: &Vec<String>, ctx: &mut AnalysisContext) -> Vec<R
 }
 
 /// Assumes that there are only ever either derefereces or refs in rvalue
-/// Returns the name of the variable this expression evaluates to
-fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext) -> String {
-    let rvalue_ids = find_ids(
-        &root
-            .children
-            .as_ref()
-            .expect("Assignment missing children")
-            .borrow()[0],
-    );
+/// Always returns the id of the variable being referenced, not the ptr
+fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext, line: LineNumber) -> String {
+    println!("");
+    root.print(&mut 0);
+    println!("");
 
-    let rvalue_ptrs: Vec<String> = rvalue_ids
+    let mut ids = match root.children.as_ref() {
+        Some(children) => find_ids(&children.borrow()[0]),
+        None => vec![],
+    };
+    match &root.token {
+        // NodeType::Adr(id) => ids.push(id.clone()),
+        NodeType::Id(id) => ids.push(id.clone()),
+        _ => {}
+    };
+
+    // NOTE The pointed to variable names
+    let ptrs: Vec<String> = ids
         .into_iter()
         .filter(|id| ctx.get_var(id).is_ptr())
+        .map(|ptr_id| {
+            ctx.get_var(&ptr_id)
+                .reference_at_line(line)
+                .unwrap()
+                .borrow()
+                .get_reference_to()
+                .to_string()
+        })
         .collect();
 
-    let mut ptr_type_chain = ptr_type_chain(&rvalue_ptrs, ctx);
-    let addresses: Vec<String> = find_addresses(
-        &root
-            .children
-            .as_ref()
-            .expect("Assignment missing child")
-            .borrow()[0],
-    );
+    let mut addresses: Vec<String> = match &root.children {
+        Some(children) => find_addresses(&children.borrow()[0]),
+        None => vec![],
+    };
 
     match addresses.len() {
         1 => addresses[0].clone(),
         // 0 if rvalue_ptrs.len() != 0 => rvalue_ptrs.last(),
         _ => {
+            let mut ptr_type_chain = ptr_type_chain(&ptrs, ctx);
             if let Some(last) = ptr_type_chain.last_mut() {
-                *last = ReferenceType::ConstPtr;
+                // NOTE Make this a rawa ptr since like ya can't do that
+                *last = ReferenceType::MutPtr;
             }
             addresses.last().unwrap().clone()
         }
