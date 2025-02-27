@@ -42,8 +42,10 @@ pub enum BorrowError {
 }
 
 fn set_ptr_rc(value_id: &str, ctx: &mut AnalysisContext) {
-    let var_data = ctx.get_var(&value_id);
-    let ptrs = var_data.references.clone();
+    let var_data = ctx.get_var_mut(value_id);
+    var_data.rc = true;
+
+    let ptrs = var_data.pointed_to.clone();
 
     ptrs.iter().for_each(|reference_block| {
         reference_block.borrow_mut().set_rc();
@@ -198,7 +200,7 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
 }
 
 #[derive(Debug, Clone)]
-struct PtrInfo<'a> {
+struct PtrData<'a> {
     ptr_id: String,
     ptr_var_data: &'a VarData,
     ptr_type: ReferenceType,
@@ -211,13 +213,13 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
         .iter()
         .flat_map(|(var_id, var_data)| -> Vec<BorrowError> {
             let pointed_to_by: Vec<Reference> = var_data
-                .references
+                .pointed_to
                 .iter()
                 .map(|reference_block| {
                     reference_block.borrow().clone()
                 })
                 .collect();
-            println!("{var_id} is pointed to by: {:?}", pointed_to_by);
+            println!("\n{var_id} pointed to by: {:?}\n", pointed_to_by);
 
             let pointed_to_by_mutably = pointed_to_by
                 .iter()
@@ -226,6 +228,7 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
             let mut value_overlaps_with_mut_ptr: Vec<BorrowError> = pointed_to_by_mutably
                 .clone()
                 .filter_map(|reference_block| {
+                    println!("{var_id} usages: {:?}\n", var_data.usages.clone());
                     let overlap_state = var_ptr_range_overlap(
                         var_data.usages.clone(),
                         reference_block.get_range()
@@ -332,10 +335,10 @@ pub fn var_ptr_range_overlap(
 ) -> OverlapState {
     let value_lines = value_usages.iter().map(|usage| usage.get_line_number());
     // NOTE `ptr.start == value` is fine because that's what happends when we init a reference
-    let usage_in_block = |value: LineNumber, ptr: &Range<LineNumber>| -> OverlapState {
-        if value < ptr.end && ptr.start < value {
+    let usage_in_block = |usage: LineNumber, ptr: &Range<LineNumber>| -> OverlapState {
+        if usage < ptr.end && ptr.start < usage {
             OverlapState::Overlap
-        } else if value == ptr.end {
+        } else if usage == ptr.end {
             OverlapState::SameLine
         } else {
             OverlapState::NoOverlap

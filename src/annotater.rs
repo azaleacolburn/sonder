@@ -71,7 +71,7 @@ pub enum AnnotatedNodeT {
     PtrDeclaration {
         id: String,
         is_mut: bool,
-        references: Vec<Rc<RefCell<Reference>>>,
+        points_to: Vec<Rc<RefCell<Reference>>>,
         t: CType,
         adr: Box<AnnotatedNode>,
         // Refers to it being an rc_ptr itself, not a
@@ -151,12 +151,12 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             let ptr_var_info = ctx.get_var(id);
             let annotated_adr = Box::new(annotate_ast(adr, ctx));
 
-            let references = ptr_var_info.references.clone();
+            let points_to = ptr_var_info.points_to.clone();
 
             AnnotatedNodeT::PtrDeclaration {
                 id: id.to_string(),
                 is_mut: ptr_var_info.is_mut,
-                references,
+                points_to,
                 t: t.clone(),
                 adr: annotated_adr,
                 rc: ptr_var_info.rc,
@@ -177,21 +177,23 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
         // Unless we want Adr nodes to know what kind of reference they are (which actually is
         // sounding like the right decision now)
         NodeType::DerefAssignment(op, adr) => {
-            let count = count_derefs(adr);
+            let count = count_derefs(adr) - 1; // TODO Maybe fix function
 
             let derefed_id = find_ids(&adr)[0].clone();
-
             let ptr_data = ctx.get_var(&derefed_id);
 
             let reference = ptr_data
                 .reference_at_line(root.line)
                 .expect("Non-ptr derefed on lside");
+
             let mut ref_types: Vec<ReferenceType> = reference
                 .borrow()
                 .construct_reference_chain(ctx, root.line)
                 .iter()
-                .map(|r| r.get_reference_type())
+                .map(Reference::get_reference_type)
                 .collect();
+            println!("count: {count}");
+            println!("ref_types: {:?}", ref_types);
 
             ref_types.truncate(count as usize);
 
@@ -237,7 +239,7 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             let refcell = false;
             let mut rcclone = false;
             ctx.variables.iter().for_each(|(_, data)| {
-                data.references.iter().for_each(|reference_block| {
+                data.points_to.iter().for_each(|reference_block| {
                     match reference_block.as_ref().borrow().get_reference_type() {
                         ReferenceType::RcRefClone => rcclone = true,
                         // PtrType::RefCell => refcell = true,

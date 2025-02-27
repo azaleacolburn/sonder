@@ -40,19 +40,19 @@ pub fn determine_var_mutability<'a>(
             ctx.declaration(id, variable);
         }
         NodeType::Assignment(_, id) => handle_assignment_analysis(ctx, id, root),
-        NodeType::PtrDeclaration(id, c_type, expr) => {
+        NodeType::PtrDeclaration(id, c_type, _expr) => {
             // TODO Determine if this is needed (I think not)
             // determine_var_mutability(expr, ctx, parent_children, root_index);
-            let rm = 5;
 
-            // Check if struct ptr
             let instanceof_struct = if let CType::Struct(struct_id) = c_type {
                 Some(struct_id.clone())
             } else {
                 None
             };
 
-            let borrowed = ptr_from_expression(root, ctx, root.line);
+            let borrowed = ptr_from_expression(root, ctx, root.line)
+                .expect("No ptr in ptr declaration rvalue");
+
             let v = VarData::new(c_type.clone(), false, instanceof_struct, None);
 
             ctx.declaration(id, v);
@@ -70,7 +70,7 @@ pub fn determine_var_mutability<'a>(
             }
             let number_of_derefs = count_derefs(&l_side) + 1;
             let mut ptr_chain = ctx
-                .construct_ptr_chain(deref_ids[0].clone(), 0, number_of_derefs)
+                .construct_ptr_chain_upwards(deref_ids[0].clone(), 0, number_of_derefs)
                 .into_iter()
                 .rev();
             let first_ptr = ptr_chain.next().expect("No pointers in chain");
@@ -118,6 +118,7 @@ pub fn determine_var_mutability<'a>(
         }
         NodeType::DeRef(adr) => {
             let ids = find_ids(&adr);
+
             // Panics if more than one id derefed
             if ids.len() != 1 {
                 panic!("more than one or 0 ids derefed");
@@ -160,39 +161,24 @@ pub fn determine_var_mutability<'a>(
                 .for_each(|(i, field)| {
                     ctx.declaration(
                         format!("{}.{}", var_id, field.id),
-                        VarData {
-                            rc: false,
-                            clone: false,
-                            // NOTE Right now we only support primitives as struct field types
-                            // Use this instead
-                            // Some(struct_data.field_definitions[i].c_type)
-                            instanceof_struct: None,
-                            fieldof_struct: Some(FieldInfo {
+                        VarData::new(
+                            struct_data.field_definitions[i].c_type.clone(),
+                            false,
+                            None,
+                            Some(FieldInfo {
                                 struct_id: struct_id.clone(),
                                 field_id: field.id.clone(),
                             }),
-                            references: Vec::new(),
-                            is_mut: false,
-                            ptr_to: Vec::new(),
-                            usages: Vec::new(),
-                            var_type: struct_data.field_definitions[i].c_type.clone(),
-                        },
+                        ),
                     )
                 });
-            let var_data = VarData {
-                rc: false,
-                clone: false,
-                // NOTE Right now we only support primitives as struct field types
-                // Use this instead
-                // Some(struct_data.field_definitions[i].c_type)
-                instanceof_struct: Some(struct_id.clone()),
-                fieldof_struct: None,
-                references: Vec::new(),
-                is_mut: false,
-                ptr_to: Vec::new(),
-                usages: Vec::new(),
-                var_type: CType::Struct(struct_id.clone()),
-            };
+            let var_data = VarData::new(
+                CType::Struct(struct_id.clone()),
+                false,
+                Some(struct_id.clone()),
+                None,
+            );
+
             ctx.declaration(var_id.clone(), var_data);
         }
         NodeType::StructFieldAssignment {
@@ -304,7 +290,7 @@ pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &No
             &ptr_from_expression(root, ctx, root.line).expect("Ptr doesn't point to anything");
         ctx.ptr_assignment(points_to, id, root.line);
     } else {
-        ctx.assignment(id);
+        ctx.assignment(id, root.line);
     }
 }
 
@@ -331,9 +317,10 @@ fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext, line: LineNumber)
     let mut adrs: Vec<String> = Vec::with_capacity(4);
 
     match &root.token {
-        // NodeType::Adr(id) => ids.push(id.clone()),
+        NodeType::Adr(id) => adrs.push(id.clone()),
         NodeType::Id(id) => ids.push(id.clone()),
         NodeType::PtrDeclaration(_id, _t, l_value) => {
+            println!("\n{l_value}\n");
             if let Some(id) = ptr_from_expression(l_value, ctx, line) {
                 return Some(id);
             }

@@ -8,7 +8,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
         AnnotatedNodeT::PtrDeclaration {
             id,
             is_mut,
-            references,
+            points_to,
             t,
             adr,
             rc: _,
@@ -22,10 +22,10 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             let rust_adr = convert_annotated_ast(&adr);
             let mut_binding = if *is_mut { "mut " } else { "" };
 
-            let ref_types = &mut references.iter().map(|r| r.borrow().get_reference_type());
+            let ref_types = &mut points_to.iter().map(|r| r.borrow().get_reference_type());
 
             let rust_ref_type = construct_ptr_type(ref_types, rust_t);
-            let rust_reference = match references[0].borrow().get_reference_type() {
+            let rust_reference = match points_to[0].borrow().get_reference_type() {
                 ReferenceType::MutBorrowed => format!("&mut {rust_adr}"),
                 ReferenceType::ConstBorrowed => format!("&{rust_adr}"),
                 ReferenceType::RcRefClone => format!("{rust_adr}"),
@@ -46,7 +46,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
         AnnotatedNodeT::DerefAssignment {
             op,
             id,
-            rc,
+            rc: _, // TODO Create a clearer distinction between rc variables and rc pointers
             ref_types,
         } => {
             let expr_child = root
@@ -58,12 +58,17 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             let mut l_side = id.clone();
             let is_rc_clone = ref_types.contains(&ReferenceType::RcRefClone);
 
+            println!("HI");
+
             ref_types
                 .into_iter()
+                .inspect(|t| println!("{:?}", t))
                 .for_each(|deref_type| match deref_type {
                     ReferenceType::RcRefClone => l_side = format!("{l_side}.borrow_mut()"),
                     ReferenceType::MutBorrowed if !is_rc_clone => l_side = format!("*{l_side}"),
-                    ReferenceType::MutBorrowed => {}
+                    ReferenceType::MutBorrowed => {
+                        println!("DEREFFED PTR BOTH MutBorrowed and is_rc_clone");
+                    }
                     t => panic!(
                         "Invalid Ptr Type being Derefferenced on lside of deref assignment: {:?}",
                         t
@@ -266,23 +271,23 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
     }
 }
 
-fn construct_ptr_type<T>(references: &mut T, rust_t: &str) -> String
+fn construct_ptr_type<T>(points_to: &mut T, rust_t: &str) -> String
 where
     T: Iterator<Item = ReferenceType>,
 {
-    match references.next() {
+    match points_to.next() {
         Some(ReferenceType::MutBorrowed) => {
-            format!("&mut {} ", construct_ptr_type(references, rust_t))
+            format!("&mut {} ", construct_ptr_type(points_to, rust_t))
         }
         Some(ReferenceType::ConstBorrowed) => {
-            format!("&{}", construct_ptr_type(references, rust_t))
+            format!("&{}", construct_ptr_type(points_to, rust_t))
         }
         Some(ReferenceType::RcRefClone) => {
-            format!("Rc<RefCell<{}>>", construct_ptr_type(references, rust_t))
+            format!("Rc<RefCell<{}>>", construct_ptr_type(points_to, rust_t))
         }
-        Some(ReferenceType::MutPtr) => format!("*mut {}", construct_ptr_type(references, rust_t)),
+        Some(ReferenceType::MutPtr) => format!("*mut {}", construct_ptr_type(points_to, rust_t)),
         Some(ReferenceType::ConstPtr) => {
-            format!("*const {}", construct_ptr_type(references, rust_t))
+            format!("*const {}", construct_ptr_type(points_to, rust_t))
         }
         None => rust_t.to_string(),
     }

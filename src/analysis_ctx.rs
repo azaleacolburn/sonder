@@ -26,18 +26,27 @@ impl AnalysisContext {
         initial_var.new_usage(line);
     }
 
-    pub fn assignment(&mut self, assigned_to: &str) {
-        let l_value = self.variables.get_mut(assigned_to).expect("Var not in ctx");
-        l_value.is_mut = true;
+    pub fn assignment(&mut self, assigned_to: &str, line: LineNumber) {
+        self.variables
+            .entry(assigned_to.to_string())
+            .and_modify(|l_value| {
+                l_value.is_mut = true;
+                l_value.new_usage(line);
+            });
     }
 
     pub fn ptr_assignment(&mut self, borrowed: &str, assigned_to: &str, line: LineNumber) {
-        self.assignment(assigned_to);
+        self.assignment(assigned_to, line);
 
         let new_reference = Rc::new(RefCell::new(Reference::new(borrowed, assigned_to, line)));
 
         let l_value = self.variables.get_mut(assigned_to).expect("Var not in ctx");
-        l_value.references.push(new_reference)
+        l_value.points_to.push(new_reference.clone());
+        l_value.is_mut = true;
+
+        self.variables
+            .entry(borrowed.to_string())
+            .and_modify(|rvalue| rvalue.pointed_to.push(new_reference.clone()));
     }
 
     // TODO Figure out how to recursively mark things as mutable
@@ -46,8 +55,9 @@ impl AnalysisContext {
         assert!(l_value.is_ptr());
         l_value.new_usage(line);
 
-        let reference_data = l_value.current_reference_held().expect("Null ptr deref");
-        self.assignment(reference_data.borrow().get_reference_to());
+        // NOTE We don't want to also assign to the sub_var here, because we're checking actual
+        // literal usages, not cascading usages
+        // (otherwise we'd always get a ValueMutSameLine error)
     }
 
     pub fn struct_declaration(&mut self, id: String, struct_data: StructData) {
@@ -67,6 +77,12 @@ impl AnalysisContext {
         self.variables.get(id).expect("Var not in map")
     }
 
+    pub fn get_var_mut(&mut self, id: &str) -> &mut VarData {
+        self.variables
+            .get_mut(id)
+            .expect("Var (to mutate) not in map")
+    }
+
     pub fn mut_var<F>(&mut self, id: String, f: F)
     where
         F: FnOnce(&mut VarData),
@@ -81,26 +97,52 @@ impl AnalysisContext {
         self.structs.entry(id).and_modify(f);
     }
 
+    /// Constructes a pointer chain upwards
     pub fn construct_ptr_chain(&self, root: String, total_depth: u8, max_depth: u8) -> Vec<String> {
         if total_depth == max_depth {
             return vec![];
         }
-        let ptr_data = &self
+        let ptrs = &self
             .variables
             .get(&root)
             .as_ref()
             .expect("Root in construct ptr chain not found in map")
-            .ptr_to;
+            .pointed_to;
 
-        match ptr_data.is_empty() {
+        match ptrs.is_empty() {
             false => {
                 let mut chain = self.construct_ptr_chain(
-                    ptr_data
-                        .last()
-                        .unwrap()
-                        .borrow()
-                        .get_reference_to()
-                        .to_string(),
+                    ptrs.last().unwrap().borrow().get_reference_to().to_string(),
+                    total_depth + 1,
+                    max_depth,
+                );
+                chain.push(root.to_string());
+                chain
+            }
+            true => vec![root.to_string()],
+        }
+    }
+
+    pub fn construct_ptr_chain_upwards(
+        &self,
+        root: String,
+        total_depth: u8,
+        max_depth: u8,
+    ) -> Vec<String> {
+        if total_depth == max_depth {
+            return vec![];
+        }
+        let ptrs = &self
+            .variables
+            .get(&root)
+            .as_ref()
+            .expect("Root in construct ptr chain not found in map")
+            .points_to;
+
+        match ptrs.is_empty() {
+            false => {
+                let mut chain = self.construct_ptr_chain(
+                    ptrs.last().unwrap().borrow().get_reference_to().to_string(),
                     total_depth + 1,
                     max_depth,
                 );
