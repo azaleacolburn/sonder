@@ -325,57 +325,61 @@ fn ptr_type_chain(rvalue_ptrs: &Vec<String>, ctx: &mut AnalysisContext) -> Vec<R
 
 /// Assumes that there are only ever either derefereces or refs in rvalue
 /// Always returns the id of the variable being referenced, not the ptr
-fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext, line: LineNumber) -> String {
-    println!("");
-    root.print(&mut 0);
-    println!("");
+fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext, line: LineNumber) -> Option<String> {
+    let mut ids = Vec::with_capacity(4);
+    let mut adrs = Vec::with_capacity(4);
 
-    let mut ids = match root.children.as_ref() {
-        Some(children) => find_ids(&children.borrow()[0]),
-        None => vec![],
-    };
     match &root.token {
         // NodeType::Adr(id) => ids.push(id.clone()),
         NodeType::Id(id) => ids.push(id.clone()),
+        NodeType::PtrDeclaration(_id, _t, l_value) => {
+            if let Some(id) = ptr_from_expression(l_value, ctx, line) {
+                return Some(id);
+            }
+        }
         _ => {}
     };
 
-    // NOTE The pointed to variable names
-    let mut ptrs: Vec<String> = ids
+    if let Some(children) = &root.children {
+        // NOTE adrs is the pointed-to variable names
+        let b = children.borrow();
+        let mut adrs = b.iter().flat_map(find_addresses);
+
+        ids.append(&mut find_ids(&children.borrow()[0]));
+        adrs.append(&mut adrs)
+    };
+
+    let ptr_to_borrowed = |ptr_id: String| {
+        ctx.get_var(&ptr_id)
+            .reference_at_line(line)
+            .unwrap()
+            .borrow()
+            .get_reference_to()
+            .to_string();
+    };
+
+    let ptrs: Vec<String> = ids
         .into_iter()
         .filter(|id| ctx.get_var(id).is_ptr())
-        .map(|ptr_id| {
-            ctx.get_var(&ptr_id)
-                .reference_at_line(line)
-                .unwrap()
-                .borrow()
-                .get_reference_to()
-                .to_string()
-        })
+        .map(ptr_to_borrowed)
+        .chain(adrs)
         .collect();
-
-    match root {
-        NodeType::PtrDeclaration(id, t, lvalue) => {}
-    }
 
     match &root.children {
         Some(children) => {
-            let mut adrs: Vec<String> = children.borrow().iter().flat_map(find_addresses).collect();
-            ptrs.append(&mut adrs);
-        }
-        None => {}
-    };
-
-    match ptrs.len() {
-        1 => ptrs[0].clone(),
-        // 0 if rvalue_ptrs.len() != 0 => rvalue_ptrs.last(),
-        _ => {
-            let mut ptr_type_chain = ptr_type_chain(&ptrs, ctx);
-            if let Some(last) = ptr_type_chain.last_mut() {
-                // NOTE Make this a rawa ptr since like ya can't do that
-                *last = ReferenceType::MutPtr;
+            match ptrs.len() {
+                1 => Some(ptrs[0].clone()),
+                // 0 if rvalue_ptrs.len() != 0 => rvalue_ptrs.last(),
+                _ => {
+                    let mut ptr_type_chain = ptr_type_chain(&ptrs, ctx);
+                    if let Some(last) = ptr_type_chain.last_mut() {
+                        // NOTE Make this a rawa ptr since like ya can't do that
+                        *last = ReferenceType::MutPtr;
+                    }
+                    None
+                }
             }
-            ptrs.last().unwrap().clone()
         }
+        None => None,
     }
 }
