@@ -300,7 +300,8 @@ pub fn count_declaration_ref(root: &Node) -> Vec<ReferenceType> {
 pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &Node) {
     let lvalue = ctx.get_var(id);
     if lvalue.is_ptr() {
-        let points_to = &ptr_from_expression(root, ctx, root.line);
+        let points_to =
+            &ptr_from_expression(root, ctx, root.line).expect("Ptr doesn't point to anything");
         ctx.ptr_assignment(points_to, id, root.line);
     } else {
         ctx.assignment(id);
@@ -327,7 +328,7 @@ fn ptr_type_chain(rvalue_ptrs: &Vec<String>, ctx: &mut AnalysisContext) -> Vec<R
 /// Always returns the id of the variable being referenced, not the ptr
 fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext, line: LineNumber) -> Option<String> {
     let mut ids = Vec::with_capacity(4);
-    let mut adrs = Vec::with_capacity(4);
+    let mut adrs: Vec<String> = Vec::with_capacity(4);
 
     match &root.token {
         // NodeType::Adr(id) => ids.push(id.clone()),
@@ -346,7 +347,7 @@ fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext, line: LineNumber)
         let children_adrs = b.iter().flat_map(find_addresses);
 
         ids.append(&mut find_ids(&children.borrow()[0]));
-        adrs.push(children_adrs)
+        adrs.extend(children_adrs);
     };
 
     let ptr_to_borrowed = |ptr_id: String| {
@@ -355,31 +356,25 @@ fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext, line: LineNumber)
             .unwrap()
             .borrow()
             .get_reference_to()
-            .to_string();
+            .to_string()
     };
 
-    let ptrs: Vec<String> = ids
-        .into_iter()
-        .filter(|id| ctx.get_var(id).is_ptr())
-        .map(ptr_to_borrowed)
-        .chain(adrs)
-        .collect();
+    adrs.extend(
+        ids.into_iter()
+            .filter(|id| ctx.get_var(id).is_ptr())
+            .map(ptr_to_borrowed),
+    );
 
-    match &root.children {
-        Some(children) => {
-            match ptrs.len() {
-                1 => Some(ptrs[0].clone()),
-                // 0 if rvalue_ptrs.len() != 0 => rvalue_ptrs.last(),
-                _ => {
-                    let mut ptr_type_chain = ptr_type_chain(&ptrs, ctx);
-                    if let Some(last) = ptr_type_chain.last_mut() {
-                        // NOTE Make this a rawa ptr since like ya can't do that
-                        *last = ReferenceType::MutPtr;
-                    }
-                    None
-                }
+    match adrs.len() {
+        1 => Some(adrs[0].clone()),
+        // 0 if rvalue_ptrs.len() != 0 => rvalue_ptrs.last(),
+        _ => {
+            let mut ptr_type_chain = ptr_type_chain(&adrs, ctx);
+            if let Some(last) = ptr_type_chain.last_mut() {
+                // NOTE Make this a rawa ptr since like ya can't do that
+                *last = ReferenceType::MutPtr;
             }
+            None
         }
-        None => None,
     }
 }
