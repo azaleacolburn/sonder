@@ -69,27 +69,15 @@ pub fn determine_var_mutability<'a>(
                 panic!("Unsupported: no_ids being dereffed")
             }
             let number_of_derefs = count_derefs(&l_side) + 1;
+
             let mut ptr_chain = ctx
-                .construct_ptr_chain_upwards(deref_ids[0].clone(), 0, number_of_derefs)
+                .construct_ptr_chain_downwards(deref_ids[0].clone(), 0, number_of_derefs)
                 .into_iter()
                 .rev();
-            let first_ptr = ptr_chain.next().expect("No pointers in chain");
 
-            // NOTE Sets every ptr + reference in chain to also be mut
-            let mut set_ptr_mut = |ptr_id: String| {
-                ctx.mut_var(ptr_id, |ptr_var| {
-                    ptr_var.is_mut = true;
-                    ptr_var
-                        .current_reference_held()
-                        .expect("No reference held by ptr in chain")
-                        .borrow_mut()
-                        .set_mut();
-                })
-            };
-            set_ptr_mut(first_ptr.clone());
-            ptr_chain.for_each(set_ptr_mut);
+            println!("PTR CHAIN: {:?}", ptr_chain);
 
-            ctx.deref_assignment(&first_ptr, root.line);
+            ctx.deref_assignment(ptr_chain, root.line);
         }
         NodeType::Id(id) => {
             ctx.mut_var(id.to_string(), |var_data| {
@@ -298,7 +286,7 @@ pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &No
 fn ptr_type_chain(rvalue_ptrs: &Vec<String>, ctx: &mut AnalysisContext) -> Vec<ReferenceType> {
     if rvalue_ptrs.len() == 1 {
         // NOTE  As we go, we replace certain elements in this vector with `PtrType::MutRef`
-        ctx.construct_ptr_chain(rvalue_ptrs[0].clone(), 0, u8::MAX)
+        ctx.construct_ptr_chain_downwards(rvalue_ptrs[0].clone(), 0, u8::MAX)
             .iter()
             .map(|_| ReferenceType::ConstBorrowed)
             .collect()

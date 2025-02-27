@@ -50,10 +50,31 @@ impl AnalysisContext {
     }
 
     // TODO Figure out how to recursively mark things as mutable
-    pub fn deref_assignment(&mut self, assigned_to: &str, line: LineNumber) {
-        let l_value = self.variables.get_mut(assigned_to).expect("Var not in ctx");
-        assert!(l_value.is_ptr());
-        l_value.new_usage(line);
+    /// GIVEN in order [ptr2, ptr1, value]
+    pub fn deref_assignment<T>(&mut self, ptr_chain: &mut T, line: LineNumber)
+    where
+        T: Iterator<Item = String>,
+    {
+        let top_ptr = ptr_chain.next().expect("No pointers in chain");
+        self.mut_var(top_ptr, |ptr_var| {
+            assert!(ptr_var.is_ptr());
+            ptr_var.is_mut = true; // TODO Figure out way to reverse this setting if it turns out to be an rc
+            ptr_var.new_usage(line);
+            ptr_var
+                .current_reference_held()
+                .unwrap()
+                .borrow_mut()
+                .set_mut();
+        });
+
+        ptr_chain
+            .map(|var_id| self.get_var_mut(&var_id))
+            .for_each(|var_data| {
+                var_data.is_mut = true;
+                if let Some(reference) = var_data.current_reference_held() {
+                    reference.borrow_mut().set_mut();
+                }
+            });
 
         // NOTE We don't want to also assign to the sub_var here, because we're checking actual
         // literal usages, not cascading usages
@@ -98,7 +119,12 @@ impl AnalysisContext {
     }
 
     /// Constructes a pointer chain upwards
-    pub fn construct_ptr_chain(&self, root: String, total_depth: u8, max_depth: u8) -> Vec<String> {
+    pub fn construct_ptr_chain_upwards(
+        &self,
+        root: String,
+        total_depth: u8,
+        max_depth: u8,
+    ) -> Vec<String> {
         if total_depth == max_depth {
             return vec![];
         }
@@ -111,7 +137,7 @@ impl AnalysisContext {
 
         match ptrs.is_empty() {
             false => {
-                let mut chain = self.construct_ptr_chain(
+                let mut chain = self.construct_ptr_chain_upwards(
                     ptrs.last().unwrap().borrow().get_reference_to().to_string(),
                     total_depth + 1,
                     max_depth,
@@ -123,7 +149,7 @@ impl AnalysisContext {
         }
     }
 
-    pub fn construct_ptr_chain_upwards(
+    pub fn construct_ptr_chain_downwards(
         &self,
         root: String,
         total_depth: u8,
@@ -141,7 +167,7 @@ impl AnalysisContext {
 
         match ptrs.is_empty() {
             false => {
-                let mut chain = self.construct_ptr_chain(
+                let mut chain = self.construct_ptr_chain_downwards(
                     ptrs.last().unwrap().borrow().get_reference_to().to_string(),
                     total_depth + 1,
                     max_depth,

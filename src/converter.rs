@@ -9,6 +9,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             id,
             is_mut,
             points_to,
+            ref_type,
             t,
             adr,
             rc: _,
@@ -22,9 +23,9 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             let rust_adr = convert_annotated_ast(&adr);
             let mut_binding = if *is_mut { "mut " } else { "" };
 
-            let ref_types = &mut points_to.iter().map(|r| r.borrow().get_reference_type());
+            let ref_type_iter = &mut ref_type.into_iter().map(Clone::clone);
+            let rust_ref_type = construct_ptr_type(ref_type_iter, rust_t);
 
-            let rust_ref_type = construct_ptr_type(ref_types, rust_t);
             let rust_reference = match points_to[0].borrow().get_reference_type() {
                 ReferenceType::MutBorrowed => format!("&mut {rust_adr}"),
                 ReferenceType::ConstBorrowed => format!("&{rust_adr}"),

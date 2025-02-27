@@ -74,6 +74,7 @@ pub enum AnnotatedNodeT {
         points_to: Vec<Rc<RefCell<Reference>>>,
         t: CType,
         adr: Box<AnnotatedNode>,
+        ref_type: Vec<ReferenceType>,
         // Refers to it being an rc_ptr itself, not a
         rc: bool,
     },
@@ -153,11 +154,21 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
 
             let points_to = ptr_var_info.points_to.clone();
 
+            let reference = points_to[0].clone();
+
+            let ref_type: Vec<ReferenceType> = reference
+                .borrow()
+                .construct_reference_chain(ctx, root.line)
+                .iter()
+                .map(Reference::get_reference_type)
+                .collect();
+
             AnnotatedNodeT::PtrDeclaration {
                 id: id.to_string(),
                 is_mut: ptr_var_info.is_mut,
                 points_to,
                 t: t.clone(),
+                ref_type,
                 adr: annotated_adr,
                 rc: ptr_var_info.rc,
             }
