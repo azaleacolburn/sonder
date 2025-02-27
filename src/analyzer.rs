@@ -77,7 +77,7 @@ pub fn determine_var_mutability<'a>(
 
             println!("PTR CHAIN: {:?}", ptr_chain);
 
-            ctx.deref_assignment(ptr_chain, root.line);
+            ctx.deref_assignment(&mut ptr_chain, root.line);
         }
         NodeType::Id(id) => {
             ctx.mut_var(id.to_string(), |var_data| {

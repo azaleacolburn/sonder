@@ -67,14 +67,13 @@ impl AnalysisContext {
                 .set_mut();
         });
 
-        ptr_chain
-            .map(|var_id| self.get_var_mut(&var_id))
-            .for_each(|var_data| {
-                var_data.is_mut = true;
-                if let Some(reference) = var_data.current_reference_held() {
-                    reference.borrow_mut().set_mut();
-                }
-            });
+        ptr_chain.for_each(|var_id| {
+            let var_data = self.get_var_mut(&var_id);
+            var_data.is_mut = true;
+            if let Some(reference) = var_data.current_reference_held() {
+                reference.borrow_mut().set_mut();
+            }
+        });
 
         // NOTE We don't want to also assign to the sub_var here, because we're checking actual
         // literal usages, not cascading usages

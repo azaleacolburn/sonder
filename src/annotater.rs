@@ -188,7 +188,7 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
         // Unless we want Adr nodes to know what kind of reference they are (which actually is
         // sounding like the right decision now)
         NodeType::DerefAssignment(op, adr) => {
-            let count = count_derefs(adr) - 1; // TODO Maybe fix function
+            let count = count_derefs(adr); // TODO Maybe fix function
 
             let derefed_id = find_ids(&adr)[0].clone();
             let ptr_data = ctx.get_var(&derefed_id);
