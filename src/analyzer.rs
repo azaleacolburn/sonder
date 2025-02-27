@@ -343,10 +343,10 @@ fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext, line: LineNumber)
     if let Some(children) = &root.children {
         // NOTE adrs is the pointed-to variable names
         let b = children.borrow();
-        let mut adrs = b.iter().flat_map(find_addresses);
+        let children_adrs = b.iter().flat_map(find_addresses);
 
         ids.append(&mut find_ids(&children.borrow()[0]));
-        adrs.append(&mut adrs)
+        adrs.push(children_adrs)
     };
 
     let ptr_to_borrowed = |ptr_id: String| {
