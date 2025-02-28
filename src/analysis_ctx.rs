@@ -26,7 +26,13 @@ impl AnalysisContext {
         initial_var.new_usage(line);
     }
 
-    pub fn assignment(&mut self, assigned_to: &str, line: LineNumber) {
+    pub fn assignment(&mut self, assigned_to: &str, rvalue_ids: Vec<String>, line: LineNumber) {
+        println!("rvalues for {}: {:?}", assigned_to, rvalue_ids);
+        rvalue_ids.iter().for_each(|id| {
+            let var_data = self.get_var_mut(id);
+            var_data.new_usage(line);
+        });
+
         self.variables
             .entry(assigned_to.to_string())
             .and_modify(|l_value| {
@@ -35,8 +41,14 @@ impl AnalysisContext {
             });
     }
 
-    pub fn ptr_assignment(&mut self, borrowed: &str, assigned_to: &str, line: LineNumber) {
-        self.assignment(assigned_to, line);
+    pub fn ptr_assignment(
+        &mut self,
+        borrowed: &str,
+        assigned_to: &str,
+        rvalue_ids: Vec<String>,
+        line: LineNumber,
+    ) {
+        self.assignment(assigned_to, rvalue_ids, line);
 
         let new_reference = Rc::new(RefCell::new(Reference::new(borrowed, assigned_to, line)));
 

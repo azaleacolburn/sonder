@@ -252,6 +252,8 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
                     .iter()
                     .filter(|other_ref| mut_ref.get_borrower() != other_ref.get_borrower())
                     .filter_map(|other_ref| {
+                        println!("\n{} range: {:?}", mut_ref.get_borrower(), mut_ref.get_range());
+                        println!("{} range: {:?}\n", other_ref.get_borrower(), other_ref.get_range());
                         let overlap_state = ptr_range_overlap(
                             mut_ref.get_range(),
                             other_ref.get_range()

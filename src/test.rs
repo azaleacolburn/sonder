@@ -169,7 +169,7 @@ fn validate(c_code: &str, test_name: &str) {
     match Command::new("rustc")
         .arg(file_name)
         .arg("--out-dir")
-        .arg("./translated/exe")
+        .arg("./translated/bin")
         .spawn()
         .expect("Rust compilation failed to start")
         .wait()

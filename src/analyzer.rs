@@ -40,7 +40,7 @@ pub fn determine_var_mutability<'a>(
             ctx.declaration(id, variable);
         }
         NodeType::Assignment(_, id) => handle_assignment_analysis(ctx, id, root),
-        NodeType::PtrDeclaration(id, c_type, _expr) => {
+        NodeType::PtrDeclaration(id, c_type, expr) => {
             // TODO Determine if this is needed (I think not)
             // determine_var_mutability(expr, ctx, parent_children, root_index);
 
@@ -55,8 +55,9 @@ pub fn determine_var_mutability<'a>(
 
             let v = VarData::new(c_type.clone(), false, instanceof_struct, None);
 
+            let rvalue_ids = find_ids(expr);
             ctx.declaration(id, v);
-            ctx.ptr_assignment(&borrowed, id, root.line);
+            ctx.ptr_assignment(&borrowed, id, rvalue_ids, root.line);
         }
         NodeType::DerefAssignment(_, l_side) => {
             // determine_var_mutability(&l_side, ctx, parent_children, root_index);
@@ -272,13 +273,17 @@ pub fn count_declaration_ref(root: &Node) -> Vec<ReferenceType> {
 }
 
 pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &Node) {
+    println!("\nAssignment root:");
+    root.print(&mut 0);
+    println!("\n");
+    let rvalue_ids = find_ids(root);
     let lvalue = ctx.get_var(id);
     if lvalue.is_ptr() {
         let points_to =
             &ptr_from_expression(root, ctx, root.line).expect("Ptr doesn't point to anything");
-        ctx.ptr_assignment(points_to, id, root.line);
+        ctx.ptr_assignment(points_to, id, rvalue_ids, root.line);
     } else {
-        ctx.assignment(id, root.line);
+        ctx.assignment(id, rvalue_ids, root.line);
     }
 }
 
