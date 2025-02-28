@@ -12,7 +12,8 @@ For the purposes of sonder, well-written means that for any given pointer, the C
 - Like a Rust refrence after trivial line rearrangement 
 - As a cloned `Rc<RefCell<T>>`
 
-- It also means that any mutable pointer to a value and the value itself that are used on the same line can be made to fit borrow checking rules by substituting the value used in it's own assignment for a clone taken before the mutable reference. This essentially means that `t` can only be modified once during `g`'s lifetime, and it must be the value-mut-same-line-overlap-case.  This allows the following edgecase to be resolve with cloning:
+- It also means that any mutable pointer to a value and the value itself that are used on the same line can be made to fit borrow checking rules by substituting the value used in it's own assignment for a clone taken before the mutable reference.
+- This essentially means that `t` can only be modified once during `g`'s lifetime, and it must be the value-mut-same-line-overlap-case.  This allows the following edgecase to be resolve with cloning:
 ```c
 int t = 0;
 int* g = &t;
