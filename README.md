@@ -1,5 +1,5 @@
 # sonder
-Sonder is a static analyzer and transpiler, for converting well-written C code to Rust.
+Sonder is a static analyzer and transpiler, for converting well-written C code to safe Rust.
 
 ## Scratch repo
 
