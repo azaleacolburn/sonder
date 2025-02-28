@@ -159,6 +159,23 @@ fn struct_field_assignment() {
     );
 }
 
+#[test]
+fn struct_with_ptr() {
+    validate(
+        "struct Point {
+            int* ptr;
+            int c;
+        };
+
+        int main() {
+            int t = 4;
+            struct Point l = { &t, 5 };
+            *l.t = 5;
+        }",
+        "struct_with_ptr",
+    );
+}
+
 fn validate(c_code: &str, test_name: &str) {
     let ast = parse_c(c_code.to_string());
     let rust_code = convert_to_rust_code(ast);
