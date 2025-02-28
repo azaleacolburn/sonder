@@ -125,7 +125,7 @@ fn scalar_declaration_statement(
 fn arithmetic_expression(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
     let mut left = arithmetic_term(token_handler)?;
     let mut curr = token_handler.get_token().clone();
-    println!("Expression curr: {:?}", curr);
+    println!("Expression curr: {:?}", curr); // getting Dot here
     while curr == Token::Add || curr == Token::Sub {
         token_handler.next_token();
         let right = arithmetic_term(token_handler)?;
@@ -320,6 +320,7 @@ fn deref_assignment(
 
     let deref_token = TokenNode::new(NodeType::DeRef(Box::new(token)), None, token_handler.line());
     let assignment_tok = AssignmentOpType::from_token(token_handler.get_token()).unwrap();
+
     token_handler.next_token();
     let token = TokenNode::new(
         NodeType::DerefAssignment(assignment_tok, Box::new(deref_token)),

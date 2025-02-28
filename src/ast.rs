@@ -99,7 +99,7 @@ impl AssignmentOpType {
             Token::BAndEq => Ok(AssignmentOpType::BAndEq),
             Token::BXorEq => Ok(AssignmentOpType::BXorEq),
             _ => {
-                println!("Oh God No, Not A Valid OpEq Token");
+                println!("Oh God No, Not A Valid OpEq Token: {:?}", tok);
                 return Err(());
             }
         }
