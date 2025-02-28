@@ -3,7 +3,7 @@ Sonder is a static analyzer and transpiler, for converting well-written C code t
 
 ## Scratch repo
 
-This project is incredible WIP and not at all intended for production-grade work. It exists purely as a proof of concept.
+This project is incredibly WIP and not at all intended for production-grade work. It exists purely as a proof of concept.
 ## What does well-written mean?
 
 For the purposes of sonder, well-written means that for any given pointer, the C code in question treats pointers only in the following ways:
