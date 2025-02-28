@@ -1,18 +1,22 @@
-use std::{collections::HashMap, fs::read_to_string, ops::Range};
+use std::{cell::RefCell, fs::read_to_string, rc::Rc};
 
-use analyzer::VarData;
-use parser::TokenNode;
+use analysis_ctx::AnalysisContext;
+use ast::TokenNode;
 
+mod analysis_ctx;
 #[allow(dead_code)]
 mod analyzer;
 mod annotater;
+mod ast;
 mod checker;
 mod converter;
+mod data_model;
 mod error;
 mod lexer;
 mod parser;
 #[cfg(test)]
 mod test;
+mod token_handler;
 
 fn main() {
     let contents = read_to_string("test.c").expect("Please provide a valid file for parsing");
@@ -26,25 +30,22 @@ fn parse_c(contents: String) -> TokenNode {
         .expect("Failed to lex tokens, please provide valid C code");
     println!("{:?}", tokens);
     println!("{:?}", line_numbers);
-    parser::program(tokens, line_numbers, false).expect("Failed to parse token stream")
+    parser::program(tokens, line_numbers, true).expect("Failed to parse token stream")
 }
 
-fn convert_to_rust_code(ast: TokenNode) -> String {
+fn convert_to_rust_code(mut ast: TokenNode) -> String {
     ast.print(&mut 0);
-    let map: HashMap<String, VarData> = HashMap::new();
+    let mut ctx: AnalysisContext = AnalysisContext::new();
 
-    let mut var_info = analyzer::determine_var_mutability(&ast, &map);
-    // println!(
-    //     "{:?}",
-    //     var_info
-    //         .iter()
-    //         .map(|(id, data)| (id.clone(), data.non_borrowed_lines.clone()))
-    //         .collect::<Vec<(String, Vec<Range<usize>>)>>()
-    // );
+    analyzer::determine_var_mutability(&ast, &mut ctx, Rc::new(RefCell::new(Box::new([]))), 0);
 
-    let errors = checker::borrow_check(&var_info);
-    checker::adjust_ptr_type(errors, &mut var_info);
-    let annotated_ast = annotater::annotate_ast(&ast, &var_info);
+    println!("variables: {:?}", ctx.variables);
+
+    let temp_ctx = ctx.clone();
+    let errors = checker::borrow_check(&temp_ctx);
+    checker::adjust_ptr_type(errors, &mut ctx, &mut ast);
+
+    let annotated_ast = annotater::annotate_ast(&ast, &ctx);
     annotated_ast.print(&mut 0);
 
     let converted_rust = converter::convert_annotated_ast(&annotated_ast);

@@ -1,6 +1,7 @@
 /// Each variant wraps the line numberi the error was found on
-#[derive(Debug, Clone, strum::Display)]
+#[derive(Debug, Clone)]
 pub enum ErrType {
+    ExpectedColon,
     ExpectedCParen,
     ExpectedCSquare,
     ExpectedExpression,

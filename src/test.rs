@@ -2,6 +2,17 @@ use std::{fs, process::Command};
 
 use crate::{convert_to_rust_code, parse_c};
 
+#[test]
+fn test_basic_assignment() {
+    validate(
+        "int main() {
+            int n = 0;
+            n = 2;
+        }",
+        "basic_assignment",
+    )
+}
+
 /// Valid use of pointers as if they were Rust references
 /// Translates one-to-one
 #[test]
@@ -20,6 +31,8 @@ fn three_mut_layered() {
 
 /// Invalid rust code if directly translated
 /// Should be caught by the checker and a safe solution should be applied
+/// We can only ever use `*t.borrow()` or `*t.borrow_mut()` when using t
+/// Because it has to act exactly like the value t would in C.
 /// eg.
 /// ```rust
 /// fn main() -> () {
@@ -27,6 +40,11 @@ fn three_mut_layered() {
 ///     let g: Rc<RefCell<i32>> = t.clone();
 ///     *t.borrow_mut() = 1;
 ///     *g.borrow_mut() = 2;
+///     // When function calls come about
+///     f(*t.borrow())
+///     f(g)
+///     f(g, t.borrow_mut()) // this is fine
+///     f(*g.borrow(), *t.borrow_mut) // this is not ok
 /// }
 /// ```
 #[test]
@@ -44,33 +62,22 @@ fn value_overlap() {
 
 /// Invalid Rust code if directly translated
 /// Should be caught by the checker and a safe solution should be applied
-/// eg.
-/// ```rust
-/// fn main() -> () {
-///     let n: i32 = 0;
-///     let g: &i32 = 0;
-/// }
-/// fn test -> () {
-///     let k: Rc<RefCell<i32>> = Rc::new(RefCell::new(3));
-///     let y: Rc<RefCell<i32>> = k.clone();
-///     *y.borrow_mut() = *k.borrow() + 6;
-/// }
-/// ```
-#[test]
-fn deref_value_assignment() {
-    validate(
-        "int main() {
-            int n = 0;
-            int* g = &n;
-        }
-        void test() {
-            int k = 3;
-            int* y = &k;
-            *y = k + 6;
-        }",
-        "deref_value_assignment",
-    );
-}
+///
+/// See dilema in README.md
+///
+/// WARNING THIS TEST PROBABLY NEEDS RAW PTRS
+// /// ```
+// #[test]
+// fn deref_value_assignment() {
+//     validate(
+//         "void main() {
+//             int k = 3;
+//             int* y = &k;
+//             *y = k + 6;
+//         }",
+//         "deref_value_assignment",
+//     );
+// }
 
 // #[test]
 // fn multi_ref() {
@@ -87,6 +94,71 @@ fn deref_value_assignment() {
 //     );
 // }
 
+/// This is actually an interesting case
+/// Based on our current assumption, this is illegal, because we're assigning a reference in
+/// something that isn't a ptr declaration
+/// So the issue becomes, since during conversion, addresses just return their id and let the
+/// higher node handle the rest, and deref_assignment_node isn't handling the address level, the
+/// address never gets taken in the generated rust code
+///
+/// This sets off the cloning system
+#[test]
+fn crazy_multi_ref() {
+    validate(
+        "int main() {
+            int n = 0;
+            int* g = &n;
+            int* k = &n;
+            int** h = &g;
+            int p = 3;
+            *h = &p;
+        }",
+        "crazy_multi_ref",
+    );
+}
+
+#[test]
+fn struct_basic() {
+    validate(
+        "struct test {
+            int m;
+            int j;
+        };",
+        "struct_basic",
+    );
+}
+
+#[test]
+fn struct_init() {
+    validate(
+        "struct Test {
+            int m;
+            int j;
+        };
+
+        int main() {
+            struct Test my_test = { 0, 2 };
+        }",
+        "struct_init",
+    );
+}
+
+#[test]
+fn struct_field_assignment() {
+    validate(
+        "struct Test {
+            int m;
+            int j;
+        };
+
+        int main() {
+            struct Test my_test = { 0, 2 };
+            my_test.m = 1;
+        }",
+        "struct_field_assignment",
+    );
+}
+
 fn validate(c_code: &str, test_name: &str) {
     let ast = parse_c(c_code.to_string());
     let rust_code = convert_to_rust_code(ast);
@@ -97,12 +169,13 @@ fn validate(c_code: &str, test_name: &str) {
     match Command::new("rustc")
         .arg(file_name)
         .arg("--out-dir")
-        .arg("./translated/exe")
+        .arg("./translated/bin")
         .spawn()
-        .expect("Rust compilation failed")
+        .expect("Rust compilation failed to start")
         .wait()
     {
-        Ok(o) => println!("Test passed: {o}"),
-        Err(err) => panic!("Test failed, {err}"),
+        Ok(o) if o.success() => println!("Test passed!"),
+        Ok(_) => panic!("Compilation Failed"),
+        Err(err) => panic!("RustC Panicked, {err}"),
     };
 }

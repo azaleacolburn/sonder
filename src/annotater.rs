@@ -1,20 +1,19 @@
-use std::{collections::HashMap, fmt::Display};
-
-use itertools::Itertools;
-
 use crate::{
-    analyzer::{count_derefs, find_ids, PtrData, PtrType, VarData},
+    analysis_ctx::AnalysisContext,
+    analyzer::{count_derefs, find_ids},
+    ast::{AssignmentOpType, NodeType, TokenNode as Node},
+    data_model::{FieldDefinition, Reference, ReferenceType},
     lexer::CType,
-    parser::{AssignmentOpType, NodeType, TokenNode as Node},
 };
+use std::{cell::RefCell, fmt::Display, rc::Rc};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct AnnotatedNode {
     pub token: AnnotatedNodeT,
-    pub children: Option<Vec<AnnotatedNode>>,
+    pub children: Vec<AnnotatedNode>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum AnnotatedNodeT {
     Program {
         imports: Vec<String>,
@@ -60,7 +59,8 @@ pub enum AnnotatedNodeT {
         op: AssignmentOpType,
         id: String,
         rc: bool,
-        count: u8,
+        // This is the type of each reference being dereferenced, not in total
+        ref_types: Vec<ReferenceType>,
     },
     Declaration {
         id: String,
@@ -71,9 +71,10 @@ pub enum AnnotatedNodeT {
     PtrDeclaration {
         id: String,
         is_mut: bool,
-        ptr_data: PtrData,
+        points_to: Vec<Rc<RefCell<Reference>>>,
         t: CType,
         adr: Box<AnnotatedNode>,
+        ref_type: Vec<ReferenceType>,
         // Refers to it being an rc_ptr itself, not a
         rc: bool,
     },
@@ -93,15 +94,31 @@ pub enum AnnotatedNodeT {
         t: CType,
         size: usize,
     },
-    FunctionDecaration {
+    FunctionDeclaration {
         id: String,
         t: CType,
     },
     Assert,
     Return,
     PutChar,
-    StructDeclaration(String),
+    StructDefinition {
+        struct_id: String,
+        field_definitions: Vec<FieldDefinition>,
+    },
+    StructDeclaration {
+        var_id: String,
+        struct_id: String,
+        is_mut: bool,
+        fields: Vec<(FieldDefinition, AnnotatedNode)>,
+    },
+    StructFieldAssignment {
+        var_id: String,
+        field_id: String,
+        op: AssignmentOpType,
+        expr: Box<AnnotatedNode>,
+    },
 }
+
 impl Display for AnnotatedNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.token) // doesn't print values
@@ -113,50 +130,47 @@ impl AnnotatedNode {
         (0..*n).into_iter().for_each(|_| print!("\t"));
         println!("{}", self);
         *n += 1;
-        if let Some(children) = &self.children {
-            children.iter().for_each(|node| {
-                node.print(n);
-            })
-        }
+        self.children.iter().for_each(|node| {
+            node.print(n);
+        });
         *n -= 1;
     }
 }
-pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>) -> AnnotatedNode {
-    let children = root.children.as_ref().unwrap_or(&vec![]).to_vec();
-    let annotated_node_children = Some(
-        children
-            .iter()
-            .map(|node| annotate_ast(node, var_info))
-            .collect(),
-    );
+pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode {
     let token = match &root.token {
         NodeType::Declaration(id, t, _) => {
-            let declaration_info = var_info.get(id).expect("Declared id not in map");
-            let is_mut = declaration_info.is_mut_by_ptr || declaration_info.is_mut_direct;
-            let rc = declaration_info.rc;
+            let declaration_info = ctx.get_var(id);
+
             AnnotatedNodeT::Declaration {
                 id: id.to_string(),
-                is_mut,
+                is_mut: declaration_info.is_mut,
                 t: t.clone(),
-                rc,
+                rc: declaration_info.rc,
             }
         }
         NodeType::PtrDeclaration(id, t, adr) => {
-            let ptr_info = var_info.get(id).expect("Ptr not found in info map");
-            let is_mut = ptr_info.is_mut_by_ptr || ptr_info.is_mut_direct;
-            let rc = ptr_info.rc;
-            let annotated_adr = Box::new(annotate_ast(adr, var_info));
-            let ptr_data = ptr_info
-                .ptr_data
-                .clone()
-                .expect("Declared Ptr not in info map");
+            let ptr_var_info = ctx.get_var(id);
+            let annotated_adr = Box::new(annotate_ast(adr, ctx));
+
+            let points_to = ptr_var_info.points_to.clone();
+
+            let reference = points_to[0].clone();
+
+            let ref_type: Vec<ReferenceType> = reference
+                .borrow()
+                .construct_reference_chain(ctx, root.line)
+                .iter()
+                .map(Reference::get_reference_type)
+                .collect();
+
             AnnotatedNodeT::PtrDeclaration {
                 id: id.to_string(),
-                is_mut,
-                ptr_data,
+                is_mut: ptr_var_info.is_mut,
+                points_to,
                 t: t.clone(),
+                ref_type,
                 adr: annotated_adr,
-                rc,
+                rc: ptr_var_info.rc,
             }
         }
         NodeType::Adr(id) => {
@@ -164,54 +178,59 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
             // `&mut &mut &t` illegal
             // Unsafe assumption: Adresses are always immutable unless explicitely annotated otherwise by the ptr declaration
             // `list.append(&mut other_list)` isn't something we're going to worry about for now
-            let rc = var_info
-                .get(id)
-                .as_ref()
-                .expect("Id of adr not found in map")
-                .rc;
+            let rc = ctx.get_var(id).rc;
             AnnotatedNodeT::Adr {
                 id: id.to_string(),
                 rc,
             }
         }
+        // It seems like assignments and deref assignments need to handle referencing themselves
+        // Unless we want Adr nodes to know what kind of reference they are (which actually is
+        // sounding like the right decision now)
         NodeType::DerefAssignment(op, adr) => {
-            let ids = find_ids(&adr);
-            let derefed_id = ids[0].clone();
-            let count = count_derefs(adr);
-            let rc = *var_info
-                .get(&derefed_id)
-                .as_ref()
-                .expect("dereffed_id not in map")
-                .ptr_data
-                .as_ref()
-                .expect("ptr not ptr")
-                .ptr_type
-                .last()
-                .unwrap()
-                == PtrType::RcClone;
+            let count = count_derefs(adr); // TODO Maybe fix function
+
+            let derefed_id = find_ids(&adr)[0].clone();
+            let ptr_data = ctx.get_var(&derefed_id);
+
+            let reference = ptr_data
+                .reference_at_line(root.line)
+                .expect("Non-ptr derefed on lside");
+
+            let mut ref_types: Vec<ReferenceType> = reference
+                .borrow()
+                .construct_reference_chain(ctx, root.line)
+                .iter()
+                .map(Reference::get_reference_type)
+                .collect();
+            println!("count: {count}");
+            println!("ref_types: {:?}", ref_types);
+
+            ref_types.truncate(count as usize);
+
+            let rc = ctx.get_var(&derefed_id).rc;
             AnnotatedNodeT::DerefAssignment {
                 op: op.clone(),
                 id: derefed_id.clone(),
                 rc,
-                count,
+                ref_types,
             }
         }
         NodeType::DeRef(expr) => {
             let count = count_derefs(expr) + 1;
+
             let ids = find_ids(&expr);
             let derefed_id = ids[0].clone();
-            let rc = *var_info
-                .get(&derefed_id)
-                .as_ref()
-                .expect("dereffed_id not in map")
-                .ptr_data
-                .as_ref()
-                .expect("ptr not ptr")
-                .ptr_type
-                .last()
-                .unwrap()
-                == PtrType::RcClone;
 
+            let var_data = ctx.get_var(&derefed_id);
+            let reference = var_data
+                .reference_at_line(root.line)
+                .expect("derefed id not ptr");
+
+            let b = reference.borrow();
+            let sub_id = b.get_reference_to();
+
+            let rc = ctx.get_var(&sub_id).rc;
             AnnotatedNodeT::DeRef {
                 id: derefed_id.clone(),
                 rc,
@@ -219,47 +238,105 @@ pub fn annotate_ast<'a>(root: &'a Node, var_info: &HashMap<String, VarData<'a>>)
             }
         }
         NodeType::Id(id) => {
-            let rc = var_info.get(id).as_ref().expect("Id not in map").rc;
+            let rc = ctx.get_var(id).rc;
             AnnotatedNodeT::Id {
                 id: id.to_string(),
                 rc,
             }
         }
         NodeType::Program => {
-            let imports: Vec<String> = var_info
-                .iter()
-                .flat_map(|(_, data)| match &data.ptr_data {
-                    Some(ptr_data) => ptr_data
-                        .ptr_type
-                        .iter()
-                        .map(|ptr_type| match ptr_type {
-                            PtrType::Rc => String::from("use std::rc::Rc;"),
-                            PtrType::RefCell => String::from("use std::cell::RefCell;"),
-                            PtrType::RcClone => String::from("use std::{rc::Rc, cell::RefCell};"),
-                            _ => String::from(""),
-                        })
-                        .collect(),
-                    None => vec![String::from("")],
+            // TODO: Check if some "count as we go" solution might work better
+            let rc = false;
+            let refcell = false;
+            let mut rcclone = false;
+            ctx.variables.iter().for_each(|(_, data)| {
+                data.points_to.iter().for_each(|reference_block| {
+                    match reference_block.as_ref().borrow().get_reference_type() {
+                        ReferenceType::RcRefClone => rcclone = true,
+                        // PtrType::RefCell => refcell = true,
+                        // PtrType::RcRefClone => rcclone = true,
+                        _ => {}
+                    }
                 })
-                .filter(|s| *s != String::new())
-                .unique()
-                .collect();
+            });
+            let mut imports: Vec<String> = vec![];
+            if rc {
+                imports.push(String::from("use std::rc::Rc;"))
+            }
+            if refcell {
+                imports.push(String::from("use std::cell::RefCell;"))
+            }
+            if rcclone {
+                imports.push(String::from("use std::{rc::Rc, cell::RefCell};"))
+            }
+
             AnnotatedNodeT::Program { imports }
         }
         NodeType::Assignment(op, id) => {
-            let rc = var_info
-                .get(id)
-                .as_ref()
-                .expect("Id being assigned to not in var_info")
-                .rc;
+            let rc = ctx.get_var(id).rc;
             AnnotatedNodeT::Assignment {
                 id: id.clone(),
                 op: op.clone(),
                 rc,
             }
         }
+        NodeType::StructDefinition {
+            struct_id,
+            field_definitions: _, // Field Definitions gathered by the parser
+        } => {
+            // Field definitions gathered by the analyzer (smart ptr type chain)
+            let analyzed_field_definitions = ctx.get_struct(struct_id).field_definitions.clone();
+            AnnotatedNodeT::StructDefinition {
+                struct_id: struct_id.clone(),
+                field_definitions: analyzed_field_definitions,
+            }
+        }
+        NodeType::StructDeclaration {
+            var_id,
+            struct_id,
+            exprs,
+        } => {
+            let var_data = ctx.get_var(var_id);
+            let field_definitions = ctx.get_struct(&struct_id).field_definitions.clone();
+            // TODO: Annotate node properly for ptrs
+            // NOTE: Will panic is invalid compound literal
+            // TODO: Add checks for compound literal
+            let fields: Vec<(FieldDefinition, AnnotatedNode)> = exprs
+                .clone()
+                .into_iter()
+                .enumerate()
+                .map(|(i, node)| (field_definitions[i].clone(), annotate_ast(&node, ctx)))
+                .collect();
+            AnnotatedNodeT::StructDeclaration {
+                var_id: var_id.clone(),
+                struct_id: struct_id.clone(),
+                is_mut: var_data.is_mut,
+                fields,
+            }
+        }
+        NodeType::StructFieldAssignment {
+            var_id,
+            field_id,
+            assignment_op,
+            expr,
+        } => AnnotatedNodeT::StructFieldAssignment {
+            var_id: var_id.clone(),
+            field_id: field_id.clone(),
+            op: assignment_op.clone(),
+            expr: Box::new(annotate_ast(expr, ctx)),
+        },
         node => node.to_annotated_node(),
     };
+    let children = root.children.as_ref();
+    let annotated_node_children = match children {
+        Some(children) => children
+            .borrow()
+            .iter()
+            .map(|node| annotate_ast(node, ctx))
+            .collect(),
+        None => Vec::new(),
+    };
+
     AnnotatedNode {
         token,
         children: annotated_node_children,

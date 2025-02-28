@@ -323,7 +323,8 @@ pub fn string_to_tokens(
                         }
                         num.push(chars[j]);
                     }
-                    if chars[i] == '0' {
+                    if chars[i + 1] == '0' {
+                        i += 1;
                         // handles literals // TODO: DO LITERAL SHIT
                         // let string = chars.into_iter().collect::<String>();
 
@@ -352,7 +353,7 @@ pub fn string_to_tokens(
                                 Ok(value) => {
                                     ret.push(Token::NumLiteral(value));
                                 }
-                                Err(err) => {
+                                Err(_) => {
                                     continue;
                                 }
                             };
@@ -511,6 +512,9 @@ pub fn string_to_tokens(
                 // split.push(String::from(";"));
                 ret.push(Token::Semi);
             }
+            ':' => {
+                ret.push(Token::Colon);
+            }
             '=' => {
                 if chars[i + 1] == '=' {
                     ret.push(Token::EqCmp);
@@ -549,6 +553,7 @@ pub fn string_to_tokens(
             }
             'g' => {
                 if chars[i + 1] == 'o' && chars[i + 2] == 't' && chars[i + 3] == 'o' {
+                    i += 4;
                     for j in i..chars.len() {
                         if !chars[j].is_alphabetic() && chars[j] != '_' {
                             break;
@@ -642,6 +647,7 @@ pub fn string_to_tokens(
                     curr.push(chars[j]);
                 }
                 ret.push(Token::Id(curr.clone()));
+                println!("curr: {}", curr);
                 i += curr.len() - 1;
                 curr = String::from("");
             }
@@ -715,6 +721,7 @@ pub enum Token {
     Dot,
     Comma,
     Semi,
+    Colon,
     Arrow,
     Return,
     PutChar,
@@ -728,4 +735,5 @@ pub enum CType {
     Void,
     Int,
     Char,
+    Struct(String),
 }
