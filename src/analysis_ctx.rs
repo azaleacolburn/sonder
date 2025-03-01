@@ -1,4 +1,8 @@
-use crate::data_model::{LineNumber, Reference, StructData, VarData};
+use itertools::Itertools;
+
+use crate::data_model::{
+    FieldDefinition, LineNumber, Reference, ReferenceType, StructData, VarData,
+};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 /// The top-level datastructure that stores data about all the variables and referencing
@@ -41,17 +45,13 @@ impl AnalysisContext {
             });
     }
 
-    pub fn ptr_assignment(
-        &mut self,
-        borrowed: &str,
-        assigned_to: &str,
-        rvalue_ids: Vec<String>,
-        line: LineNumber,
-    ) {
-        self.assignment(assigned_to, rvalue_ids, line);
+    pub fn ptr_assignment(&mut self, borrowed: &str, assigned_to: &str, line: LineNumber) {
+        // WARNING If rvalue_ids.len() > 1 for ptr assignments then raw ptr
+        self.assignment(assigned_to, vec![borrowed.to_string()], line);
 
         let new_reference = Rc::new(RefCell::new(Reference::new(borrowed, assigned_to, line)));
 
+        println!("PTR_ASSIGNMENT: {assigned_to}");
         let l_value = self.variables.get_mut(assigned_to).expect("Var not in ctx");
         l_value.points_to.push(new_reference.clone());
         l_value.is_mut = true;
@@ -68,8 +68,30 @@ impl AnalysisContext {
         T: Iterator<Item = String>,
     {
         let top_ptr = ptr_chain.next().expect("No pointers in chain");
+        let ptr_data = self.get_var(&top_ptr);
+
+        match &ptr_data.fieldof_struct {
+            Some(field_info) => {
+                let struct_definition_data = self.get_struct_mut(field_info.struct_id.as_str());
+                let field_definition_data: &mut FieldDefinition = struct_definition_data
+                    .field_definitions
+                    .iter()
+                    .find(|t| t.id == field_info.field_id)
+                    .expect("No field for this struct var");
+
+                field_definition_data
+                    .ptr_type
+                    .iter_mut()
+                    // NOTE Don't upgrade raw pointers
+                    .filter(|ptr_type| **ptr_type == ReferenceType::ConstBorrowed)
+                    .for_each(|ptr_type| *ptr_type = ReferenceType::MutBorrowed);
+            }
+            None => {}
+        };
+
         self.mut_var(top_ptr, |ptr_var| {
             assert!(ptr_var.is_ptr());
+
             ptr_var.is_mut = true; // TODO Figure out way to reverse this setting if it turns out to be an rc
             ptr_var.new_usage(line);
             ptr_var
@@ -104,8 +126,11 @@ impl AnalysisContext {
         self.structs.get(id).expect("Struct not in map")
     }
 
+    pub fn get_struct_mut(&mut self, id: &str) -> &mut StructData {
+        self.structs.get_mut(id).expect("Struct not in map")
+    }
+
     pub fn get_var(&self, id: &str) -> &VarData {
-        println!("var_id: {id}");
         self.variables.get(id).expect("Var not in map")
     }
 
@@ -169,6 +194,14 @@ impl AnalysisContext {
         if total_depth == max_depth {
             return vec![];
         }
+
+        println!();
+        self.variables
+            .iter()
+            .for_each(|var_data| println!("{:?}\n", var_data));
+        println!();
+        println!("root: {root}");
+
         let ptrs = &self
             .variables
             .get(&root)

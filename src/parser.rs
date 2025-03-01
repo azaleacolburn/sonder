@@ -25,7 +25,7 @@ pub fn program(
             token_handler.line(),
         ))
     }
-    let program_children = Rc::new(RefCell::new(top_scope.into_boxed_slice()));
+    let program_children = top_scope.into_boxed_slice();
     let program_node = TokenNode::new(NodeType::Program, Some(program_children), 0);
 
     program_node.print(&mut 0);
@@ -85,6 +85,10 @@ pub fn statement(
         Token::Return => return_statement(token_handler),
         Token::PutChar => putchar_statement(token_handler),
         Token::Struct => struct_statement(token_handler),
+        Token::StructFieldId {
+            struct_id,
+            field_id,
+        } => struct_field_assignment(token_handler, struct_id.clone(), field_id.clone()),
         _ => Err(token_handler.new_err(ET::ExpectedStatement)),
     }
 }
@@ -116,7 +120,7 @@ fn scalar_declaration_statement(
     } else {
         TokenNode::new(
             NodeType::Declaration(id, t, 0),
-            Some(Rc::new(RefCell::new(Box::new([expr])))),
+            Some(Box::new([expr])),
             token_handler.line(),
         )
     })
@@ -131,7 +135,7 @@ fn arithmetic_expression(token_handler: &mut TokenHandler) -> Result<TokenNode, 
         let right = arithmetic_term(token_handler)?;
         left = TokenNode::new(
             NodeType::from_token(&curr).unwrap(),
-            Some(Rc::new(RefCell::new(Box::new([left, right])))),
+            Some(Box::new([left, right])),
             token_handler.line(),
         );
         curr = token_handler.get_token().clone();
@@ -148,7 +152,7 @@ fn arithmetic_term(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr>
         let right = arithmetic_factor(token_handler)?;
         left = TokenNode::new(
             NodeType::from_token(&curr).unwrap(),
-            Some(Rc::new(RefCell::new(Box::new([left, right])))),
+            Some(Box::new([left, right])),
             token_handler.line(),
         );
         curr = token_handler.get_token().clone();
@@ -164,44 +168,53 @@ fn arithmetic_factor(token_handler: &mut TokenHandler) -> Result<TokenNode, RhEr
             None,
             token_handler.line(),
         )),
-        Token::Id(id) => {
-            if *token_handler.peek(1) == Token::OParen {
-                Ok(function_call(token_handler, id.to_string())?)
-            } else if *token_handler.peek(1) == Token::OSquare {
-                token_handler.next_token();
-                token_handler.next_token();
-                let post_mul = TokenNode::new(
-                    NodeType::Mul,
-                    Some(Rc::new(RefCell::new(Box::new([
-                        arithmetic_expression(token_handler)?,
-                        TokenNode::new(NodeType::NumLiteral(8), None, token_handler.line()),
-                    ])))),
-                    token_handler.line(),
-                );
-                let post_add = TokenNode::new(
-                    NodeType::Sub,
-                    Some(Rc::new(RefCell::new(Box::new([
-                        TokenNode::new(NodeType::Id(id.to_string()), None, token_handler.line()),
-                        post_mul,
-                    ])))),
-                    token_handler.line(),
-                );
-                if *token_handler.get_token() != Token::CSquare {
-                    return Err(token_handler.new_err(ET::ExpectedCSquare));
-                }
-                Ok(TokenNode::new(
-                    NodeType::DeRef(Box::new(post_add)),
-                    None,
-                    token_handler.line(),
-                ))
-            } else {
-                Ok(TokenNode::new(
-                    NodeType::Id(id.to_string()),
-                    None,
-                    token_handler.line(),
-                ))
-            }
+        Token::StructFieldId {
+            struct_id,
+            field_id,
+        } => Ok(TokenNode::new(
+            NodeType::StructFieldId {
+                var_id: struct_id,
+                field_id,
+            },
+            None,
+            token_handler.line(),
+        )),
+        Token::Id(id) if *token_handler.peek(1) == Token::OParen => {
+            Ok(function_call(token_handler, id.to_string())?)
         }
+        Token::Id(id) if *token_handler.peek(1) == Token::OSquare => {
+            token_handler.next_token();
+            token_handler.next_token();
+            let post_mul = TokenNode::new(
+                NodeType::Mul,
+                Some(Box::new([
+                    arithmetic_expression(token_handler)?,
+                    TokenNode::new(NodeType::NumLiteral(8), None, token_handler.line()),
+                ])),
+                token_handler.line(),
+            );
+            let post_add = TokenNode::new(
+                NodeType::Sub,
+                Some(Box::new([
+                    TokenNode::new(NodeType::Id(id.to_string()), None, token_handler.line()),
+                    post_mul,
+                ])),
+                token_handler.line(),
+            );
+            if *token_handler.get_token() != Token::CSquare {
+                return Err(token_handler.new_err(ET::ExpectedCSquare));
+            }
+            Ok(TokenNode::new(
+                NodeType::DeRef(Box::new(post_add)),
+                None,
+                token_handler.line(),
+            ))
+        }
+        Token::Id(id) => Ok(TokenNode::new(
+            NodeType::Id(id.to_string()),
+            None,
+            token_handler.line(),
+        )),
 
         // Address of a variable
         Token::BAnd => {
@@ -260,9 +273,7 @@ fn assignment(token_handler: &mut TokenHandler, name: String) -> Result<TokenNod
     token_handler.next_token();
     let token = TokenNode::new(
         NodeType::Assignment(assignment_tok, name.clone()),
-        Some(Rc::new(RefCell::new(Box::new([arithmetic_expression(
-            token_handler,
-        )?])))),
+        Some(Box::new([arithmetic_expression(token_handler)?])),
         token_handler.line(),
     );
     if *token_handler.get_token() != Token::Semi {
@@ -287,15 +298,15 @@ fn deref_assignment(
             token_handler.next_token();
             let post_mul = TokenNode::new(
                 NodeType::Mul,
-                Some(Rc::new(RefCell::new(Box::new([
+                Some(Box::new([
                     arithmetic_expression(token_handler)?,
                     TokenNode::new(NodeType::NumLiteral(8), None, token_handler.line()),
-                ])))),
+                ])),
                 token_handler.line(),
             );
             let post_mul = TokenNode::new(
                 NodeType::Sub,
-                Some(Rc::new(RefCell::new(Box::new([
+                Some(Box::new([
                     TokenNode::new(
                         NodeType::Id(
                             name.expect("Array assignments must have ids with names")
@@ -305,7 +316,7 @@ fn deref_assignment(
                         token_handler.line(),
                     ),
                     post_mul,
-                ])))),
+                ])),
                 token_handler.line(),
             );
             if *token_handler.get_token() != Token::CSquare {
@@ -324,9 +335,7 @@ fn deref_assignment(
     token_handler.next_token();
     let token = TokenNode::new(
         NodeType::DerefAssignment(assignment_tok, Box::new(deref_token)),
-        Some(Rc::new(RefCell::new(Box::new([arithmetic_expression(
-            token_handler,
-        )?])))),
+        Some(Box::new([arithmetic_expression(token_handler)?])),
         token_handler.line(),
     );
     if *token_handler.get_token() != Token::Semi {
@@ -344,16 +353,14 @@ fn while_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr>
     token_handler.next_token();
     let scope_node = TokenNode::new(
         NodeType::Scope(None),
-        Some(Rc::new(RefCell::new(
-            scope(token_handler, ScopeType::While)?.into_boxed_slice(),
-        ))),
+        Some(scope(token_handler, ScopeType::While)?.into_boxed_slice()),
         token_handler.line(),
     );
 
     let while_children = Box::new([condition_node, scope_node]);
     Ok(TokenNode::new(
         NodeType::While,
-        Some(Rc::new(RefCell::new(while_children))),
+        Some(while_children),
         token_handler.line(),
     ))
 }
@@ -366,16 +373,14 @@ fn if_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
     token_handler.next_token();
     let scope_node = TokenNode::new(
         NodeType::Scope(None),
-        Some(Rc::new(RefCell::new(
-            scope(token_handler, ScopeType::If)?.into_boxed_slice(),
-        ))),
+        Some(scope(token_handler, ScopeType::If)?.into_boxed_slice()),
         token_handler.line(),
     );
 
     let if_children = Box::new([condition_node, scope_node]);
     Ok(TokenNode::new(
         NodeType::If,
-        Some(Rc::new(RefCell::new(if_children))),
+        Some(if_children),
         token_handler.line(),
     ))
 }
@@ -413,16 +418,14 @@ fn function_declare_statement(
 
     let scope_node = TokenNode::new(
         NodeType::Scope(None),
-        Some(Rc::new(RefCell::new(
-            scope(token_handler, ScopeType::Function(t.clone()))?.into_boxed_slice(),
-        ))),
+        Some(scope(token_handler, ScopeType::Function(t.clone()))?.into_boxed_slice()),
         token_handler.line(),
     );
     args_scope.push(scope_node);
 
     let function_node = TokenNode::new(
         NodeType::FunctionDeclaration(id.clone(), t.clone()),
-        Some(Rc::new(RefCell::new(args_scope.into_boxed_slice()))),
+        Some(args_scope.into_boxed_slice()),
         token_handler.line(),
     );
 
@@ -469,7 +472,7 @@ fn function_call(token_handler: &mut TokenHandler, name: String) -> Result<Token
     }
     let function_call_node = TokenNode::new(
         NodeType::FunctionCall(name),
-        Some(Rc::new(RefCell::new(args.into_boxed_slice()))),
+        Some(args.into_boxed_slice()),
         token_handler.line(),
     );
 
@@ -480,7 +483,6 @@ fn id_statement(token_handler: &mut TokenHandler, id: String) -> Result<TokenNod
     println!("id statement token: {:?}", token_handler.get_token());
     match token_handler.peek(1) {
         Token::OParen => function_call_statement(token_handler, id),
-        Token::Dot => struct_field_assignment(token_handler, id),
         _ => assignment(token_handler, id),
     }
 }
@@ -572,7 +574,7 @@ fn array_declare_statement(
 
     Ok(TokenNode::new(
         NodeType::ArrayDeclaration(id, t, alloc_count),
-        Some(Rc::new(RefCell::new(items.into_boxed_slice()))),
+        Some(items.into_boxed_slice()),
         token_handler.line(),
     ))
 }
@@ -622,7 +624,7 @@ fn condition_expr(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> 
         };
         left = TokenNode::new(
             NodeType::from_token(&curr).unwrap(),
-            Some(Rc::new(RefCell::new(Box::new([left, right])))),
+            Some(Box::new([left, right])),
             token_handler.line(),
         );
         curr = token_handler.get_token().clone();
@@ -641,7 +643,7 @@ fn condition_term(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> 
         println!("Right factor: {:?}", right);
         left = TokenNode::new(
             NodeType::from_token(&curr).unwrap(),
-            Some(Rc::new(RefCell::new(Box::new([left, right])))),
+            Some(Box::new([left, right])),
             token_handler.line(),
         );
         curr = token_handler.get_token().clone();
@@ -736,7 +738,7 @@ fn for_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
 
     Ok(TokenNode::new(
         NodeType::For,
-        Some(Rc::new(RefCell::new(children))),
+        Some(children),
         token_handler.line(),
     ))
 }
@@ -752,7 +754,7 @@ pub fn assert_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, R
 
     let node = TokenNode::new(
         NodeType::Assert,
-        Some(Rc::new(RefCell::new(Box::new([condition_node])))),
+        Some(Box::new([condition_node])),
         token_handler.line(),
     );
 
@@ -776,7 +778,7 @@ pub fn putchar_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, 
     let expr_node = arithmetic_expression(token_handler)?;
     let putchar_node = TokenNode::new(
         NodeType::PutChar,
-        Some(Rc::new(RefCell::new(Box::new([expr_node])))),
+        Some(Box::new([expr_node])),
         token_handler.line(),
     );
     println!("putchar token after: {:?}", token_handler.get_token());
@@ -809,7 +811,7 @@ pub fn return_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, R
     }
     let return_token = TokenNode::new(
         NodeType::Return,
-        Some(Rc::new(RefCell::new(Box::new([expr_node])))),
+        Some(Box::new([expr_node])),
         token_handler.line(),
     );
     return Ok(return_token);
@@ -932,21 +934,12 @@ pub fn struct_definition(
 
 pub fn struct_field_assignment(
     token_handler: &mut TokenHandler,
-    var_id: String,
+    struct_var_id: String,
+    field_id: String,
 ) -> Result<TokenNode, RhErr> {
-    // NOTE The dot is found with a peek(), so we have to the Dot token, then past it
-    token_handler.next_token();
-    token_handler.next_token();
-    println!("token: {:?}", token_handler.get_token());
-    let field_id = match token_handler.get_token() {
-        Token::Id(id) => id,
-        _ => return Err(token_handler.new_err(ET::ExpectedId)),
-    }
-    .clone();
-
     token_handler.next_token();
     let assignment_op = match AssignmentOpType::from_token(token_handler.get_token()) {
-        Ok(op) if op != AssignmentOpType::Eq => return Err(token_handler.new_err(ET::ExpectedEq)),
+        // Ok(op) if op != AssignmentOpType::Eq => return Err(token_handler.new_err(ET::ExpectedEq)),
         Ok(op) => op,
         Err(_) => return Err(token_handler.new_err(ET::ExpectedAssignment)),
     };
@@ -960,7 +953,7 @@ pub fn struct_field_assignment(
 
     Ok(TokenNode::new(
         NodeType::StructFieldAssignment {
-            var_id,
+            var_id: struct_var_id,
             field_id,
             assignment_op,
             expr,

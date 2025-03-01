@@ -170,7 +170,7 @@ fn struct_with_ptr() {
         int main() {
             int t = 4;
             struct Point l = { &t, 5 };
-            *l.t = 5;
+            *l.ptr = 5;
         }",
         "struct_with_ptr",
     );

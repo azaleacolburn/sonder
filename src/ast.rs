@@ -68,10 +68,15 @@ pub enum NodeType {
         exprs: Vec<TokenNode>,
     }, // expr nodes
     StructFieldAssignment {
+        // TODO Check if we still need
         var_id: String,
         field_id: String,
         assignment_op: AssignmentOpType,
         expr: Box<TokenNode>,
+    },
+    StructFieldId {
+        var_id: String,
+        field_id: String,
     },
 }
 
@@ -212,7 +217,7 @@ impl NodeType {
 pub struct TokenNode {
     pub token: NodeType,
     pub line: usize,
-    pub children: Option<Rc<RefCell<Box<[TokenNode]>>>>,
+    pub children: Option<Box<[TokenNode]>>,
 }
 
 impl std::fmt::Display for TokenNode {
@@ -222,11 +227,7 @@ impl std::fmt::Display for TokenNode {
 }
 
 impl TokenNode {
-    pub fn new(
-        token: NodeType,
-        children: Option<Rc<RefCell<Box<[TokenNode]>>>>,
-        line: usize,
-    ) -> TokenNode {
+    pub fn new(token: NodeType, children: Option<Box<[TokenNode]>>, line: usize) -> TokenNode {
         TokenNode {
             token,
             line,
@@ -239,7 +240,7 @@ impl TokenNode {
         println!("{:?}", self);
         *n += 1;
         if let Some(children) = self.children.as_ref() {
-            children.borrow().iter().for_each(|node| {
+            children.iter().for_each(|node| {
                 node.print(n);
             });
         }

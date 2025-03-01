@@ -213,8 +213,8 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             field_definitions.iter().for_each(|field| {
                 let mut field_type = match &field.c_type {
                     CType::Void => "()",
+                    CType::Int => "i32",
                     CType::Char => "u8",
-                    CType::Int => "u16",
                     CType::Struct(id) => id.as_str(),
                 }
                 .to_string();

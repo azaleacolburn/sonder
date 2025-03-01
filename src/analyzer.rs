@@ -10,7 +10,7 @@ use crate::{
 pub fn determine_var_mutability<'a>(
     root: &'a Node,
     ctx: &mut AnalysisContext,
-    parent_children: Rc<RefCell<Box<[Node]>>>,
+    parent_children: Box<[Node]>,
     root_index: usize,
 ) {
     // NOTE Let nodes handle their own children
@@ -20,7 +20,7 @@ pub fn determine_var_mutability<'a>(
     //
     //
     if let Some(children) = root.children.as_ref() {
-        children.borrow().iter().enumerate().for_each(|(i, node)| {
+        children.iter().enumerate().for_each(|(i, node)| {
             // WARNING This assumes that
             // an rc can be cloned while the refcell is borrowed
 
@@ -55,9 +55,12 @@ pub fn determine_var_mutability<'a>(
 
             let v = VarData::new(c_type.clone(), false, instanceof_struct, None);
 
+            // WARNING Only the borrowed var should be in the rvalue
             let rvalue_ids = find_ids(expr);
+            assert_eq!(rvalue_ids.len(), 1);
+
             ctx.declaration(id, v);
-            ctx.ptr_assignment(&borrowed, id, rvalue_ids, root.line);
+            ctx.ptr_assignment(&borrowed, id, root.line);
         }
         NodeType::DerefAssignment(_, l_side) => {
             // determine_var_mutability(&l_side, ctx, parent_children, root_index);
@@ -108,10 +111,9 @@ pub fn determine_var_mutability<'a>(
         NodeType::DeRef(adr) => {
             let ids = find_ids(&adr);
 
-            // Panics if more than one id derefed
-            if ids.len() != 1 {
-                panic!("more than one or 0 ids derefed");
-            }
+            // TODO Make raw ptr instead
+            assert_eq!(ids.len(), 1, "more than one or 0 ids derefed");
+
             let id = ids[0].clone();
             ctx.mut_var(id, |var_data| var_data.new_usage(root.line));
         }
@@ -140,16 +142,19 @@ pub fn determine_var_mutability<'a>(
             struct_id,
             exprs,
         } => {
-            let struct_data = ctx.get_struct(struct_id).clone(); // ugh
+            let struct_data = ctx.get_struct(struct_id).clone();
 
             assert_eq!(exprs.len(), struct_data.field_definitions.len());
+
+            // NOTE Insert field variables
             struct_data
                 .field_definitions
                 .iter()
                 .enumerate()
                 .for_each(|(i, field)| {
+                    let var_id = format!("{}.{}", var_id, field.id);
                     ctx.declaration(
-                        format!("{}.{}", var_id, field.id),
+                        var_id.clone(),
                         VarData::new(
                             struct_data.field_definitions[i].c_type.clone(),
                             false,
@@ -159,8 +164,21 @@ pub fn determine_var_mutability<'a>(
                                 field_id: field.id.clone(),
                             }),
                         ),
-                    )
+                    );
+                    match field.ptr_type.len() {
+                        n if n >= 1 => {
+                            let borrowed_ids = find_ids(&exprs[i]);
+                            // TODO Raw pointer
+                            assert_eq!(borrowed_ids.len(), 1);
+                            let borrowed = borrowed_ids[0].as_str();
+
+                            ctx.ptr_assignment(borrowed, var_id.as_str(), root.line)
+                        }
+
+                        _ => {}
+                    };
                 });
+            // NOTE Insert struct variable
             let var_data = VarData::new(
                 CType::Struct(struct_id.clone()),
                 false,
@@ -196,7 +214,7 @@ pub fn determine_var_mutability<'a>(
 /// Finds Adrs taken in an expression
 pub fn find_addresses(root: &Node) -> Vec<String> {
     let mut vec: Vec<String> = match root.children.as_ref() {
-        Some(children) => children.borrow().iter().flat_map(find_addresses).collect(),
+        Some(children) => children.iter().flat_map(find_addresses).collect(),
         None => vec![],
     };
     match &root.token {
@@ -210,7 +228,7 @@ pub fn count_derefs(root: &Node) -> u8 {
     let mut count = 0;
     let children = root.children.as_ref();
     if let Some(children) = children {
-        count += children.borrow().iter().map(count_derefs).sum::<u8>();
+        count += children.iter().map(count_derefs).sum::<u8>();
     }
     match &root.token {
         NodeType::DeRef(expr) => count += count_derefs(&expr) + 1,
@@ -220,10 +238,9 @@ pub fn count_derefs(root: &Node) -> u8 {
 }
 
 pub fn find_type_ids<'a>(root: &'a Node) -> Vec<(String, CType)> {
-    let mut type_ids: Vec<(String, CType)> = if let Some(children) = root.children.as_ref() {
-        children.borrow().iter().flat_map(find_type_ids).collect()
-    } else {
-        vec![]
+    let mut type_ids: Vec<(String, CType)> = match root.children.as_ref() {
+        Some(children) => children.iter().flat_map(find_type_ids).collect(),
+        None => vec![],
     };
     match &root.token {
         NodeType::Declaration(id, c_type, _size) => type_ids.push((id.clone(), c_type.clone())),
@@ -232,14 +249,15 @@ pub fn find_type_ids<'a>(root: &'a Node) -> Vec<(String, CType)> {
     type_ids
 }
 
-pub fn find_ids<'a>(root: &'a Node) -> Vec<String> {
+pub fn find_ids(root: &Node) -> Vec<String> {
     let mut ids = match root.children.as_ref() {
-        Some(children) => children.borrow().iter().flat_map(find_ids).collect(),
+        Some(children) => children.iter().flat_map(find_ids).collect(),
         None => vec![],
     };
 
     match &root.token {
         NodeType::Id(id) => ids.push(id.to_string()),
+        NodeType::StructFieldId { var_id, field_id } => ids.push(format!("{var_id}.{field_id}")),
         NodeType::Adr(id) => ids.push(id.to_string()),
         NodeType::DeRef(node) => ids.append(&mut find_ids(&*node)),
         _ => {}
@@ -251,11 +269,7 @@ pub fn find_ids<'a>(root: &'a Node) -> Vec<String> {
 // An empty vector represents a non ptr
 pub fn count_declaration_ref(root: &Node) -> Vec<ReferenceType> {
     let mut ptr_types = match root.children.as_ref() {
-        Some(children) => children
-            .borrow()
-            .iter()
-            .flat_map(count_declaration_ref)
-            .collect(),
+        Some(children) => children.iter().flat_map(count_declaration_ref).collect(),
         None => vec![],
     };
 
@@ -273,33 +287,32 @@ pub fn count_declaration_ref(root: &Node) -> Vec<ReferenceType> {
 }
 
 pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &Node) {
-    println!("\nAssignment root:");
-    root.print(&mut 0);
-    println!("\n");
     let rvalue_ids = find_ids(root);
     let lvalue = ctx.get_var(id);
-    if lvalue.is_ptr() {
-        let points_to =
-            &ptr_from_expression(root, ctx, root.line).expect("Ptr doesn't point to anything");
-        ctx.ptr_assignment(points_to, id, rvalue_ids, root.line);
-    } else {
-        ctx.assignment(id, rvalue_ids, root.line);
+    match lvalue.is_ptr() {
+        true => {
+            let points_to =
+                &ptr_from_expression(root, ctx, root.line).expect("Ptr doesn't point to anything");
+
+            // WARNING The rvalue should only be the adr/ptr
+            assert_eq!(rvalue_ids.len(), 1);
+            ctx.ptr_assignment(points_to, id, root.line);
+        }
+        false => ctx.assignment(id, rvalue_ids, root.line),
     }
 }
 
 // All Refs are Adr
 fn ptr_type_chain(rvalue_ptrs: &Vec<String>, ctx: &mut AnalysisContext) -> Vec<ReferenceType> {
-    if rvalue_ptrs.len() == 1 {
-        // NOTE  As we go, we replace certain elements in this vector with `PtrType::MutRef`
-        ctx.construct_ptr_chain_downwards(rvalue_ptrs[0].clone(), 0, u8::MAX)
+    match rvalue_ptrs.len() {
+        1 => ctx
+            .construct_ptr_chain_downwards(rvalue_ptrs[0].clone(), 0, u8::MAX)
             .iter()
             .map(|_| ReferenceType::ConstBorrowed)
-            .collect()
-    } else if rvalue_ptrs.len() > 1 {
-        // Ptr arithmatic outside the context of arrays is automatically a raw ptr
-        vec![ReferenceType::ConstPtr]
-    } else {
-        vec![ReferenceType::ConstBorrowed]
+            .collect(),
+        // NOTE Ptr arithmatic outside the context of arrays is automatically a raw ptr
+        n if n > 1 => vec![ReferenceType::ConstPtr],
+        _ => vec![ReferenceType::ConstBorrowed],
     }
 }
 
@@ -323,10 +336,9 @@ fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext, line: LineNumber)
 
     if let Some(children) = &root.children {
         // NOTE adrs is the pointed-to variable names
-        let b = children.borrow();
-        let children_adrs = b.iter().flat_map(find_addresses);
+        let children_adrs = children.iter().flat_map(find_addresses);
 
-        ids.append(&mut find_ids(&children.borrow()[0]));
+        ids.append(&mut find_ids(&children[0]));
         adrs.extend(children_adrs);
     };
 

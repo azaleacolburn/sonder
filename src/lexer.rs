@@ -440,9 +440,10 @@ pub fn string_to_tokens(
                     curr.push(chars[j]);
                 }
 
-                i += curr.len() - 1;
+                i += curr.len();
                 println!("curr: {}\npost {}", curr, chars[i]);
                 if chars[i] == '.' {
+                    i += 1;
                     let struct_id = curr.clone();
                     curr = String::new();
 
@@ -453,15 +454,18 @@ pub fn string_to_tokens(
 
                         curr.push(chars[j]);
                     }
+                    i += curr.len();
 
                     let field_id = curr.clone();
                     ret.push(Token::StructFieldId {
                         struct_id,
                         field_id,
                     });
+                } else {
+                    ret.push(Token::Id(curr.clone()));
                 }
-                ret.push(Token::Id(curr.clone()));
                 curr = String::from("");
+                i -= 1; // NOTE Next, i += 1 happens
             }
         }
         i += 1;
