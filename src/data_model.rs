@@ -63,6 +63,12 @@ impl VarData {
         }
     }
 
+    pub fn reference_to_var(&self, var_id: &str) -> Option<&Rc<RefCell<Reference>>> {
+        self.points_to
+            .iter()
+            .find(|reference| reference.borrow().ref_to == var_id)
+    }
+
     pub fn new_usage(&mut self, line: LineNumber) {
         // TODO Figure out how we're going to handle referring back to usages
         let usage = Usage::new(line, UsageType::RValue);
@@ -86,7 +92,7 @@ pub struct Usage {
     usage_type: UsageType,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UsageType {
     FunctionArg,
     RValue,
@@ -100,6 +106,10 @@ impl Usage {
 
     pub fn get_line_number(&self) -> LineNumber {
         self.line
+    }
+
+    pub fn get_usage_type(&self) -> &UsageType {
+        &self.usage_type
     }
 }
 
