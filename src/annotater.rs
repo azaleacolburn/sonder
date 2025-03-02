@@ -272,7 +272,7 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
                 imports.push(String::from("use std::cell::RefCell;"))
             }
             if rcclone {
-                imports.push(String::from("use std::{rc::Rc, cell::RefCell};"))
+                imports.push(String::from("use std::{cell::RefCell, rc::Rc};"))
             }
 
             AnnotatedNodeT::Program { imports }

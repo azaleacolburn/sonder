@@ -3,7 +3,9 @@ use std::{cell::RefCell, rc::Rc};
 use crate::{
     analysis_ctx::AnalysisContext,
     ast::{NodeType, TokenNode as Node},
-    data_model::{FieldDefinition, FieldInfo, LineNumber, ReferenceType, StructData, VarData},
+    data_model::{
+        FieldDefinition, FieldInfo, LineNumber, ReferenceType, StructData, UsageType, VarData,
+    },
     lexer::CType,
 };
 
@@ -85,7 +87,7 @@ pub fn determine_var_mutability<'a>(
         }
         NodeType::Id(id) => {
             ctx.mut_var(id.to_string(), |var_data| {
-                var_data.new_usage(root.line);
+                var_data.new_usage(root.line, UsageType::RValue);
             });
         }
         NodeType::Adr(id) => {
@@ -106,7 +108,7 @@ pub fn determine_var_mutability<'a>(
             // ctx.new_adr(adr_data, None);
             // println!("NEW BORROW: {}", id);
             // ctx.mut_var(id.to_string(), |var_data| var_data.new_borrow(root.line));
-            ctx.new_usage(id, root.line);
+            ctx.new_usage(id, root.line, UsageType::RValue);
         }
         NodeType::DeRef(adr) => {
             let ids = find_ids(&adr);
@@ -115,7 +117,9 @@ pub fn determine_var_mutability<'a>(
             assert_eq!(ids.len(), 1, "more than one or 0 ids derefed");
 
             let id = ids[0].clone();
-            ctx.mut_var(id, |var_data| var_data.new_usage(root.line));
+            ctx.mut_var(id, |var_data| {
+                var_data.new_usage(root.line, UsageType::RValue)
+            });
         }
         NodeType::StructDefinition {
             struct_id,

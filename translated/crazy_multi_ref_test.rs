@@ -1,4 +1,4 @@
-use std::{rc::Rc, cell::RefCell};
+use std::{cell::RefCell, rc::Rc};
 fn main() -> () {
 	let n: Rc<RefCell<i32>> = Rc::new(RefCell::new(0));
 	let mut g: Rc<RefCell<i32>> = n.clone();

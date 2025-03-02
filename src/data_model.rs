@@ -69,9 +69,9 @@ impl VarData {
             .find(|reference| reference.borrow().ref_to == var_id)
     }
 
-    pub fn new_usage(&mut self, line: LineNumber) {
+    pub fn new_usage(&mut self, line: LineNumber, t: UsageType) {
         // TODO Figure out how we're going to handle referring back to usages
-        let usage = Usage::new(line, UsageType::RValue);
+        let usage = Usage::new(line, t);
         self.usages.push(usage);
 
         if let Some(reference) = self.current_reference_held() {
@@ -173,9 +173,14 @@ impl Reference {
         return points_to;
     }
 
-    // Non-inclusive on either end
+    // Inclusive on both ends
     pub fn within_current_range(&self, line: usize) -> bool {
         self.start <= line && self.end >= line
+    }
+
+    // Non-inclusive on start, inclusive on end
+    pub fn contained_within_current_range(&self, line: usize) -> bool {
+        self.start < line && self.end >= line
     }
 
     pub fn set_mut(&mut self) {

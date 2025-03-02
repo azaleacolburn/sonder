@@ -1,7 +1,7 @@
 use itertools::Itertools;
 
 use crate::data_model::{
-    FieldDefinition, LineNumber, Reference, ReferenceType, StructData, VarData,
+    FieldDefinition, LineNumber, Reference, ReferenceType, StructData, UsageType, VarData,
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -25,29 +25,28 @@ impl AnalysisContext {
         self.variables.insert(id.to_string(), data);
     }
 
-    pub fn new_usage(&mut self, id: &str, line: LineNumber) {
+    pub fn new_usage(&mut self, id: &str, line: LineNumber, t: UsageType) {
         let initial_var = self.variables.get_mut(id).expect("Var not in ctx");
-        initial_var.new_usage(line);
+        initial_var.new_usage(line, t);
     }
 
     pub fn assignment(&mut self, assigned_to: &str, rvalue_ids: Vec<String>, line: LineNumber) {
-        println!("rvalues for {}: {:?}", assigned_to, rvalue_ids);
         rvalue_ids.iter().for_each(|id| {
             let var_data = self.get_var_mut(id);
-            var_data.new_usage(line);
+            var_data.new_usage(line, UsageType::RValue);
         });
 
         let l_value_data = self.get_var(assigned_to);
         if l_value_data.fieldof_struct.is_some() {
             let struct_var_id = assigned_to.split(".").nth(0).unwrap().to_string();
             self.mut_var(struct_var_id, |struct_var_data| {
-                struct_var_data.new_usage(line);
+                struct_var_data.new_usage(line, UsageType::LValue);
             })
         }
 
         self.mut_var(assigned_to.to_string(), |l_value| {
             l_value.is_mut = true;
-            l_value.new_usage(line);
+            l_value.new_usage(line, UsageType::LValue);
         });
     }
 
@@ -57,7 +56,6 @@ impl AnalysisContext {
 
         let new_reference = Rc::new(RefCell::new(Reference::new(borrowed, assigned_to, line)));
 
-        println!("PTR_ASSIGNMENT: {assigned_to}");
         let l_value = self.variables.get_mut(assigned_to).expect("Var not in ctx");
         l_value.points_to.push(new_reference.clone());
         l_value.is_mut = true;
@@ -89,14 +87,14 @@ impl AnalysisContext {
             });
             let struct_var_id = top_ptr.split(".").nth(0).unwrap();
             self.mut_var(struct_var_id.to_string(), |struct_var_data| {
-                struct_var_data.new_usage(line);
+                struct_var_data.new_usage(line, UsageType::LValue);
             })
         }
 
         self.mut_var(top_ptr, |ptr_var| {
             assert!(ptr_var.is_ptr());
 
-            ptr_var.new_usage(line);
+            ptr_var.new_usage(line, UsageType::LValue);
             ptr_var
                 .current_reference_held()
                 .unwrap()

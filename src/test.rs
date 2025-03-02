@@ -60,6 +60,29 @@ fn value_overlap() {
     );
 }
 
+/// This test should be solvable by rearragement
+/// Because within the reference lifetime the first usage of g is after the last usage of t
+///
+/// ```rust
+/// fn main() -> () {
+///     let t: i32 = 0;
+///     t = 1;
+///     let g: &i32 = &t;
+///     let h = *g;
+/// }
+#[test]
+fn value_const_ptr_overlap() {
+    validate(
+        "int main() {
+            int t = 0;
+            int* g = &t;
+            t = 1;
+            int h = *g;
+        }",
+        "value_const_ptr_overlap",
+    );
+}
+
 /// Invalid Rust code if directly translated
 /// Should be caught by the checker and a safe solution should be applied
 ///

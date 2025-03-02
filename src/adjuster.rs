@@ -1,6 +1,8 @@
 use crate::{
-    analysis_ctx::AnalysisContext, ast::TokenNode as Node, checker::BorrowError,
-    data_model::Reference,
+    analysis_ctx::AnalysisContext,
+    ast::TokenNode as Node,
+    checker::BorrowError,
+    data_model::{Reference, Usage, UsageType},
 };
 
 pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root: &mut Node) {
@@ -49,11 +51,10 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
             } => {
                 // create_clone(value_id, ptr_id, ctx, root, value_instance_nodes.clone());
             }
-            BorrowError::ValueConstOverlap {
-                ptr_id: _,
-                value_id,
-            } => {
-                set_ptr_rc(value_id, ctx)
+            BorrowError::ValueConstOverlap { ptr_id, value_id } => {
+                if !check_line_rearrangement_value_constptr_overlap(value_id, ptr_id, root, ctx) {
+                    set_ptr_rc(value_id, ctx);
+                }
                 // clone_solution(ptr_id, value_id, ctx, root)
             }
             BorrowError::ValueConstSameLine {
@@ -69,21 +70,65 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
     });
 }
 
+fn rearrange_lines(
+    value_id: &str,
+    ptr_id: &str,
+    root: &mut Node,
+    ctx: &mut AnalysisContext,
+    last_var_usage: Usage,
+    first_ptr_usage: Usage,
+) {
+}
+
 /// Checks if a simple rearrangement of lines could fix = the borrow error
 ///
 ///
 /// # Important
 /// A value can be used behind a immutable reference if it's an rvalue that implements copy, which
 /// every non-struct, non-ptr c variable does
-fn check_line_rearrangement_value_constref_overlap(
+fn check_line_rearrangement_value_constptr_overlap(
     value_id: &str,
     ptr_id: &str,
     root: &mut Node,
     ctx: &mut AnalysisContext,
-) {
+) -> bool {
     let var_data = ctx.get_var(value_id);
     let ptr_data = ctx.get_var(ptr_id);
     let reference = ptr_data.reference_to_var(value_id).unwrap().clone();
+
+    // This means it's modified
+    let var_mut_usages = var_data
+        .usages
+        .iter()
+        .filter(|usage| *usage.get_usage_type() == UsageType::LValue);
+
+    let last_var_usage = var_mut_usages.last().unwrap();
+    let first_ptr_usage = ptr_data
+        .usages
+        .iter()
+        .filter(|usage| {
+            reference
+                .borrow()
+                .contained_within_current_range(usage.get_line_number())
+        })
+        .nth(0)
+        .expect("Ptr never used within reference (meaning it lasts a single)")
+        .clone();
+
+    match last_var_usage.get_line_number() < first_ptr_usage.get_line_number() {
+        true => {
+            rearrange_lines(
+                value_id,
+                ptr_id,
+                root,
+                ctx,
+                last_var_usage.clone(),
+                first_ptr_usage,
+            );
+            true
+        }
+        false => false,
+    }
 }
 
 fn set_ptr_rc(value_id: &str, ctx: &mut AnalysisContext) {
