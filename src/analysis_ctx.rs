@@ -37,12 +37,18 @@ impl AnalysisContext {
             var_data.new_usage(line);
         });
 
-        self.variables
-            .entry(assigned_to.to_string())
-            .and_modify(|l_value| {
-                l_value.is_mut = true;
-                l_value.new_usage(line);
-            });
+        let l_value_data = self.get_var(assigned_to);
+        if l_value_data.fieldof_struct.is_some() {
+            let struct_var_id = assigned_to.split(".").nth(0).unwrap().to_string();
+            self.mut_var(struct_var_id, |struct_var_data| {
+                struct_var_data.new_usage(line);
+            })
+        }
+
+        self.mut_var(assigned_to.to_string(), |l_value| {
+            l_value.is_mut = true;
+            l_value.new_usage(line);
+        });
     }
 
     pub fn ptr_assignment(&mut self, borrowed: &str, assigned_to: &str, line: LineNumber) {
@@ -80,13 +86,16 @@ impl AnalysisContext {
                         .filter(|ptr_type| **ptr_type == ReferenceType::ConstBorrowed)
                         .for_each(|ptr_type| *ptr_type = ReferenceType::MutBorrowed)
                 });
+            });
+            let struct_var_id = top_ptr.split(".").nth(0).unwrap();
+            self.mut_var(struct_var_id.to_string(), |struct_var_data| {
+                struct_var_data.new_usage(line);
             })
         }
 
         self.mut_var(top_ptr, |ptr_var| {
             assert!(ptr_var.is_ptr());
 
-            ptr_var.is_mut = true; // TODO Figure out way to reverse this setting if it turns out to be an rc
             ptr_var.new_usage(line);
             ptr_var
                 .current_reference_held()

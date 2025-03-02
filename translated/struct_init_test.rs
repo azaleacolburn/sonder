@@ -3,5 +3,5 @@ struct Test {
 	j: i32,
 }
 fn main() -> () {
-	let  my_test = Test { m: 0,j: 2,};
+	let _my_test = Test { m: 0,j: 2,};
 }

@@ -15,7 +15,12 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             t,
             adr,
             rc: _,
+            is_used,
         } => {
+            let unused = match is_used {
+                true => "",
+                false => "_",
+            };
             let rust_t = match &t {
                 CType::Void => "()",
                 CType::Int => "i32",
@@ -38,7 +43,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 }
             };
 
-            format!("let {mut_binding}{id}: {rust_ref_type} = {rust_reference};")
+            format!("let {mut_binding}{unused}{id}: {rust_ref_type} = {rust_reference};")
         }
         // = &mut {rust_adr}
         // = &{rust_adr}
@@ -81,7 +86,17 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
 
             format!("{l_side} {op} {expr_child};")
         }
-        AnnotatedNodeT::Declaration { id, is_mut, t, rc } => {
+        AnnotatedNodeT::Declaration {
+            id,
+            is_mut,
+            t,
+            rc,
+            is_used,
+        } => {
+            let unused = match is_used {
+                true => "",
+                false => "_",
+            };
             let rust_t = match &t {
                 CType::Void => "()",
                 CType::Int => "i32",
@@ -98,11 +113,11 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
 
                 if *rc {
                     format!(
-                        "let {id}: Rc<RefCell<{rust_t}>> = Rc::new(RefCell::new({expr_child}));"
+                        "let {unused}{id}: Rc<RefCell<{rust_t}>> = Rc::new(RefCell::new({expr_child}));"
                     )
                 } else {
                     let binding = if *is_mut { "mut " } else { "" };
-                    format!("let {binding}{id}: {rust_t} = {expr_child};")
+                    format!("let {binding}{unused}{id}: {rust_t} = {expr_child};")
                 }
             } else {
                 // NOTE:
@@ -133,13 +148,17 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             struct_id,
             is_mut,
             fields,
-            has_ref: _,
+            is_used,
         } => {
+            let unused = match is_used {
+                true => "",
+                false => "_",
+            };
             let mut_binding = match is_mut {
-                true => "mut",
+                true => "mut ",
                 false => "",
             };
-            let mut ret = format!("let {mut_binding} {var_id} = {struct_id} {{ ");
+            let mut ret = format!("let {mut_binding}{unused}{var_id} = {struct_id} {{ ");
             fields.iter().for_each(|(field, expr)| {
                 ret.push_str(&convert_field_literal(expr, field.clone()))
             });

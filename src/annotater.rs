@@ -67,6 +67,7 @@ pub enum AnnotatedNodeT {
         is_mut: bool,
         t: CType,
         rc: bool,
+        is_used: bool,
     },
     PtrDeclaration {
         id: String,
@@ -77,6 +78,7 @@ pub enum AnnotatedNodeT {
         ref_type: Vec<ReferenceType>,
         // Refers to it being an rc_ptr itself, not a
         rc: bool,
+        is_used: bool,
     },
     Asm(String),
     // This is handled by the ptr declaration for now
@@ -92,6 +94,7 @@ pub enum AnnotatedNodeT {
         id: String,
         t: CType,
         size: usize,
+        is_used: bool,
     },
     FunctionDeclaration {
         id: String,
@@ -110,7 +113,7 @@ pub enum AnnotatedNodeT {
         struct_id: String,
         is_mut: bool,
         fields: Vec<(FieldDefinition, AnnotatedNode)>,
-        has_ref: bool,
+        is_used: bool,
     },
     StructFieldAssignment {
         var_id: String,
@@ -141,12 +144,14 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
     let token = match &root.token {
         NodeType::Declaration(id, t, _) => {
             let declaration_info = ctx.get_var(id);
+            let is_used = declaration_info.usages.len() > 0;
 
             AnnotatedNodeT::Declaration {
                 id: id.to_string(),
                 is_mut: declaration_info.is_mut,
                 t: t.clone(),
                 rc: declaration_info.rc,
+                is_used,
             }
         }
         NodeType::PtrDeclaration(id, t, adr) => {
@@ -164,6 +169,8 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
                 .map(Reference::get_reference_type)
                 .collect();
 
+            let is_used = ptr_var_info.usages.len() > 0;
+
             AnnotatedNodeT::PtrDeclaration {
                 id: id.to_string(),
                 is_mut: ptr_var_info.is_mut,
@@ -172,6 +179,7 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
                 ref_type,
                 adr: annotated_adr,
                 rc: ptr_var_info.rc,
+                is_used,
             }
         }
         NodeType::Adr(id) => {
@@ -309,13 +317,15 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
                 .enumerate()
                 .map(|(i, node)| (field_definitions[i].clone(), annotate_ast(&node, ctx)))
                 .collect();
-            let has_ref = fields.iter().any(|field| field.0.ptr_type.len() > 0);
+
+            let is_used = var_data.usages.len() > 0;
+
             AnnotatedNodeT::StructDeclaration {
                 var_id: var_id.clone(),
                 struct_id: struct_id.clone(),
                 is_mut: var_data.is_mut,
                 fields,
-                has_ref,
+                is_used,
             }
         }
         NodeType::StructFieldAssignment {
