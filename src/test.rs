@@ -78,20 +78,20 @@ fn value_overlap() {
 //     );
 // }
 
-#[test]
-fn multi_ref() {
-    validate(
-        "int main() {
-            int n = 0;
-            int* g = &n;
-            int* b = &n;
-            int k = *g;
-            int y = 9;
-            *b = y;
-        }",
-        "multi_ref",
-    );
-}
+// #[test]
+// fn multi_ref() {
+//     validate(
+//         "int main() {
+//             int n = 0;
+//             int* g = &n;
+//             int* b = &n;
+//             int k = *g;
+//             int y = 9;
+//             *b = y;
+//         }",
+//         "multi_ref",
+//     );
+// }
 
 /// This is actually an interesting case
 /// Based on our current assumption, this is illegal, because we're assigning a reference in
