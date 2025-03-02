@@ -176,6 +176,26 @@ fn struct_with_ptr() {
     );
 }
 
+#[test]
+fn struct_with_ptr_two() {
+    validate(
+        "struct Point {
+            int* ptr;
+            int* ptr2;
+            int c;
+        };
+
+        int main() {
+            int t = 4;
+            int g = 8;
+            struct Point l = { &t, &g, 5 };
+            *l.ptr = 5;
+            *l.ptr2 = 9;
+        }",
+        "struct_with_ptr_two",
+    );
+}
+
 fn validate(c_code: &str, test_name: &str) {
     let ast = parse_c(c_code.to_string());
     let rust_code = convert_to_rust_code(ast);

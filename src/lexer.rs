@@ -433,7 +433,7 @@ pub fn string_to_tokens(
                 );
 
                 for j in i..chars.len() {
-                    if !chars[j].is_alphabetic() && chars[j] != '_' {
+                    if !chars[j].is_alphanumeric() && chars[j] != '_' {
                         break;
                     }
 
@@ -448,7 +448,7 @@ pub fn string_to_tokens(
                     curr = String::new();
 
                     for j in i..chars.len() {
-                        if !chars[j].is_alphabetic() && chars[j] != '_' {
+                        if !chars[j].is_alphanumeric() && chars[j] != '_' {
                             break;
                         }
 
