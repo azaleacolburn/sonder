@@ -1,6 +1,5 @@
 use crate::{
     annotater::{AnnotatedNode, AnnotatedNodeT},
-    ast::NodeType,
     data_model::{FieldDefinition, ReferenceType},
     lexer::CType,
 };

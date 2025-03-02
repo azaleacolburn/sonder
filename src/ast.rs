@@ -1,7 +1,6 @@
-use std::{cell::RefCell, rc::Rc};
-
 use crate::{
     annotater::AnnotatedNodeT,
+    data_model::Usage,
     lexer::{CType, Token},
 };
 #[derive(Debug, PartialEq, Clone)]
@@ -237,6 +236,18 @@ impl TokenNode {
             line,
             children,
         }
+    }
+
+    pub fn find_usage(&self, var_id: &str, usage: &Usage) -> &TokenNode {
+        
+        self.children
+            .unwrap_or(Vec::new())
+            .iter()
+            .for_each(|child| child.find_usage(var_id, usage));
+        match &self.token {
+            NodeType::
+        }
+        panic!("No node found")
     }
 
     pub fn print(&self, n: &mut i32) {

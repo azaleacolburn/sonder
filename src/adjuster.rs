@@ -2,7 +2,7 @@ use crate::{
     analysis_ctx::AnalysisContext,
     ast::TokenNode as Node,
     checker::BorrowError,
-    data_model::{Reference, Usage, UsageType},
+    data_model::{Usage, UsageType},
 };
 
 pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root: &mut Node) {

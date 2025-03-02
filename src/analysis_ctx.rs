@@ -1,7 +1,7 @@
 use itertools::Itertools;
 
 use crate::data_model::{
-    FieldDefinition, LineNumber, Reference, ReferenceType, StructData, UsageType, VarData,
+    LineNumber, Reference, ReferenceType, StructData, UsageType, VarData,
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
