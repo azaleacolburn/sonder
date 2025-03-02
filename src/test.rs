@@ -66,7 +66,6 @@ fn value_overlap() {
 /// See dilema in README.md
 ///
 /// WARNING THIS TEST PROBABLY NEEDS RAW PTRS
-// /// ```
 // #[test]
 // fn deref_value_assignment() {
 //     validate(
@@ -193,6 +192,27 @@ fn struct_with_ptr_two() {
             *l.ptr2 = 9;
         }",
         "struct_with_ptr_two",
+    );
+}
+
+#[test]
+fn struct_with_ptr_multi() {
+    validate(
+        "struct Point {
+            int* ptr;
+            int** ptr2;
+            int c;
+        };
+
+        int main() {
+            int t = 4;
+            int g = 8;
+            int* h = &g;
+            struct Point l = { &t, &h, 5 };
+            *l.ptr = 5;
+            **l.ptr2 = 9;
+        }",
+        "struct_with_ptr_multi",
     );
 }
 

@@ -44,6 +44,9 @@ pub enum BorrowError {
 fn set_ptr_rc(value_id: &str, ctx: &mut AnalysisContext) {
     let var_data = ctx.get_var_mut(value_id);
     var_data.rc = true;
+    // TODO distinguish between `ptr = &m` and `let another = &mut ptr`
+    // Essentially bring back `is_mut_ptr` and `is_mut_direct`
+    var_data.is_mut = false;
 
     let ptrs = var_data.pointed_to.clone();
 

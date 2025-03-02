@@ -186,14 +186,13 @@ fn convert_field_literal(expr: &AnnotatedNode, field: FieldDefinition) -> String
     // Because pointer arithmatic in rust is done by method, not arithmetic symbols, we need a
     // totally separate system for converting expression that involve raw ptrs, meaning we
     // shouldn't worry about them for now
-    let converted_expr: String = convert_annotated_ast(expr);
-    let rust_type = field.c_type.to_rust_type();
+    let mut converted_expr: String = convert_annotated_ast(expr);
+    // let rust_type = field.c_type.to_rust_type();
     if field.ptr_type.len() > 0 {
         // NOTE If it's a ptr, only one factor, an adr
-        assert!(field.ptr_type.len() == 1);
         // The reference taking is handled by the statement node
         // let reference_type = construct_ptr_type(&mut field.ptr_type.into_iter(), &rust_type);
-        let rust_reference = match field.ptr_type[0] {
+        converted_expr = match field.ptr_type[0] {
             ReferenceType::MutBorrowed => format!("&mut {converted_expr}"),
             ReferenceType::ConstBorrowed => format!("&{converted_expr}"),
             ReferenceType::RcRefClone => format!("{converted_expr}.clone()"),
@@ -203,11 +202,9 @@ fn convert_field_literal(expr: &AnnotatedNode, field: FieldDefinition) -> String
             // }
             _ => panic!("Not supporting raw ptrs yet"),
         };
-
-        format!("{}: {},", field.id, rust_reference)
-    } else {
-        format!("{}: {},", field.id, converted_expr)
     }
+
+    format!("{}: {},", field.id, converted_expr)
 }
 
 fn non_ptr_conversion(root: &AnnotatedNode) -> String {
