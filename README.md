@@ -107,9 +107,10 @@ fn main() -> () {
 
 - [x] Rethink reference tracking
 - [x] Struct Support
-- [x] Struct Analysis (wip)
-- [x] Struct Checking, Annotation, Conversion (wip)
+- [x] Struct Analysis
+- [x] Struct Checking, Annotation, Conversion
 - [ ] Cloning solutions (wip)
+- [ ] Rearrangement solutions (wip)
 - [ ] More test cases for the current prototype
 - [ ] Figure out how to represent scope
 - [ ] System for managing scope
