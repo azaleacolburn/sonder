@@ -1,6 +1,7 @@
 use crate::{
     annotater::{AnnotatedNode, AnnotatedNodeT},
-    data_model::ReferenceType,
+    ast::NodeType,
+    data_model::{FieldDefinition, ReferenceType},
     lexer::CType,
 };
 pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
@@ -125,16 +126,60 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 format!("{derefs}{id}")
             }
         }
-        AnnotatedNodeT::Adr { id, rc } => {
+        AnnotatedNodeT::Adr { id, ref_type, as id_typee} => {
+            match &ref_type {
+                ReferenceType::ConstBorrowed => format!("&{id} as *const ")
+            }
             if *rc {
                 format!("{id}.clone()")
             } else {
-                format!("{id}")
+                format!("{id}") // NOTE This isnt' a bug, just cursed
             }
         }
+        AnnotatedNodeT::StructDeclaration {
+            var_id,
+            struct_id,
+            is_mut,
+            fields,
+        } => {
+            let mut_binding = match is_mut {
+                true => "mut",
+                false => "",
+            };
+            let mut ret = format!("let {mut_binding} {var_id} = {struct_id} {{ ");
+            fields.iter().for_each(|(field, expr)| {
+                println!();
+                // NOTE: All the other fancy field stuff should be handled by expr
+                let converted_expr = convert_annotated_ast(expr);
+
+                ret.push_str(format!("{}: {}, ", field.id, converted_expr).as_str());
+            });
+            ret.push_str("};");
+            ret
+        }
+
         _ => non_ptr_conversion(root),
     }
 }
+
+// WARNING This is a bit of annotation done by the converter
+fn set_adr_mut_field_expr(expr: &mut AnnotatedNode, ref_types: &mut Vec<ReferenceType>) {
+    // NOTE is_mut, rc, is_raw
+    match &expr.token {
+        // TODO Check if pop is right
+        AnnotatedNodeT::Adr { id, ref_type: _ } => {
+            expr.token = AnnotatedNodeT::Adr {
+                id: id.to_string(), ref_type: ref_types.pop().expect("more references than adrs in expression type: analysis of ptr field in struct failed").clone()
+            }
+        }
+_ => {}
+    };
+
+    expr.children
+        .iter_mut()
+        .for_each(|node| set_adr_mut_field_expr(node, ref_types));
+}
+
 fn non_ptr_conversion(root: &AnnotatedNode) -> String {
     let mut left: Option<String> = None;
     let mut right: Option<String> = None;
@@ -231,25 +276,6 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
                 ret.push_str(format!("\t{},\n", field_ret).as_str());
             });
             ret.push('}');
-            ret
-        }
-        AnnotatedNodeT::StructDeclaration {
-            var_id,
-            struct_id,
-            is_mut,
-            fields,
-        } => {
-            let mut_binding = match is_mut {
-                true => "mut",
-                false => "",
-            };
-            let mut ret = format!("let {mut_binding} {var_id} = {struct_id} {{ ");
-            fields.iter().for_each(|(field, expr)| {
-                // NOTE: All the other fancy field stuff should be handled by expr
-                let expr = convert_annotated_ast(expr);
-                ret.push_str(format!("{}: {}, ", field.id, expr).as_str());
-            });
-            ret.push_str("};");
             ret
         }
         AnnotatedNodeT::StructFieldAssignment {

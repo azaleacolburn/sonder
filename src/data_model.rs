@@ -212,6 +212,21 @@ pub struct StructData {
     pub field_definitions: Vec<FieldDefinition>,
 }
 
+impl StructData {
+    pub fn mut_field<F>(&mut self, field: String, f: F)
+    where
+        F: FnOnce(&mut FieldDefinition),
+    {
+        let field_data: &mut FieldDefinition = self
+            .field_definitions
+            .iter_mut()
+            .find(|field_data| field_data.id == field)
+            .unwrap();
+
+        f(field_data)
+    }
+}
+
 /// Collected during declaration
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldInfo {

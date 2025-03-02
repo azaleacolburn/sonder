@@ -82,7 +82,7 @@ pub enum AnnotatedNodeT {
     // This is handled by the ptr declaration for now
     Adr {
         id: String,
-        rc: bool,
+        ref_type: ReferenceType,
     },
     DeRef {
         id: String,
@@ -181,7 +181,8 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             let rc = ctx.get_var(id).rc;
             AnnotatedNodeT::Adr {
                 id: id.to_string(),
-                rc,
+                // TODO Immoral and inncorrect placeholder
+                ref_type: ReferenceType::ConstBorrowed,
             }
         }
         // It seems like assignments and deref assignments need to handle referencing themselves

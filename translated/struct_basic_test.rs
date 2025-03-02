@@ -1,6 +1,6 @@
 struct test {
-	m: u16,
-	j: u16,
+	m: i32,
+	j: i32,
 }
 fn main() -> () {
 

@@ -1,6 +1,6 @@
 struct Test {
-	m: u16,
-	j: u16,
+	m: i32,
+	j: i32,
 }
 fn main() -> () {
 	let  my_test = Test { m: 0, j: 2, };

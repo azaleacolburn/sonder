@@ -1,5 +1,5 @@
 struct Point {
-	ptr: &i32,
+	ptr: &mut i32,
 	c: i32,
 }
 fn main() -> () {

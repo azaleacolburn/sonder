@@ -62,32 +62,26 @@ impl AnalysisContext {
     }
 
     // TODO Figure out how to recursively mark things as mutable
-    /// GIVEN in order [ptr2, ptr1, value]
+    /// `ptr_chain` arg in order [ptr2, ptr1, value]
     pub fn deref_assignment<T>(&mut self, ptr_chain: &mut T, line: LineNumber)
     where
         T: Iterator<Item = String>,
     {
         let top_ptr = ptr_chain.next().expect("No pointers in chain");
-        let ptr_data = self.get_var(&top_ptr);
+        let ptr_data = self.get_var(&top_ptr).clone(); // TODO :[
 
-        match &ptr_data.fieldof_struct {
-            Some(field_info) => {
-                let struct_definition_data = self.get_struct_mut(field_info.struct_id.as_str());
-                let field_definition_data: &mut FieldDefinition = struct_definition_data
-                    .field_definitions
-                    .iter()
-                    .find(|t| t.id == field_info.field_id)
-                    .expect("No field for this struct var");
-
-                field_definition_data
-                    .ptr_type
-                    .iter_mut()
-                    // NOTE Don't upgrade raw pointers
-                    .filter(|ptr_type| **ptr_type == ReferenceType::ConstBorrowed)
-                    .for_each(|ptr_type| *ptr_type = ReferenceType::MutBorrowed);
-            }
-            None => {}
-        };
+        if let Some(field_info) = &ptr_data.fieldof_struct {
+            self.mut_struct(field_info.struct_id.clone(), |struct_data| {
+                struct_data.mut_field(field_info.field_id.clone(), |field| {
+                    field
+                        .ptr_type
+                        .iter_mut()
+                        // NOTE Doesn't upgrade raw pointers
+                        .filter(|ptr_type| **ptr_type == ReferenceType::ConstBorrowed)
+                        .for_each(|ptr_type| *ptr_type = ReferenceType::MutBorrowed)
+                });
+            })
+        }
 
         self.mut_var(top_ptr, |ptr_var| {
             assert!(ptr_var.is_ptr());
