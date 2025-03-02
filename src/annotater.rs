@@ -82,7 +82,6 @@ pub enum AnnotatedNodeT {
     // This is handled by the ptr declaration for now
     Adr {
         id: String,
-        ref_type: ReferenceType,
     },
     DeRef {
         id: String,
@@ -104,12 +103,14 @@ pub enum AnnotatedNodeT {
     StructDefinition {
         struct_id: String,
         field_definitions: Vec<FieldDefinition>,
+        has_ref: bool,
     },
     StructDeclaration {
         var_id: String,
         struct_id: String,
         is_mut: bool,
         fields: Vec<(FieldDefinition, AnnotatedNode)>,
+        has_ref: bool,
     },
     StructFieldAssignment {
         var_id: String,
@@ -178,12 +179,7 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
             // `&mut &mut &t` illegal
             // Unsafe assumption: Adresses are always immutable unless explicitely annotated otherwise by the ptr declaration
             // `list.append(&mut other_list)` isn't something we're going to worry about for now
-            let rc = ctx.get_var(id).rc;
-            AnnotatedNodeT::Adr {
-                id: id.to_string(),
-                // TODO Immoral and inncorrect placeholder
-                ref_type: ReferenceType::ConstBorrowed,
-            }
+            AnnotatedNodeT::Adr { id: id.to_string() }
         }
         // It seems like assignments and deref assignments need to handle referencing themselves
         // Unless we want Adr nodes to know what kind of reference they are (which actually is
@@ -287,9 +283,14 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
         } => {
             // Field definitions gathered by the analyzer (smart ptr type chain)
             let analyzed_field_definitions = ctx.get_struct(struct_id).field_definitions.clone();
+            let has_ref = analyzed_field_definitions
+                .iter()
+                .any(|field| field.ptr_type.len() > 0);
+
             AnnotatedNodeT::StructDefinition {
                 struct_id: struct_id.clone(),
                 field_definitions: analyzed_field_definitions,
+                has_ref,
             }
         }
         NodeType::StructDeclaration {
@@ -308,11 +309,13 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
                 .enumerate()
                 .map(|(i, node)| (field_definitions[i].clone(), annotate_ast(&node, ctx)))
                 .collect();
+            let has_ref = fields.iter().any(|field| field.0.ptr_type.len() > 0);
             AnnotatedNodeT::StructDeclaration {
                 var_id: var_id.clone(),
                 struct_id: struct_id.clone(),
                 is_mut: var_data.is_mut,
                 fields,
+                has_ref,
             }
         }
         NodeType::StructFieldAssignment {

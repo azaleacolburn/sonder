@@ -554,3 +554,15 @@ pub enum CType {
     Char,
     Struct(String),
 }
+
+impl CType {
+    pub fn to_rust_type(&self) -> String {
+        match self {
+            CType::Int => "i32",
+            CType::Char => "u8",
+            CType::Void => "()",
+            CType::Struct(id) => id,
+        }
+        .to_string()
+    }
+}

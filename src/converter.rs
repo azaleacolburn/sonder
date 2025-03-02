@@ -4,6 +4,7 @@ use crate::{
     data_model::{FieldDefinition, ReferenceType},
     lexer::CType,
 };
+
 pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
     match &root.token {
         AnnotatedNodeT::PtrDeclaration {
@@ -30,7 +31,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             let rust_reference = match points_to[0].borrow().get_reference_type() {
                 ReferenceType::MutBorrowed => format!("&mut {rust_adr}"),
                 ReferenceType::ConstBorrowed => format!("&{rust_adr}"),
-                ReferenceType::RcRefClone => format!("{rust_adr}"),
+                ReferenceType::RcRefClone => format!("{rust_adr}.clone()"),
                 ReferenceType::MutPtr => format!("&mut {rust_adr} as {rust_ref_type}"),
                 ReferenceType::ConstPtr => {
                     format!("&{rust_adr} as {rust_ref_type}")
@@ -59,8 +60,6 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 .clone();
             let mut l_side = id.clone();
             let is_rc_clone = ref_types.contains(&ReferenceType::RcRefClone);
-
-            println!("HI");
 
             ref_types
                 .into_iter()
@@ -126,21 +125,15 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 format!("{derefs}{id}")
             }
         }
-        AnnotatedNodeT::Adr { id, ref_type, as id_typee} => {
-            match &ref_type {
-                ReferenceType::ConstBorrowed => format!("&{id} as *const ")
-            }
-            if *rc {
-                format!("{id}.clone()")
-            } else {
-                format!("{id}") // NOTE This isnt' a bug, just cursed
-            }
+        AnnotatedNodeT::Adr { id } => {
+            format!("{id}") // NOTE This isnt' a bug, just cursed
         }
         AnnotatedNodeT::StructDeclaration {
             var_id,
             struct_id,
             is_mut,
             fields,
+            has_ref: _,
         } => {
             let mut_binding = match is_mut {
                 true => "mut",
@@ -148,36 +141,54 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             };
             let mut ret = format!("let {mut_binding} {var_id} = {struct_id} {{ ");
             fields.iter().for_each(|(field, expr)| {
-                println!();
-                // NOTE: All the other fancy field stuff should be handled by expr
-                let converted_expr = convert_annotated_ast(expr);
-
-                ret.push_str(format!("{}: {}, ", field.id, converted_expr).as_str());
+                ret.push_str(&convert_field_literal(expr, field.clone()))
             });
             ret.push_str("};");
             ret
         }
-
         _ => non_ptr_conversion(root),
     }
 }
 
-// WARNING This is a bit of annotation done by the converter
-fn set_adr_mut_field_expr(expr: &mut AnnotatedNode, ref_types: &mut Vec<ReferenceType>) {
-    // NOTE is_mut, rc, is_raw
-    match &expr.token {
-        // TODO Check if pop is right
-        AnnotatedNodeT::Adr { id, ref_type: _ } => {
-            expr.token = AnnotatedNodeT::Adr {
-                id: id.to_string(), ref_type: ref_types.pop().expect("more references than adrs in expression type: analysis of ptr field in struct failed").clone()
-            }
-        }
-_ => {}
-    };
+fn convert_field_literal(expr: &AnnotatedNode, field: FieldDefinition) -> String {
+    // NOTE If expr is a ptr, it must be just a ptr
+    // i don't have the mental sauce right now for transpiling stuff like this
+    // ```c
+    // int t = 0;
+    // int g = &t (intptr_t) + 1;
+    // ```
+    // to this
+    // ```c
+    // let t: i32 = 0;
+    // let g: *const i32 = &t as *const i32 + 1;
+    // TODO Write ptr transpilation
+    //
+    // # Ptr Transpilation
+    // Because pointer arithmatic in rust is done by method, not arithmetic symbols, we need a
+    // totally separate system for converting expression that involve raw ptrs, meaning we
+    // shouldn't worry about them for now
+    let converted_expr: String = convert_annotated_ast(expr);
+    let rust_type = field.c_type.to_rust_type();
+    if field.ptr_type.len() > 0 {
+        // NOTE If it's a ptr, only one factor, an adr
+        assert!(field.ptr_type.len() == 1);
+        // The reference taking is handled by the statement node
+        // let reference_type = construct_ptr_type(&mut field.ptr_type.into_iter(), &rust_type);
+        let rust_reference = match field.ptr_type[0] {
+            ReferenceType::MutBorrowed => format!("&mut {converted_expr}"),
+            ReferenceType::ConstBorrowed => format!("&{converted_expr}"),
+            ReferenceType::RcRefClone => format!("{converted_expr}.clone()"),
+            // ReferenceType::MutPtr => format!("&mut {converted_expr} as {reference_type}"),
+            // ReferenceType::ConstPtr => {
+            //     format!("&{converted_expr} as {reference_type}")
+            // }
+            _ => panic!("Not supporting raw ptrs yet"),
+        };
 
-    expr.children
-        .iter_mut()
-        .for_each(|node| set_adr_mut_field_expr(node, ref_types));
+        format!("{}: {},", field.id, rust_reference)
+    } else {
+        format!("{}: {},", field.id, converted_expr)
+    }
 }
 
 fn non_ptr_conversion(root: &AnnotatedNode) -> String {
@@ -253,8 +264,13 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
         AnnotatedNodeT::StructDefinition {
             struct_id,
             field_definitions,
+            has_ref,
         } => {
-            let mut ret = format!("struct {struct_id} {{\n");
+            let lifetime = match has_ref {
+                true => "<'a>",
+                false => "",
+            };
+            let mut ret = format!("struct {struct_id}{lifetime} {{\n");
             field_definitions.iter().for_each(|field| {
                 let mut field_type = match &field.c_type {
                     CType::Void => "()",
@@ -263,15 +279,32 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
                     CType::Struct(id) => id.as_str(),
                 }
                 .to_string();
-                field.ptr_type.iter().rev().for_each(|p| match p {
-                    ReferenceType::MutBorrowed => field_type = format!("&mut {field_type}"),
-                    ReferenceType::ConstBorrowed => field_type = format!("&{field_type}"),
-                    ReferenceType::RcRefClone => field_type = format!("Rc<RefCell<{field_type}>>"),
-                    // TODO Check if rc is used for original rc ptrs or if RcRefClone is used
-                    // for all
-                    ReferenceType::MutPtr => field_type = format!("*mut {field_type}"),
-                    ReferenceType::ConstPtr => field_type = format!("*const {field_type}"),
-                });
+                field
+                    .ptr_type
+                    .iter()
+                    .rev()
+                    .for_each(|p| match (p, has_ref) {
+                        (ReferenceType::MutBorrowed, true) => {
+                            field_type = format!("&'a mut {field_type}")
+                        }
+                        (ReferenceType::ConstBorrowed, true) => {
+                            field_type = format!("&'a {field_type}")
+                        }
+
+                        (ReferenceType::MutBorrowed, false) => {
+                            field_type = format!("&mut {field_type}")
+                        }
+                        (ReferenceType::ConstBorrowed, false) => {
+                            field_type = format!("&{field_type}")
+                        }
+                        (ReferenceType::RcRefClone, _) => {
+                            field_type = format!("Rc<RefCell<{field_type}>>")
+                        }
+                        // TODO Check if rc is used for original rc ptrs or if RcRefClone is used
+                        // for all
+                        (ReferenceType::MutPtr, _) => field_type = format!("*mut {field_type}"),
+                        (ReferenceType::ConstPtr, _) => field_type = format!("*const {field_type}"),
+                    });
                 let field_ret = format!("{}: {}", field.id, field_type);
                 ret.push_str(format!("\t{},\n", field_ret).as_str());
             });
