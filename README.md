@@ -109,8 +109,9 @@ fn main() -> () {
 - [x] Struct Support
 - [x] Struct Analysis
 - [x] Struct Checking, Annotation, Conversion
-- [ ] Cloning solutions (wip)
-- [ ] Rearrangement solutions (wip)
+- [x] Line rearrangement solutions for using values behind references
+- [ ] Line rearrangement solutions for overlapping references
+- [ ] Cloning solutions (maybe)
 - [ ] More test cases for the current prototype
 - [ ] Figure out how to represent scope
 - [ ] System for managing scope
