@@ -2,7 +2,7 @@ use crate::{
     analysis_ctx::AnalysisContext,
     ast::TokenNode as Node,
     checker::BorrowError,
-    data_model::{Usage, UsageType},
+    data_model::{LineNumber, Usage, UsageType},
 };
 
 pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root: &mut Node) {
@@ -70,16 +70,57 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
     });
 }
 
-fn rearrange_lines(
-    value_id: &str,
-    ptr_id: &str,
-    root: &mut Node,
-    ctx: &mut AnalysisContext,
-    last_var_usage: Usage,
-    first_ptr_usage: Usage,
-) {
+fn move_node_before(children: &mut Box<[Node]>, from_index: usize, to_index: usize) {
+    if from_index == to_index || from_index >= children.len() || to_index >= children.len() {
+        return; // No need to move if indices are the same or out of bounds.
+    }
+
+    let mut vec = children.to_vec();
+    let node = vec.remove(from_index);
+
+    let insert_index = if from_index < to_index {
+        to_index - 1
+    } else {
+        to_index
+    };
+
+    vec.insert(insert_index, node);
+
+    *children = vec.into_boxed_slice();
 }
 
+fn rearrange_lines(first_line: LineNumber, second_line: LineNumber, root: &mut Node) {
+    let mut first = false;
+    let mut second = false;
+    if let Some(children) = root.children.as_mut() {
+        for child in children.iter_mut() {
+            if child.line == first_line {
+                first = true;
+            } else if child.line == second_line {
+                second = true;
+            }
+
+            if first && second {
+                let first_node_index = children
+                    .iter()
+                    .position(|child| child.line == first_line)
+                    .unwrap();
+                let second_node_index = children
+                    .iter()
+                    .position(|child| child.line == second_line)
+                    .unwrap();
+
+                move_node_before(children, second_node_index, first_node_index);
+                return;
+            }
+        }
+
+        // NOTE This makes it a breadth first search sorta
+        for child in children.iter_mut() {
+            rearrange_lines(first_line, second_line, child);
+        }
+    }
+}
 /// Checks if a simple rearrangement of lines could fix = the borrow error
 ///
 ///
@@ -118,12 +159,9 @@ fn check_line_rearrangement_value_constptr_overlap(
     match last_var_usage.get_line_number() < first_ptr_usage.get_line_number() {
         true => {
             rearrange_lines(
-                value_id,
-                ptr_id,
+                reference.borrow().get_range().start,
+                last_var_usage.get_line_number(),
                 root,
-                ctx,
-                last_var_usage.clone(),
-                first_ptr_usage,
             );
             true
         }

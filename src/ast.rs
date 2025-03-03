@@ -237,19 +237,6 @@ impl TokenNode {
             children,
         }
     }
-
-    pub fn find_usage(&self, var_id: &str, usage: &Usage) -> &TokenNode {
-        
-        self.children
-            .unwrap_or(Vec::new())
-            .iter()
-            .for_each(|child| child.find_usage(var_id, usage));
-        match &self.token {
-            NodeType::
-        }
-        panic!("No node found")
-    }
-
     pub fn print(&self, n: &mut i32) {
         (0..*n).into_iter().for_each(|_| print!("  "));
         println!("{:?}", self);
