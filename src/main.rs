@@ -47,9 +47,9 @@ fn convert_to_rust_code(mut ast: TokenNode) -> String {
     adjuster::adjust_ptr_type(errors, &mut ctx, &mut ast);
 
     let annotated_ast = annotater::annotate_ast(&ast, &ctx);
-    annotated_ast.print(&mut 0);
+    // annotated_ast.print(&mut 0);
 
     let converted_rust = converter::convert_annotated_ast(&annotated_ast);
-    println!("{converted_rust}");
+    println!("\n{converted_rust}");
     converted_rust
 }

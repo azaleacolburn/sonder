@@ -208,8 +208,6 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
                 .iter()
                 .map(Reference::get_reference_type)
                 .collect();
-            println!("count: {count}");
-            println!("ref_types: {:?}", ref_types);
 
             ref_types.truncate(count as usize);
 

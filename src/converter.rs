@@ -266,7 +266,6 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
         }
         AnnotatedNodeT::Program { imports } => {
             let mut t = imports.clone();
-            println!("imports: {:?}", imports);
             t.push(
                 root.children
                     .iter()

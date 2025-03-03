@@ -103,8 +103,17 @@ fn value_const_ptr_overlap() {
 //     );
 // }
 
+/// ```rust
+/// fn main() {
+///     let n: i32  = 0;
+///     let g: &i32 = &n;
+///     let b: &mut i32 = &mut n;
+///     let k: i32 = *g;
+///     let y: i32 = 9;
+///     *b = y;
+// }
 #[test]
-fn multi_ref() {
+fn simple_multi_ref() {
     validate(
         "int main() {
             int n = 0;
@@ -114,7 +123,7 @@ fn multi_ref() {
             int y = 9;
             *b = y;
         }",
-        "multi_ref",
+        "simple_multi_ref",
     );
 }
 
