@@ -37,11 +37,10 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
                 // set_raw(imut_ptr_id, ctx);
             }
             // TODO: if the id is the value, we can clone
-            BorrowError::ValueMutOverlap {
-                ptr_id: _,
-                value_id,
-            } => {
-                set_ptr_rc(value_id, ctx)
+            BorrowError::ValueMutOverlap { ptr_id, value_id } => {
+                if !line_rearrangement_value_mutptr_overlap(value_id, ptr_id, root, ctx) {
+                    set_ptr_rc(value_id, ctx);
+                }
                 // clone_solution(ptr_id, value_id, ctx, root)
             }
             BorrowError::ValueMutSameLine {
@@ -52,7 +51,7 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
                 // create_clone(value_id, ptr_id, ctx, root, value_instance_nodes.clone());
             }
             BorrowError::ValueConstOverlap { ptr_id, value_id } => {
-                if !check_line_rearrangement_value_constptr_overlap(value_id, ptr_id, root, ctx) {
+                if !line_rearrangement_value_constptr_overlap(value_id, ptr_id, root, ctx) {
                     set_ptr_rc(value_id, ctx);
                 }
                 // clone_solution(ptr_id, value_id, ctx, root)
@@ -70,64 +69,52 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
     });
 }
 
-fn move_node_before(children: &mut Box<[Node]>, from_index: usize, to_index: usize) {
-    if from_index == to_index || from_index >= children.len() || to_index >= children.len() {
-        return; // No need to move if indices are the same or out of bounds.
-    }
+fn line_rearrangement_value_mutptr_overlap(
+    value_id: &str,
+    ptr_id: &str,
+    root: &mut Node,
+    ctx: &mut AnalysisContext,
+) -> bool {
+    let var_data = ctx.get_var(value_id);
+    let ptr_data = ctx.get_var(ptr_id);
+    let reference = ptr_data.reference_to_var(value_id).unwrap().clone();
 
-    let mut vec = children.to_vec();
-    let node = vec.remove(from_index);
+    // This means it's modified
+    let var_mut_usages = var_data.usages.iter(); // TODO maybe make this one function
 
-    let insert_index = if from_index < to_index {
-        to_index - 1
-    } else {
-        to_index
-    };
+    let last_var_usage = var_mut_usages.last().unwrap();
+    let first_ptr_usage = ptr_data
+        .usages
+        .iter()
+        .filter(|usage| {
+            reference
+                .borrow()
+                .contained_within_current_range(usage.get_line_number())
+        })
+        .nth(0)
+        .expect("Ptr never used within reference (meaning it lasts a single)")
+        .clone();
 
-    vec.insert(insert_index, node);
-
-    *children = vec.into_boxed_slice();
-}
-
-fn rearrange_lines(first_line: LineNumber, second_line: LineNumber, root: &mut Node) {
-    let mut first = false;
-    let mut second = false;
-    if let Some(children) = root.children.as_mut() {
-        for child in children.iter_mut() {
-            if child.line == first_line {
-                first = true;
-            } else if child.line == second_line {
-                second = true;
-            }
-
-            if first && second {
-                let first_node_index = children
-                    .iter()
-                    .position(|child| child.line == first_line)
-                    .unwrap();
-                let second_node_index = children
-                    .iter()
-                    .position(|child| child.line == second_line)
-                    .unwrap();
-
-                move_node_before(children, second_node_index, first_node_index);
-                return;
-            }
+    match last_var_usage.get_line_number() < first_ptr_usage.get_line_number() {
+        true => {
+            rearrange_lines(
+                reference.borrow().get_range().start,
+                last_var_usage.get_line_number(),
+                root,
+            );
+            true
         }
-
-        // NOTE This makes it a breadth first search sorta
-        for child in children.iter_mut() {
-            rearrange_lines(first_line, second_line, child);
-        }
+        false => false,
     }
 }
+
 /// Checks if a simple rearrangement of lines could fix = the borrow error
 ///
 ///
 /// # Important
 /// A value can be used behind a immutable reference if it's an rvalue that implements copy, which
 /// every non-struct, non-ptr c variable does
-fn check_line_rearrangement_value_constptr_overlap(
+fn line_rearrangement_value_constptr_overlap(
     value_id: &str,
     ptr_id: &str,
     root: &mut Node,
@@ -167,6 +154,58 @@ fn check_line_rearrangement_value_constptr_overlap(
         }
         false => false,
     }
+}
+
+fn rearrange_lines(first_line: LineNumber, second_line: LineNumber, root: &mut Node) {
+    let mut first = false;
+    let mut second = false;
+    if let Some(children) = root.children.as_mut() {
+        for child in children.iter_mut() {
+            if child.line == first_line {
+                first = true;
+            } else if child.line == second_line {
+                second = true;
+            }
+
+            if first && second {
+                let first_node_index = children
+                    .iter()
+                    .position(|child| child.line == first_line)
+                    .unwrap();
+                let second_node_index = children
+                    .iter()
+                    .position(|child| child.line == second_line)
+                    .unwrap();
+
+                move_node_before(children, second_node_index, first_node_index);
+                return;
+            }
+        }
+
+        // NOTE This makes it a breadth first search sorta
+        for child in children.iter_mut() {
+            rearrange_lines(first_line, second_line, child);
+        }
+    }
+}
+
+fn move_node_before(children: &mut Box<[Node]>, from_index: usize, to_index: usize) {
+    if from_index == to_index || from_index >= children.len() || to_index >= children.len() {
+        return; // No need to move if indices are the same or out of bounds.
+    }
+
+    let mut vec = children.to_vec();
+    let node = vec.remove(from_index);
+
+    let insert_index = if from_index < to_index {
+        to_index - 1
+    } else {
+        to_index
+    };
+
+    vec.insert(insert_index, node);
+
+    *children = vec.into_boxed_slice();
 }
 
 fn set_ptr_rc(value_id: &str, ctx: &mut AnalysisContext) {

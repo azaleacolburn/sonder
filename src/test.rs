@@ -63,6 +63,8 @@ fn value_overlap() {
 /// This test should be solvable by rearragement
 /// Because within the reference lifetime the first usage of g is after the last usage of t
 ///
+/// Because it's on the r_side, it requires rearragnment
+///
 /// ```rust
 /// fn main() -> () {
 ///     let t: i32 = 0;
