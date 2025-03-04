@@ -94,29 +94,67 @@ fn line_rearrangement_mut_const_overlap(
     let mut mut_ptr_usages = mut_ptr.usages.iter();
     let mut const_ptr_usages = const_ptr.usages.iter();
 
-    let first_mut_ptr_usage_in_reference = mut_ptr_usages
-        .find(|mut_usage| {
-            const_reference
-                .borrow()
-                .contained_within_current_range(mut_usage.get_line_number())
-        })
-        .unwrap();
+    let const_range = const_reference.borrow().get_range();
+    let mut_range = mut_reference.borrow().get_range();
 
-    let last_const_usage_in_reference = const_ptr_usages
-        .find(|const_usage| {
-            mut_reference
-                .borrow()
-                .contained_within_current_range(const_usage.get_line_number())
-        })
-        .unwrap();
+    match const_range.start > mut_range.start {
+        true => {
+            let first_mut_usage_in_reference = mut_ptr_usages
+                .find(|mut_usage| {
+                    const_reference
+                        .borrow()
+                        .contained_within_current_range(mut_usage.get_line_number())
+                })
+                .unwrap();
 
-    if first_mut_ptr_usage_in_reference.get_line_number()
-        > last_const_usage_in_reference.get_line_number()
-    {
-        // rearrange_lines(first_line, second_line, root);
-        true
-    } else {
-        false
+            let last_const_usage_in_reference = const_ptr_usages
+                .filter(|const_usage| {
+                    mut_reference
+                        .borrow()
+                        .contained_within_current_range(const_usage.get_line_number())
+                })
+                .last()
+                .unwrap();
+
+            // if first_mut_usage_in_reference.get_line_number()
+            //     > last_const_usage_in_reference.get_line_number()
+            // {
+            //     // TODO Iteratively move all overlapped lines
+            //     rearrange_lines(mut_range.start, const_range.end, root);
+            //     true
+            // } else {
+            //     false
+            // }
+            false
+        }
+        false => {
+            let last_mut_usage_in_reference = mut_ptr_usages
+                .filter(|mut_usage| {
+                    mut_reference
+                        .borrow()
+                        .contained_within_current_range(mut_usage.get_line_number())
+                })
+                .last()
+                .unwrap();
+
+            let first_const_usage_in_reference = const_ptr_usages
+                .find(|const_usage| {
+                    mut_reference
+                        .borrow()
+                        .contained_within_current_range(const_usage.get_line_number())
+                })
+                .unwrap();
+
+            if first_const_usage_in_reference.get_line_number()
+                > last_mut_usage_in_reference.get_line_number()
+            {
+                // TODO Iteratively move all overlapped lines
+                rearrange_lines(mut_range.start, const_range.end, root);
+                true
+            } else {
+                false
+            }
+        }
     }
 }
 

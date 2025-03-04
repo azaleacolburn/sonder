@@ -29,26 +29,16 @@ fn three_mut_layered() {
     );
 }
 
-/// Invalid rust code if directly translated
-/// Should be caught by the checker and a safe solution should be applied
-/// We can only ever use `*t.borrow()` or `*t.borrow_mut()` when using t
-/// Because it has to act exactly like the value t would in C.
-/// eg.
 /// ```rust
 /// fn main() -> () {
-///     let t: Rc<RefCell<i32>> = Rc::new(RefCell::new(0));
-///     let g: Rc<RefCell<i32>> = t.clone();
-///     *t.borrow_mut() = 1;
-///     *g.borrow_mut() = 2;
-///     // When function calls come about
-///     f(*t.borrow())
-///     f(g)
-///     f(g, t.borrow_mut()) // this is fine
-///     f(*g.borrow(), *t.borrow_mut) // this is not ok
+///     let t = 0;
+///     t = 1;
+///     let g = &mut t;
+///     *g = 2;
 /// }
 /// ```
 #[test]
-fn value_overlap() {
+fn value_mut_ptr_overlap() {
     validate(
         "int main() {
             int t = 0;
@@ -56,7 +46,7 @@ fn value_overlap() {
             t = 1;
             *g = 2;
         }",
-        "value_overlap",
+        "value_mut_ptr_overlap",
     );
 }
 
@@ -102,6 +92,31 @@ fn value_const_ptr_overlap() {
 //         "deref_value_assignment",
 //     );
 // }
+//
+
+/// ```rust
+/// fn main() {
+///     let n = 0;
+///     let g = &n;
+///     let t = *g;
+///     let m = &mut n;
+///     *m = 4;
+/// }
+#[test]
+fn const_mut_ptr_overlap() {
+    validate(
+        "int main() {
+            int n = 0;
+            int* g = &n;
+            int* m = &n;
+            *m = 9;
+            int t = *g;
+            g;
+            *m = 4;
+        }",
+        "const_mut_ptr_overlap",
+    );
+}
 
 /// ```rust
 /// fn main() {
