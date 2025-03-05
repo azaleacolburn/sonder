@@ -116,6 +116,21 @@ fn const_mut_ptr_overlap() {
     );
 }
 
+// For this case, we must move the const ptr down
+#[test]
+fn mut_const_ptr_overlap() {
+    validate(
+        "int main() {
+            int n = 0;
+            int* m = &n;
+            int* g = &n;
+            *m = 4;
+            int t = *g;
+        }",
+        "const_mut_ptr_overlap",
+    );
+}
+
 /// ```rust
 /// fn main() {
 ///     let n: i32  = 0;

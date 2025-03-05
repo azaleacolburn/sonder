@@ -40,13 +40,11 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
             BorrowError::MutConstSameLine {
                 mut_ptr_id,
                 imut_ptr_id,
-                value_id: _,
-            } => {
-                // set_raw(mut_ptr_id, ctx);
-                // set_raw(imut_ptr_id, ctx);
-            }
+                value_id,
+            } => {}
             // TODO: if the id is the value, we can clone
             BorrowError::ValueMutOverlap { ptr_id, value_id } => {
+                println!("TESTING");
                 if !line_rearrangement_value_ptr_overlap(value_id, ptr_id, root, ctx, false) {
                     set_ptr_rc(value_id, ctx);
                 }
@@ -99,33 +97,32 @@ fn line_rearrangement_mut_const_overlap(
 
     match const_range.start > mut_range.start {
         true => {
-            let first_mut_usage_in_reference = mut_ptr_usages
-                .find(|mut_usage| {
-                    const_reference
-                        .borrow()
-                        .contained_within_current_range(mut_usage.get_line_number())
-                })
-                .unwrap();
-
-            let last_const_usage_in_reference = const_ptr_usages
-                .filter(|const_usage| {
+            let first_const_usage_in_reference = const_ptr_usages
+                .find(|const_usage| {
                     mut_reference
                         .borrow()
                         .contained_within_current_range(const_usage.get_line_number())
                 })
+                .unwrap();
+
+            let last_mut_usage_in_reference = mut_ptr_usages
+                .filter(|mut_usage| {
+                    const_reference
+                        .borrow()
+                        .contained_within_current_range(mut_usage.get_line_number())
+                })
                 .last()
                 .unwrap();
 
-            // if first_mut_usage_in_reference.get_line_number()
-            //     > last_const_usage_in_reference.get_line_number()
-            // {
-            //     // TODO Iteratively move all overlapped lines
-            //     rearrange_lines(mut_range.start, const_range.end, root);
-            //     true
-            // } else {
-            //     false
-            // }
-            false
+            if first_const_usage_in_reference.get_line_number()
+                > last_mut_usage_in_reference.get_line_number()
+            {
+                // TODO Iteratively move all overlapped lines
+                rearrange_lines(mut_range.start, const_range.end, root);
+                true
+            } else {
+                false
+            }
         }
         false => {
             // TODO Maybe make it a union reference instead
