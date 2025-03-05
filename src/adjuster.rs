@@ -95,6 +95,14 @@ fn line_rearrangement_mut_const_overlap(
     let const_range = const_reference.borrow().get_range();
     let mut_range = mut_reference.borrow().get_range();
 
+    if const_range.start == const_range.end {
+        rearrange_lines(mut_range.start, const_range.start, root);
+        return true;
+    } else if mut_range.start == mut_range.end {
+        rearrange_lines(const_range.start, mut_range.start, root);
+        return true;
+    }
+
     match const_range.start > mut_range.start {
         true => {
             let first_const_usage_in_reference = const_ptr_usages

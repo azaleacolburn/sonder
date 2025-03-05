@@ -282,9 +282,10 @@ fn validate(c_code: &str, test_name: &str) {
     let ast = parse_c(c_code.to_string());
     let rust_code = convert_to_rust_code(ast);
 
-    fs::create_dir_all("./translated/exe").expect("dir failed");
+    fs::create_dir_all("./translated/bin").expect("dir failed");
     let file_name = format!("./translated/{test_name}_test.rs");
     fs::write(file_name.clone(), rust_code).expect("writing code to file failed");
+
     match Command::new("rustc")
         .arg(file_name)
         .arg("--out-dir")
