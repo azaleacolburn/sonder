@@ -128,25 +128,26 @@ fn line_rearrangement_mut_const_overlap(
             false
         }
         false => {
-            let last_mut_usage_in_reference = mut_ptr_usages
-                .filter(|mut_usage| {
-                    mut_reference
-                        .borrow()
-                        .contained_within_current_range(mut_usage.get_line_number())
-                })
-                .last()
-                .unwrap();
-
-            let first_const_usage_in_reference = const_ptr_usages
-                .find(|const_usage| {
+            // TODO Maybe make it a union reference instead
+            let last_const_usage_in_reference = const_ptr_usages
+                .filter(|const_usage| {
                     mut_reference
                         .borrow()
                         .contained_within_current_range(const_usage.get_line_number())
                 })
+                .last()
                 .unwrap();
 
-            if first_const_usage_in_reference.get_line_number()
-                > last_mut_usage_in_reference.get_line_number()
+            let first_mut_usage_in_reference = mut_ptr_usages
+                .find(|mut_usage| {
+                    mut_reference
+                        .borrow()
+                        .contained_within_current_range(mut_usage.get_line_number())
+                })
+                .unwrap();
+
+            if last_const_usage_in_reference.get_line_number()
+                < first_mut_usage_in_reference.get_line_number()
             {
                 // TODO Iteratively move all overlapped lines
                 rearrange_lines(mut_range.start, const_range.end, root);

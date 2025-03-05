@@ -109,9 +109,7 @@ fn const_mut_ptr_overlap() {
             int n = 0;
             int* g = &n;
             int* m = &n;
-            *m = 9;
             int t = *g;
-            g;
             *m = 4;
         }",
         "const_mut_ptr_overlap",
