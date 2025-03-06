@@ -179,10 +179,18 @@ pub fn string_to_tokens(
             'v' if chars[i + 1] == 'o'
                 && chars[i + 2] == 'i'
                 && chars[i + 3] == 'd'
-                && (chars[i + 4] == ' ' || chars[i + 4] == '*') =>
+                && chars[i + 4] == ' ' =>
             {
                 ret.push(Token::Type(CType::Void));
-                i += 3;
+                i += 4;
+            }
+            'v' if chars[i + 1] == 'o'
+                && chars[i + 2] == 'i'
+                && chars[i + 3] == 'd'
+                && chars[i + 4] == '*' =>
+            {
+                ret.push(Token::Type(CType::Void));
+                i += 3; // NOTE Saves an iteration
             }
 
             '+' if chars[i + 1] == '=' => {
@@ -192,6 +200,9 @@ pub fn string_to_tokens(
             '+' if chars[i + 1] == '+' => {
                 ret.push(Token::AddO);
                 i += 1;
+            }
+            '+' => {
+                ret.push(Token::Add);
             }
             '-' if chars[i + 1] == '=' => {
                 ret.push(Token::SubEq);
@@ -421,18 +432,19 @@ pub fn string_to_tokens(
             ' ' => {}
             _ => {
                 // NOTE if we'e here it's an identifier
-                println!(
-                    "{}",
-                    chars
-                        .clone()
-                        .into_iter()
-                        .skip(i)
-                        .map(|c| c.to_string())
-                        .collect::<Vec::<String>>()
-                        .join("")
-                );
+                // println!(
+                //     "{}",
+                //     chars
+                //         .clone()
+                //         .into_iter()
+                //         .skip(i)
+                //         .map(|c| c.to_string())
+                //         .collect::<Vec::<String>>()
+                //         .join("")
+                // );
 
                 for j in i..chars.len() {
+                    println!("chars[j]: {}", chars[j]);
                     if !chars[j].is_alphanumeric() && chars[j] != '_' {
                         break;
                     }

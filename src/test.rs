@@ -81,18 +81,17 @@ fn value_const_ptr_overlap() {
 /// See dilema in README.md
 ///
 /// WARNING THIS TEST PROBABLY NEEDS RAW PTRS
-// #[test]
-// fn deref_value_assignment() {
-//     validate(
-//         "void main() {
-//             int k = 3;
-//             int* y = &k;
-//             *y = k + 6;
-//         }",
-//         "deref_value_assignment",
-//     );
-// }
-//
+#[test]
+fn deref_value_assignment() {
+    validate(
+        "void main() {
+            int k = 3;
+            int* y = &k;
+            *y = k + 6;
+        }",
+        "deref_value_assignment",
+    );
+}
 
 /// ```rust
 /// fn main() {

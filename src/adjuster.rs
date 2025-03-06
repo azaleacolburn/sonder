@@ -33,15 +33,18 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
                 second_ptr_id,
                 value_id: _,
             } => {
-                set_ptr_rc(first_ptr_id, ctx);
-                // set_raw(second_ptr_id, ctx)
+                set_ptr_raw(second_ptr_id, ctx);
+                set_ptr_raw(first_ptr_id, ctx);
             }
 
             BorrowError::MutConstSameLine {
                 mut_ptr_id,
                 imut_ptr_id,
                 value_id,
-            } => {}
+            } => {
+                set_ptr_raw(mut_ptr_id, ctx);
+                set_ptr_raw(imut_ptr_id, ctx);
+            }
             // TODO: if the id is the value, we can clone
             BorrowError::ValueMutOverlap { ptr_id, value_id } => {
                 println!("TESTING");
@@ -55,7 +58,7 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
                 value_id,
                 // value_instance_nodes,
             } => {
-                // create_clone(value_id, ptr_id, ctx, root, value_instance_nodes.clone());
+                set_ptr_raw(ptr_id, ctx);
             }
             BorrowError::ValueConstOverlap { ptr_id, value_id } => {
                 if !line_rearrangement_value_ptr_overlap(value_id, ptr_id, root, ctx, true) {
@@ -68,7 +71,8 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
                 value_id,
                 // value_instance_nodes,
             } => {
-                // create_clone(value_id, ptr_id, ctx, root, value_instance_nodes.clone());
+                // NOTE This must be rside, so it's fine i think
+                // set_ptr_raw(ptr_id, ctx);
             }
         };
 
@@ -313,4 +317,23 @@ fn set_ptr_rc(value_id: &str, ctx: &mut AnalysisContext) {
             }
         })
     });
+}
+
+fn set_ptr_raw(ptr_id: &str, ctx: &mut AnalysisContext) {
+    // NOTE If we're here, we need raw ptrs because of overlapping rather
+    // than arithmatic, so we just need to use the unsafe system, not create
+    // a new system for arithmetic translation
+    //
+    // TODO Cascade raw pointers to variables that the original ptr
+    // is an rside value of
+    let ptr_data = ctx.get_var_mut(ptr_id);
+    ptr_data.set_raw();
+
+    ptr_data
+        .usages
+        .iter()
+        .filter(|usage| *usage.get_usage_type() == UsageType::RValue)
+        .for_each(|usage| {
+            usage;
+        });
 }

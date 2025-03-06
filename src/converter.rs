@@ -56,7 +56,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
             rc: _, // TODO Create a clearer distinction between rc variables and rc pointers
             ref_types,
         } => {
-            let expr_child = root
+            let mut expr_child = root
                 .children
                 .iter()
                 .map(convert_annotated_ast)
@@ -73,6 +73,10 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                     ReferenceType::MutBorrowed if !is_rc_clone => l_side = format!("*{l_side}"),
                     ReferenceType::MutBorrowed => {
                         println!("DEREFFED PTR BOTH MutBorrowed and is_rc_clone");
+                    }
+                    ReferenceType::MutPtr => {
+                        l_side = format!("unsafe {{ *{l_side}");
+                        expr_child.push_str(" }");
                     }
                     t => panic!(
                         "Invalid Ptr Type being Derefferenced on lside of deref assignment: {:?}",

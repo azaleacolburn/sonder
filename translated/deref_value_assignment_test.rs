@@ -1,5 +1,5 @@
 fn main() -> () {
-	let k: i32 = 3;
-	let mut y: &mut i32  = &mut k;
-	*y = k + 6;
+	let mut k: i32 = 3;
+	let y: *mut i32 = &mut k as *mut i32;
+	unsafe { *y = k + 6 };
 }
