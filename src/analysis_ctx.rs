@@ -1,8 +1,6 @@
 use itertools::Itertools;
 
-use crate::data_model::{
-    LineNumber, Reference, ReferenceType, StructData, UsageType, VarData,
-};
+use crate::data_model::{LineNumber, Reference, ReferenceType, StructData, UsageType, VarData};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 /// The top-level datastructure that stores data about all the variables and referencing
@@ -73,6 +71,7 @@ impl AnalysisContext {
     {
         let top_ptr = ptr_chain.next().expect("No pointers in chain");
         let ptr_data = self.get_var(&top_ptr).clone(); // TODO :[
+        assert!(ptr_data.is_ptr());
 
         if let Some(field_info) = &ptr_data.fieldof_struct {
             self.mut_struct(field_info.struct_id.clone(), |struct_data| {

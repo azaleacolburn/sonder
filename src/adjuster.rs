@@ -111,7 +111,7 @@ fn line_rearrangement_mut_const_overlap(
         true => {
             let first_const_usage_in_reference = const_ptr_usages
                 .find(|const_usage| {
-                    mut_reference
+                    const_reference
                         .borrow()
                         .contained_within_current_range(const_usage.get_line_number())
                 })
