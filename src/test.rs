@@ -127,7 +127,7 @@ fn mut_const_ptr_overlap() {
             *m = 4;
             int t = *g;
         }",
-        "const_mut_ptr_overlap",
+        "mut_const_ptr_overlap",
     );
 }
 
@@ -141,7 +141,7 @@ fn mut_const_ptr_multi_overlap() {
             *m = 4;
             int t = *g;
         }",
-        "const_mut_ptr_overlap",
+        "mut_const_ptr_multi_overlap",
     );
 }
 
