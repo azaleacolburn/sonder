@@ -131,6 +131,34 @@ fn mut_const_ptr_overlap() {
     );
 }
 
+#[test]
+fn mut_const_ptr_multi_overlap() {
+    validate(
+        "int main() {
+            int n = 0;
+            int* m = &n;
+            int* g = &n;
+            *m = 4;
+            int t = *g;
+        }",
+        "const_mut_ptr_overlap",
+    );
+}
+
+#[test]
+fn value_const_ptr_multi_overlap() {
+    validate(
+        "int main() {
+            int t = 0;
+            int* g = &t;
+            t = 3;
+            t = 1;
+            int h = *g;
+        }",
+        "value_const_ptr_multi_overlap",
+    );
+}
+
 /// ```rust
 /// fn main() {
 ///     let n: i32  = 0;

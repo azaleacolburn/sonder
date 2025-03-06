@@ -111,6 +111,10 @@ impl Usage {
     pub fn get_usage_type(&self) -> &UsageType {
         &self.usage_type
     }
+
+    pub fn set_line_number(&mut self, line: LineNumber) {
+        self.line = line;
+    }
 }
 
 /// Represents a span where a variable is behind a reference

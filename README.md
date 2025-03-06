@@ -1,25 +1,30 @@
 # sonder
+
 Sonder is a static analyzer and transpiler, for converting well-written C code to safe Rust.
 
 ## Scratch repo
 
 This project is incredibly WIP and not at all intended for production-grade work. It exists purely as a proof of concept.
+
 ## What does well-written mean?
 
 For the purposes of sonder, well-written means that for any given pointer, the C code in question treats pointers only in the following ways:
 
 - Like a Rust reference in accordance with borrow-checking rules
-- Like a Rust refrence after trivial line rearrangement 
+- Like a Rust refrence after trivial line rearrangement
 - As a cloned `Rc<RefCell<T>>`
 
 - It also means that any mutable pointer to a value and the value itself that are used on the same line can be made to fit borrow checking rules by substituting the value used in it's own assignment for a clone taken before the mutable reference.
-- This essentially means that `t` can only be modified once during `g`'s lifetime, and it must be the value-mut-same-line-overlap-case.  This allows the following edgecase to be resolve with cloning:
+- This essentially means that `t` can only be modified once during `g`'s lifetime, and it must be the value-mut-same-line-overlap-case. This allows the following edgecase to be resolve with cloning:
+
 ```c
 int t = 0;
 int* g = &t;
 *g = t + 1;
 ```
+
 by transpiling to:
+
 ```rust
 let mut t: i32  = 0;
 let t_clone = t; // This would be .clone() for non-copy types
@@ -110,7 +115,8 @@ fn main() -> () {
 - [x] Struct Analysis
 - [x] Struct Checking, Annotation, Conversion
 - [x] Line rearrangement solutions for using values behind references
-- [ ] Line rearrangement solutions for overlapping references
+- [x] Line rearrangement solutions for overlapping references
+- [ ] Line rearrangement for multi-statement overlaps
 - [ ] Cloning solutions (maybe)
 - [ ] More test cases for the current prototype
 - [ ] Figure out how to represent scope

@@ -96,10 +96,10 @@ fn line_rearrangement_mut_const_overlap(
     let mut_range = mut_reference.borrow().get_range();
 
     if const_range.start == const_range.end {
-        rearrange_lines(mut_range.start, const_range.start, root);
+        rearrange_lines_tree(mut_range.start, const_range.start, root);
         return true;
     } else if mut_range.start == mut_range.end {
-        rearrange_lines(const_range.start, mut_range.start, root);
+        rearrange_lines_tree(const_range.start, mut_range.start, root);
         return true;
     }
 
@@ -126,7 +126,7 @@ fn line_rearrangement_mut_const_overlap(
                 > last_mut_usage_in_reference.get_line_number()
             {
                 // TODO Iteratively move all overlapped lines
-                rearrange_lines(mut_range.start, const_range.end, root);
+                rearrange_lines_tree(mut_range.start, const_range.end, root);
                 true
             } else {
                 false
@@ -155,7 +155,7 @@ fn line_rearrangement_mut_const_overlap(
                 < first_mut_usage_in_reference.get_line_number()
             {
                 // TODO Iteratively move all overlapped lines
-                rearrange_lines(mut_range.start, const_range.end, root);
+                rearrange_lines_tree(mut_range.start, const_range.end, root);
                 true
             } else {
                 false
@@ -187,7 +187,7 @@ fn line_rearrangement_value_ptr_overlap(
         .iter()
         .filter(|usage| *usage.get_usage_type() == UsageType::LValue || !const_ptr);
 
-    let last_var_usage = var_mut_usages.last().unwrap();
+    let last_var_usage = var_mut_usages.clone().last().unwrap();
     let first_ptr_usage = ptr_data
         .usages
         .iter()
@@ -201,22 +201,42 @@ fn line_rearrangement_value_ptr_overlap(
 
     match last_var_usage.get_line_number() < first_ptr_usage.get_line_number() {
         true => {
-            rearrange_lines(
-                reference.borrow().get_range().start,
-                last_var_usage.get_line_number(),
-                root,
-            );
+            var_mut_usages.for_each(|usage| {
+                rearrange_lines_tree(
+                    reference.borrow().get_range().start,
+                    usage.get_line_number(),
+                    root,
+                )
+            });
+
             true
         }
         false => false,
     }
 }
 
+/// This function assumes that `rearrange_lines_tree` has already been called
+fn rearrange_lines_ctx(pivot: LineNumber, swing: LineNumber, ctx: &mut AnalysisContext) {
+    ctx.variables.iter_mut().for_each(|(_var_id, var_data)| {
+        var_data
+            .usages
+            .iter_mut()
+            .filter(|usage| usage.get_line_number() >= pivot && usage.get_line_number() < swing)
+            .for_each(|usage| usage.set_line_number(usage.get_line_number().clone() + 1));
+
+        var_data
+            .usages
+            .iter_mut()
+            .filter(|usage| usage.get_line_number() == swing)
+            .for_each(|usage| usage.set_line_number(pivot));
+    })
+}
+
 // TODO Call analyzer again or manually go through and change ctx line numbers for both
 // usages and nodes
 //
 // Wait, do we even need to do that? Will we ever used LineNumbers again?
-fn rearrange_lines(first_line: LineNumber, second_line: LineNumber, root: &mut Node) {
+fn rearrange_lines_tree(first_line: LineNumber, second_line: LineNumber, root: &mut Node) {
     let mut first = false;
     let mut second = false;
     if let Some(children) = root.children.as_mut() {
@@ -244,7 +264,7 @@ fn rearrange_lines(first_line: LineNumber, second_line: LineNumber, root: &mut N
 
         // NOTE This makes it a breadth first search sorta
         for child in children.iter_mut() {
-            rearrange_lines(first_line, second_line, child);
+            rearrange_lines_tree(first_line, second_line, child);
         }
     }
 }
