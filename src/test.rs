@@ -137,6 +137,7 @@ fn mut_const_ptr_multi_overlap() {
             int n = 0;
             int* m = &n;
             int* g = &n;
+            int j = *g;
             *m = 4;
             int t = *g;
         }",
