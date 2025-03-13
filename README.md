@@ -116,12 +116,15 @@ fn main() -> () {
 - [x] Struct Checking, Annotation, Conversion
 - [x] Line rearrangement solutions for using values behind references
 - [x] Line rearrangement solutions for overlapping references
-- [ ] Line rearrangement for multi-statement overlaps
-- [ ] Cloning solutions (maybe)
-- [ ] More test cases for the current prototype
 - [ ] Figure out how to represent scope
 - [ ] System for managing scope
 - [ ] Scope-based borrowing checking
+
+### Less Important
+
+- [ ] Line rearrangement for multi-statement overlaps (saving for later)
+- [ ] Cloning solutions (maybe)
+- [ ] More test cases for the current prototype
 
 ## How does all this work?
 
