@@ -58,6 +58,12 @@ I'm aware that this includes legal array indexing if foo or bar aren't pointers,
 
 Any of these will immediantly result in raw pointers being used, although at the moment, they panic
 
+> [!NOTE]
+> Self-referencing structs (when one field is a value and another is a reference to that value) _are_ allowed
+> However, the oroboros crate is required for these, requiring an extra step during transpilation
+> And additional analysis on structs
+> (Not supported yet)
+
 ### How to handle usage overlaps on the same line (see above as well)
 
 ```c
@@ -116,6 +122,8 @@ fn main() -> () {
 - [x] Struct Checking, Annotation, Conversion
 - [x] Line rearrangement solutions for using values behind references
 - [x] Line rearrangement solutions for overlapping references
+- [ ] Line rearrangement solutions for multiple overlapping mutable references (probably easy, but weird)
+- [ ] Self Referencing Structs
 - [ ] Figure out how to represent scope
 - [ ] System for managing scope
 - [ ] Scope-based borrowing checking
