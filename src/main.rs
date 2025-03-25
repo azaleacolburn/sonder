@@ -15,6 +15,7 @@ mod data_model;
 mod error;
 mod lexer;
 mod parser;
+pub mod scope;
 #[cfg(test)]
 mod test;
 mod token_handler;
