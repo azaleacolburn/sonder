@@ -1,4 +1,6 @@
-use crate::lexer::CType;
+use std::collections::HashMap;
+
+use crate::{data_model::VarData, lexer::CType};
 
 /// Represents a single scope
 /// While Rust functions can be nested inside functions
