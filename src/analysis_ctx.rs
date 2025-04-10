@@ -1,5 +1,3 @@
-use itertools::Itertools;
-
 use crate::{
     data_model::{LineNumber, Reference, ReferenceType, StructData, UsageType, VarData},
     lexer::CType,
