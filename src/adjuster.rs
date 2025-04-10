@@ -2,10 +2,37 @@ use crate::{
     analysis_ctx::AnalysisContext,
     ast::TokenNode as Node,
     checker::BorrowError,
-    data_model::{LineNumber, ReferenceType, Usage, UsageType},
+    data_model::{LineNumber, ReferenceType, UsageType},
 };
 
-pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root: &mut Node) {
+pub fn adjust_ptr_type(mut errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root: &mut Node) {
+    println!("{errors:?}");
+    // errors.sort();
+    println!("{errors:?}");
+    // let mut mut_const = None;
+    // let mut value_mut = None;
+    // errors
+    //     .iter()
+    //     .enumerate()
+    //     .for_each(|(i, error)| match error {
+    //         BorrowError::MutConstOverlap {
+    //             mut_ptr_id: _,
+    //             imut_ptr_id: _,
+    //             value_id: _,
+    //         } => mut_const = Some(i),
+    //         BorrowError::ValueMutOverlap {
+    //             ptr_id: _,
+    //             value_id: _,
+    //         } => value_mut = Some(i),
+    //         _ => {}
+    //     });
+    // if let Some(value_mut) = value_mut {
+    //     if let Some(mut_const) = mut_const {
+    //         if value_mut > mut_const {
+    //             errors.remove(value_mut);
+    //         }
+    //     }
+    // }
     errors.iter().for_each(|error| {
         match &error {
             BorrowError::MutMutOverlap {
@@ -47,7 +74,6 @@ pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root
             }
             // TODO: if the id is the value, we can clone
             BorrowError::ValueMutOverlap { ptr_id, value_id } => {
-                println!("TESTING");
                 if !line_rearrangement_value_ptr_overlap(value_id, ptr_id, root, ctx, false) {
                     set_ptr_rc(value_id, ctx);
                 }
@@ -129,6 +155,7 @@ fn line_rearrangement_mut_const_overlap(
             if first_const_usage_in_reference.get_line_number()
                 > last_mut_usage_in_reference.get_line_number()
             {
+                println!("Testing");
                 // TODO Iteratively move all overlapped lines
                 rearrange_lines_tree(mut_range.start, const_range.end, root);
                 true

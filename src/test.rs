@@ -3,7 +3,7 @@ use std::{fs, process::Command};
 use crate::{convert_to_rust_code, parse_c};
 
 #[test]
-fn test_basic_assignment() {
+fn basic_assignment() {
     validate(
         "int main() {
             int n = 0;
@@ -74,6 +74,21 @@ fn value_const_ptr_overlap() {
         "value_const_ptr_overlap",
     );
 }
+
+// #[test]
+// fn basic_shared_ptr() {
+//     validate(
+//         "int main() {
+//             int n = 0;
+//             int* k = &n;
+//             *k = 6;
+//             int* h = &n;
+//             *k = 3;
+//             int y = *h;
+//         }",
+//         "basic_shared_ptr",
+//     );
+// }
 
 /// Invalid Rust code if directly translated
 /// Should be caught by the checker and a safe solution should be applied
@@ -286,6 +301,22 @@ fn struct_with_ptr_two() {
 }
 
 #[test]
+fn struct_field_ptr_assignment() {
+    validate(
+        "struct Point {
+            int* ptr;
+        };
+
+        int main() {
+            int t = 4;
+            struct Point l = { &t };
+            *l.ptr = 5;
+        }",
+        "struct_field_ptr_assignment",
+    );
+}
+
+#[test]
 fn struct_with_ptr_multi() {
     validate(
         "struct Point {
@@ -305,6 +336,24 @@ fn struct_with_ptr_multi() {
         "struct_with_ptr_multi",
     );
 }
+
+// #[test]
+// fn struct_shared_ptr() {
+//     validate(
+//         "struct Point {
+//             int* ptr;
+//         };
+//
+//         int main() {
+//             int t = 9;
+//             struct Point l = { &t };
+//             struct Point g = { &t };
+//             *l.t = 8;
+//             *g.t = 3;
+//         }",
+//         "struct_with_shared_ptr",
+//     );
+// }
 
 fn validate(c_code: &str, test_name: &str) {
     let ast = parse_c(c_code.to_string());
