@@ -98,6 +98,7 @@ pub enum AssignmentOpType {
     BOrEq,
     BAndEq,
     BXorEq,
+    AddO,
 }
 
 impl AssignmentOpType {
@@ -106,6 +107,7 @@ impl AssignmentOpType {
             Token::Eq => Ok(AssignmentOpType::Eq),
             Token::SubEq => Ok(AssignmentOpType::SubEq),
             Token::AddEq => Ok(AssignmentOpType::AddEq),
+            Token::AddO => Ok(AssignmentOpType::AddO),
             Token::DivEq => Ok(AssignmentOpType::DivEq),
             Token::MulEq => Ok(AssignmentOpType::MulEq),
             Token::BOrEq => Ok(AssignmentOpType::BOrEq),
@@ -127,6 +129,7 @@ impl std::fmt::Display for AssignmentOpType {
             AssignmentOpType::DivEq => "/=",
             AssignmentOpType::AddEq => "+=",
             AssignmentOpType::MulEq => "*=",
+            AssignmentOpType::AddO => "++",
             AssignmentOpType::BOrEq => "|=",
             AssignmentOpType::BXorEq => "^=",
             AssignmentOpType::BAndEq => "&=",

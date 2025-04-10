@@ -241,6 +241,9 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
         AnnotatedNodeT::Eq => {
             format!("=")
         }
+        AnnotatedNodeT::EqCmp => {
+            format!("{} == {}", left.unwrap(), right.unwrap())
+        }
         AnnotatedNodeT::Id { id, rc } => {
             if *rc {
                 format!("*{id}.borrow()")
@@ -337,6 +340,12 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             let rust_expr = convert_annotated_ast(expr);
             format!("{var_id}.{field_id} {op} {rust_expr};")
         }
+        AnnotatedNodeT::While => {
+            let condition = left.unwrap();
+            let scope = right.unwrap();
+
+            format!("while {condition} {{\n\t\t{scope}\n\t}}")
+        }
 
         AnnotatedNodeT::Scope(_) => root
             .children
@@ -344,7 +353,7 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             .map(convert_annotated_ast)
             .collect::<Vec<String>>()
             .join("\n\t"),
-        _ => panic!("Unsupported AnnotatedNode"),
+        node => panic!("Unsupported AnnotatedNode: {node:?}"),
     }
 }
 

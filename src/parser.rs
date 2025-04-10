@@ -246,12 +246,22 @@ fn assignment(token_handler: &mut TokenHandler, name: String) -> Result<TokenNod
     }
 
     token_handler.next_token();
-    let assignment_tok = AssignmentOpType::from_token(token_handler.get_token()).unwrap();
+    let mut assignment_tok = AssignmentOpType::from_token(token_handler.get_token()).unwrap();
+    let expr = match assignment_tok == AssignmentOpType::AddO {
+        true => {
+            assignment_tok = AssignmentOpType::AddEq;
+            token_handler.next_token();
+            TokenNode::new(NodeType::NumLiteral(1), None, token_handler.line())
+        }
+        false => {
+            token_handler.next_token();
+            arithmetic_expression(token_handler)?
+        }
+    };
 
-    token_handler.next_token();
     let token = TokenNode::new(
         NodeType::Assignment(assignment_tok, name.clone()),
-        Some(Box::new([arithmetic_expression(token_handler)?])),
+        Some(Box::new([expr])),
         token_handler.line(),
     );
     if *token_handler.get_token() != Token::Semi {

@@ -355,6 +355,19 @@ fn struct_with_ptr_multi() {
 //     );
 // }
 
+#[test]
+fn basic_loop() {
+    validate(
+        "int main() {
+            int i = 0;
+            while (i == 0) {
+                i++;
+            }
+        }",
+        "basic_loop",
+    );
+}
+
 fn validate(c_code: &str, test_name: &str) {
     let ast = parse_c(c_code.to_string());
     let rust_code = convert_to_rust_code(ast);
