@@ -1,6 +1,9 @@
 use itertools::Itertools;
 
-use crate::data_model::{LineNumber, Reference, ReferenceType, StructData, UsageType, VarData};
+use crate::{
+    data_model::{LineNumber, Reference, ReferenceType, StructData, UsageType, VarData},
+    lexer::CType,
+};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 /// The top-level datastructure that stores data about all the variables and referencing
@@ -61,6 +64,14 @@ impl AnalysisContext {
         self.variables
             .entry(borrowed.to_string())
             .and_modify(|rvalue| rvalue.pointed_to.push(new_reference.clone()));
+    }
+
+    pub fn array_declaration(&mut self, id: &str, c_type: CType, _count: usize) {
+        // TODO Figure out how to represent arrays as pointers to nothing
+        // The current solution is to just represent them as variables with a special type that's
+        // compatible with pointers
+        let var_data = VarData::new(CType::Array(Box::new(c_type)), false, None, None);
+        self.declaration(id, var_data);
     }
 
     // TODO Figure out how to recursively mark things as mutable

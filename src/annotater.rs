@@ -95,6 +95,8 @@ pub enum AnnotatedNodeT {
         t: CType,
         size: usize,
         is_used: bool,
+        is_mut: bool,
+        items: Vec<AnnotatedNode>,
     },
     FunctionDeclaration {
         id: String,
@@ -324,6 +326,24 @@ pub fn annotate_ast<'a>(root: &'a Node, ctx: &AnalysisContext) -> AnnotatedNode 
                 is_mut: var_data.is_mut,
                 fields,
                 is_used,
+            }
+        }
+        NodeType::ArrayDeclaration(id, c_type, count) => {
+            let var = ctx.get_var("id");
+            let is_mut = var.is_mut;
+            let is_used = var.usages.len() != 0;
+            let items: Vec<AnnotatedNode> = match root.children.as_ref() {
+                Some(vec) => vec.iter().map(|node| annotate_ast(node, ctx)).collect(),
+                None => Vec::new(),
+            };
+
+            AnnotatedNodeT::ArrayDeclaration {
+                id: id.clone(),
+                t: c_type.clone(),
+                size: *count,
+                is_used,
+                is_mut,
+                items,
             }
         }
         NodeType::StructFieldAssignment {

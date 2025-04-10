@@ -53,6 +53,15 @@ pub enum NodeType {
     Adr(String),
     DeRef(Box<TokenNode>),
     ArrayDeclaration(String, CType, usize), // id, type, count
+    IndexArray {
+        id: String,
+        expr: Box<TokenNode>,
+    },
+    IndexArrayAssignment {
+        id: String,
+        rside: Box<TokenNode>,
+        lside: Box<TokenNode>,
+    },
     FunctionDeclaration(String, CType),
     Assert,
     Return,
@@ -193,15 +202,6 @@ impl NodeType {
             NodeType::FunctionCall(s) => AnnotatedNodeT::FunctionCall(s.to_string()),
             NodeType::Scope(s) => AnnotatedNodeT::Scope(s.clone()),
             NodeType::Asm(asm) => AnnotatedNodeT::Asm(asm.to_string()),
-
-            // WARNING Placeholder
-            // TODO Figure out how to make this work
-            NodeType::ArrayDeclaration(id, t, size) => AnnotatedNodeT::ArrayDeclaration {
-                id: id.to_string(),
-                t: t.clone(),
-                size: *size,
-                is_used: true,
-            },
             NodeType::FunctionDeclaration(id, t) => AnnotatedNodeT::FunctionDeclaration {
                 id: id.to_string(),
                 t: t.clone(),

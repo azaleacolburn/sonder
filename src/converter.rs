@@ -1,7 +1,6 @@
 use crate::{
     annotater::{AnnotatedNode, AnnotatedNodeT},
     data_model::{FieldDefinition, ReferenceType},
-    lexer::CType,
 };
 
 pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
@@ -20,17 +19,12 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 true => "",
                 false => "_",
             };
-            let rust_t = match &t {
-                CType::Void => "()",
-                CType::Int => "i32",
-                CType::Char => "u8",
-                CType::Struct(id) => id.as_str(),
-            };
+            let rust_t = t.to_rust_type();
             let rust_adr = convert_annotated_ast(&adr);
             let mut_binding = if *is_mut { "mut " } else { "" };
 
             let ref_type_iter = &mut ref_type.into_iter().cloned();
-            let rust_ref_type = construct_ptr_type(ref_type_iter, rust_t);
+            let rust_ref_type = construct_ptr_type(ref_type_iter, &rust_t);
 
             let rust_reference = match points_to[0].borrow().get_reference_type() {
                 ReferenceType::MutBorrowed => format!("&mut {rust_adr}"),
@@ -100,12 +94,7 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
                 true => "",
                 false => "_",
             };
-            let rust_t = match &t {
-                CType::Void => "()",
-                CType::Int => "i32",
-                CType::Char => "u8",
-                CType::Struct(id) => id.as_str(),
-            };
+            let rust_t = t.to_rust_type();
             let expr_children = root
                 .children
                 .iter()
@@ -145,6 +134,25 @@ pub fn convert_annotated_ast(root: &AnnotatedNode) -> String {
         }
         AnnotatedNodeT::Adr { id } => {
             format!("{id}") // NOTE This isnt' a bug, just cursed
+        }
+        AnnotatedNodeT::ArrayDeclaration {
+            id,
+            t,
+            size,
+            is_used,
+            is_mut,
+            items,
+        } => {
+            let rust_t = t.to_rust_type();
+            let used = if *is_used { "" } else { "_" };
+            let mut_str = if *is_mut { "mut " } else { "" };
+            let items_str = items
+                .iter()
+                .map(convert_annotated_ast)
+                .collect::<Vec<String>>()
+                .join(", ");
+
+            format!("let {mut_str}{used}{id}: {rust_t} = &[{size}; {items_str}]")
         }
         AnnotatedNodeT::StructDeclaration {
             var_id,
@@ -253,14 +261,10 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             }
         }
         AnnotatedNodeT::FunctionDeclaration { id, t } => {
-            let rust_t = match (id.as_str(), t) {
-                ("main", _) => "()",
-                (_, CType::Void) => "()",
-                (_, CType::Int) => "i32",
-                (_, CType::Char) => "u8",
-                (_, CType::Struct(id)) => id.as_str(),
+            let rust_t = match id == "main" {
+                true => "()".into(),
+                false => t.to_rust_type(),
             };
-
             let mut ret = format!("fn {id}() -> {rust_t} {{\n");
             root.children.iter().for_each(|child| {
                 ret.push_str(format!("\t{}", &convert_annotated_ast(child)).as_str());
@@ -290,13 +294,8 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
             };
             let mut ret = format!("struct {struct_id}{lifetime} {{\n");
             field_definitions.iter().for_each(|field| {
-                let mut field_type = match &field.c_type {
-                    CType::Void => "()",
-                    CType::Int => "i32",
-                    CType::Char => "u8",
-                    CType::Struct(id) => id.as_str(),
-                }
-                .to_string();
+                let mut field_type = field.c_type.to_rust_type();
+
                 field
                     .ptr_type
                     .iter()
