@@ -11,8 +11,6 @@ pub struct ScopeContext {
     pub variables: HashMap<String, VarData>,
 }
 
-pub struct Argument {}
-
 pub enum ScopeType {
     Function {
         ret: CType,

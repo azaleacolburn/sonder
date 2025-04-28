@@ -37,6 +37,7 @@ pub fn scope(
     let mut scope_children: Vec<TokenNode> = vec![];
     while *token_handler.get_token() != Token::CCurl {
         if token_handler.curr_token > token_handler.len() {
+            println!("Found: {:?}", token_handler.get_token());
             return Err(token_handler.new_err(ET::ExpectedCParen));
         }
 
@@ -379,8 +380,11 @@ fn function_declare_statement(
             Token::Id(id) => id.clone(),
             _ => return Err(token_handler.new_err(ET::ExpectedId)),
         };
+        token_handler.next_token();
+
         let arg_node = TokenNode::new(NodeType::Declaration(id, t, 0), None, token_handler.line());
         args_scope.push(arg_node);
+
         if *token_handler.get_token() != Token::Comma {
             break;
         }
@@ -444,7 +448,9 @@ fn function_call(token_handler: &mut TokenHandler, name: String) -> Result<Token
         }
         token_handler.next_token();
     }
+    println!("Found: {:?}", token_handler.get_token());
     if *token_handler.get_token() != Token::CParen {
+        println!("Found: {:?}", token_handler.get_token());
         return Err(token_handler.new_err(ET::ExpectedCParen));
     }
     let function_call_node = TokenNode::new(
@@ -474,7 +480,7 @@ fn type_statement(token_handler: &mut TokenHandler, t: CType) -> Result<TokenNod
     token_handler.next_token();
     let mut ptr_cnt = 0;
     let mut ptr_tok = token_handler.get_token();
-    println!("tok: {:?}", ptr_tok);
+    println!("type_statement id_tok: {:?}", ptr_tok);
     while *ptr_tok == Token::Star {
         ptr_cnt += 1;
         token_handler.next_token();
@@ -592,6 +598,7 @@ fn condition_expr(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> 
             token_handler.next_token();
             let expr = condition_expr(token_handler)?;
             if *token_handler.get_token() != Token::CParen {
+                println!("Found: {:?}", token_handler.get_token());
                 return Err(token_handler.new_err(ET::ExpectedCParen));
             }
 

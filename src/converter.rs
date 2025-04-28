@@ -1,5 +1,5 @@
 use crate::{
-    annotater::{AnnotatedNode, AnnotatedNodeT},
+    annotater::{annotate_ast, AnnotatedNode, AnnotatedNodeT},
     data_model::{FieldDefinition, ReferenceType},
 };
 
@@ -268,12 +268,19 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
                 true => "()".into(),
                 false => t.to_rust_type(),
             };
-            let mut ret = format!("fn {id}() -> {rust_t} {{\n");
-            root.children.iter().for_each(|child| {
-                ret.push_str(format!("\t{}", &convert_annotated_ast(child)).as_str());
-            });
-            ret.push_str("\n}");
-            ret
+            let args = root
+                .children
+                .iter()
+                .take(i32::max(root.children.len() as i32 - 1, 0) as usize)
+                .map(convert_argument)
+                .collect::<Vec<String>>()
+                .join(", ");
+            let scope = convert_annotated_ast(root.children.last().unwrap_or(&AnnotatedNode {
+                token: AnnotatedNodeT::Scope(None),
+                children: vec![],
+            }));
+
+            format!("fn {id}({args}) -> {rust_t} {{\n{scope}\n}}")
         }
         AnnotatedNodeT::Program { imports } => {
             let mut t = imports.clone();
@@ -346,6 +353,15 @@ fn non_ptr_conversion(root: &AnnotatedNode) -> String {
 
             format!("while {condition} {{\n\t\t{scope}\n\t}}")
         }
+        AnnotatedNodeT::FunctionCall(id) => {
+            let args = root
+                .children
+                .iter()
+                .map(convert_annotated_ast)
+                .collect::<Vec<String>>()
+                .join(", ");
+            format!("{id}({args});")
+        }
 
         AnnotatedNodeT::Scope(_) => root
             .children
@@ -376,5 +392,39 @@ where
             format!("*const {}", construct_ptr_type(points_to, rust_t))
         }
         None => rust_t.to_string(),
+    }
+}
+
+fn convert_argument(expr: &AnnotatedNode) -> String {
+    match &expr.token {
+        AnnotatedNodeT::Declaration {
+            id,
+            is_mut,
+            t,
+            rc: _,
+            is_used,
+        } => {
+            let mut_str = if *is_mut { "mut " } else { "" };
+            let _used_str = if *is_used { "_" } else { "" };
+            format!("{mut_str}{id}: {}", t.to_rust_type())
+        }
+        AnnotatedNodeT::PtrDeclaration {
+            id,
+            is_mut,
+            t,
+            rc: _,
+            is_used,
+            points_to: _,
+            adr: _,
+            ref_type,
+        } => {
+            let mut_str = if *is_mut { "mut " } else { "" };
+            let _used_str = if *is_used { "_" } else { "" };
+            let ref_type_iter = &mut ref_type.into_iter().cloned();
+            let ptr_type = construct_ptr_type(ref_type_iter, &t.to_rust_type());
+
+            format!("{mut_str}{id}: {ptr_type}")
+        }
+        node_t => panic!("Unexpected Argument Node Type: {:?}", node_t),
     }
 }
