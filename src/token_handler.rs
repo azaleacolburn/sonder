@@ -59,7 +59,6 @@ impl TokenHandler {
     }
 
     pub fn new_err(&self, err: ET) -> RhErr {
-        println!("{:?}", err);
         RhErr {
             err,
             line: self.line(),
@@ -67,8 +66,6 @@ impl TokenHandler {
     }
 
     pub fn line(&self) -> usize {
-        println!("{:?}", self.tokens[self.curr_token]);
-        println!("{:?}", self.token_lines);
         self.token_lines
             .iter()
             .position(|range| range.start <= self.curr_token && self.curr_token <= range.end)

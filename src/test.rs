@@ -382,6 +382,19 @@ fn ptr_loop() {
     );
 }
 
+#[test]
+fn function_call() {
+    validate(
+        "int main() {
+            test(1, 2);
+        }
+        void test(int a, int b) {
+            int k = a + b;
+        }",
+        "function_call",
+    );
+}
+
 fn validate(c_code: &str, test_name: &str) {
     let ast = parse_c(c_code.to_string());
     let rust_code = convert_to_rust_code(ast);

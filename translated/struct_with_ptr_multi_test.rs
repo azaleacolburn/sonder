@@ -4,7 +4,7 @@ struct Point<'a> {
 	c: i32,
 }
 fn main() -> () {
-	let mut t: i32 = 4;
+let mut t: i32 = 4;
 	let mut g: i32 = 8;
 	let mut h: &mut i32  = &mut g;
 	let l = Point { ptr: &mut t,ptr2: &mut h,c: 5,};
