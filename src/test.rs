@@ -395,6 +395,20 @@ fn function_call() {
     );
 }
 
+#[test]
+fn assignment_function_call() {
+    validate(
+        "int main() {
+            int t = add(1, 2);
+        }
+        int add(int a, int b) {
+            int k = a + b;
+            return(k);
+        }",
+        "assignment_function_call",
+    );
+}
+
 fn validate(c_code: &str, test_name: &str) {
     let ast = parse_c(c_code.to_string());
     let rust_code = convert_to_rust_code(ast);

@@ -323,18 +323,7 @@ impl AnnotatedNode {
                     format!("{id} {op} {rust_expr};")
                 }
             }
-            AnnotatedNodeT::FunctionDeclaration { id, t } => {
-                let rust_t = match id == "main" {
-                    true => "()".into(),
-                    false => t.to_rust_type(),
-                };
-                let mut ret = format!("fn {id}() -> {rust_t} {{\n");
-                root.children.iter().for_each(|child| {
-                    ret.push_str(format!("\t{}", child.convert()).as_str());
-                });
-                ret.push_str("\n}");
-                ret
-            }
+
             AnnotatedNodeT::Program { imports } => {
                 let mut t = imports.clone();
                 t.push(
