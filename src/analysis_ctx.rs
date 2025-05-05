@@ -57,7 +57,7 @@ impl AnalysisContext {
 
         let l_value = self.variables.get_mut(assigned_to).expect("Var not in ctx");
         l_value.points_to.push(new_reference.clone());
-        l_value.is_mut = true;
+        l_value.is_mut = false;
 
         self.variables
             .entry(borrowed.to_string())
@@ -81,6 +81,7 @@ impl AnalysisContext {
         let top_ptr = ptr_chain.next().expect("No pointers in chain");
         let ptr_data = self.get_var(&top_ptr).clone(); // TODO :[
         assert!(ptr_data.is_ptr());
+        println!("HERE\n{}", ptr_data.is_mut);
 
         if let Some(field_info) = &ptr_data.fieldof_struct {
             self.mut_struct(field_info.struct_id.clone(), |struct_data| {
@@ -112,7 +113,7 @@ impl AnalysisContext {
 
         ptr_chain.for_each(|var_id| {
             let var_data = self.get_var_mut(&var_id);
-            var_data.is_mut = true;
+            var_data.set_mut();
             if let Some(reference) = var_data.current_reference_held() {
                 reference.borrow_mut().set_mut();
             }
