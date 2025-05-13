@@ -1,13 +1,16 @@
 use itertools::Itertools;
 
-use crate::data_model::{LineNumber, Reference, ReferenceType, StructData, UsageType, VarData};
+use crate::{
+    data_model::{LineNumber, Reference, ReferenceType, StructData, UsageType, VarData},
+    scope::ScopeContext,
+};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 /// The top-level datastructure that stores data about all the variables and referencing
 /// Stores a vector of the instances of addresses being taken, in order
 #[derive(Debug, Clone)]
 pub struct AnalysisContext {
-    pub variables: HashMap<String, VarData>,
+    pub scopes: Vec<ScopeContext>,
     pub structs: HashMap<String, StructData>,
 }
 

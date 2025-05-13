@@ -1,4 +1,5 @@
-use crate::lexer::CType;
+use crate::{data_model::VarData, lexer::CType};
+use std::collections::HashMap;
 
 /// Represents a single scope
 /// While Rust functions can be nested inside functions
@@ -8,8 +9,6 @@ pub struct ScopeContext {
     pub scope_type: ScopeType,
     pub variables: HashMap<String, VarData>,
 }
-
-pub struct Argument {}
 
 pub enum ScopeType {
     Function {

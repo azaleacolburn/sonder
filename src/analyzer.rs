@@ -1,4 +1,3 @@
-
 use crate::{
     analysis_ctx::AnalysisContext,
     ast::{NodeType, TokenNode as Node},
@@ -8,12 +7,7 @@ use crate::{
     lexer::CType,
 };
 
-pub fn determine_var_mutability<'a>(
-    root: &'a Node,
-    ctx: &mut AnalysisContext,
-    parent_children: Box<[Node]>,
-    root_index: usize,
-) {
+pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
     // NOTE Let nodes handle their own children
     // This is going to introduce a few bugs were I forget to recurse, but is necessary for
     // ancestors to have access to child reference information and to avoid traversing pointer
@@ -21,11 +15,11 @@ pub fn determine_var_mutability<'a>(
     //
     //
     if let Some(children) = root.children.as_ref() {
-        children.iter().enumerate().for_each(|(i, node)| {
+        children.iter().for_each(|node| {
             // WARNING This assumes that
             // an rc can be cloned while the refcell is borrowed
 
-            determine_var_mutability(node, ctx, children.clone(), i);
+            determine_var_mutability(node, ctx);
         })
     }
 

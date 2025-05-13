@@ -39,7 +39,7 @@ fn convert_to_rust_code(mut ast: TokenNode) -> String {
     ast.print(&mut 0);
     let mut ctx: AnalysisContext = AnalysisContext::new();
 
-    analyzer::determine_var_mutability(&ast, &mut ctx, Box::new([]), 0);
+    analyzer::determine_var_mutability(&ast, &mut ctx);
 
     println!("variables: {:?}", ctx.variables);
 
