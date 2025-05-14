@@ -6,7 +6,7 @@ use crate::{
 };
 
 impl AnalysisContext {
-    pub fn adjust_ptr_type(&mut self, mut errors: Vec<BorrowError>, root: &mut Node) {
+    pub fn adjust_ptr_type(&mut self, errors: Vec<BorrowError>, root: &mut Node) {
         println!("{errors:?}");
         // errors.sort();
         println!("{errors:?}");
