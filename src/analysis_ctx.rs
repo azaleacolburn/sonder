@@ -1,8 +1,7 @@
-use itertools::Itertools;
-
 use crate::{
     data_model::{LineNumber, Reference, ReferenceType, StructData, UsageType, VarData},
-    scope::ScopeContext,
+    lexer::CType,
+    scope::{ScopeContext, ScopeType},
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -11,23 +10,46 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 #[derive(Debug, Clone)]
 pub struct AnalysisContext {
     pub scopes: Vec<ScopeContext>,
+    current_scope: usize,
     pub structs: HashMap<String, StructData>,
 }
 
 impl AnalysisContext {
     pub fn new() -> AnalysisContext {
         AnalysisContext {
-            variables: HashMap::new(),
+            scopes: vec![ScopeContext::new(ScopeType::Top)],
+            current_scope: 0,
             structs: HashMap::new(),
         }
     }
 
+    pub fn current_scope_mut(&mut self) -> &mut ScopeContext {
+        &mut self.scopes[self.current_scope]
+    }
+
+    pub fn current_scope(&self) -> &ScopeContext {
+        &self.scopes[self.current_scope]
+    }
+
+    pub fn new_scope(&mut self, scope_type: ScopeType) {
+        self.scopes.push(ScopeContext {
+            scope_type,
+            variables: HashMap::new(),
+        })
+    }
+
     pub fn declaration(&mut self, id: impl ToString, data: VarData) {
-        self.variables.insert(id.to_string(), data);
+        self.current_scope_mut()
+            .variables
+            .insert(id.to_string(), data);
     }
 
     pub fn new_usage(&mut self, id: &str, line: LineNumber, t: UsageType) {
-        let initial_var = self.variables.get_mut(id).expect("Var not in ctx");
+        let initial_var = self
+            .current_scope_mut()
+            .variables
+            .get_mut(id)
+            .expect("Var not in ctx");
         initial_var.new_usage(line, t);
     }
 
@@ -57,13 +79,26 @@ impl AnalysisContext {
 
         let new_reference = Rc::new(RefCell::new(Reference::new(borrowed, assigned_to, line)));
 
-        let l_value = self.variables.get_mut(assigned_to).expect("Var not in ctx");
+        let l_value = self
+            .current_scope_mut()
+            .variables
+            .get_mut(assigned_to)
+            .expect("Var not in ctx");
         l_value.points_to.push(new_reference.clone());
-        l_value.is_mut = true;
+        l_value.is_mut = false;
 
-        self.variables
+        self.current_scope_mut()
+            .variables
             .entry(borrowed.to_string())
             .and_modify(|rvalue| rvalue.pointed_to.push(new_reference.clone()));
+    }
+
+    pub fn array_declaration(&mut self, id: &str, c_type: CType, _count: usize) {
+        // TODO Figure out how to represent arrays as pointers to nothing
+        // The current solution is to just represent them as variables with a special type that's
+        // compatible with pointers
+        let var_data = VarData::new(CType::Array(Box::new(c_type)), false, None, None);
+        self.declaration(id, var_data);
     }
 
     // TODO Figure out how to recursively mark things as mutable
@@ -75,6 +110,7 @@ impl AnalysisContext {
         let top_ptr = ptr_chain.next().expect("No pointers in chain");
         let ptr_data = self.get_var(&top_ptr).clone(); // TODO :[
         assert!(ptr_data.is_ptr());
+        println!("HERE\n{}", ptr_data.is_mut);
 
         if let Some(field_info) = &ptr_data.fieldof_struct {
             self.mut_struct(field_info.struct_id.clone(), |struct_data| {
@@ -106,7 +142,7 @@ impl AnalysisContext {
 
         ptr_chain.for_each(|var_id| {
             let var_data = self.get_var_mut(&var_id);
-            var_data.is_mut = true;
+            var_data.set_mut();
             if let Some(reference) = var_data.current_reference_held() {
                 reference.borrow_mut().set_mut();
             }
@@ -134,11 +170,15 @@ impl AnalysisContext {
     }
 
     pub fn get_var(&self, id: &str) -> &VarData {
-        self.variables.get(id).expect("Var not in map")
+        self.current_scope()
+            .variables
+            .get(id)
+            .expect("Var not in map")
     }
 
     pub fn get_var_mut(&mut self, id: &str) -> &mut VarData {
-        self.variables
+        self.current_scope_mut()
+            .variables
             .get_mut(id)
             .expect("Var (to mutate) not in map")
     }
@@ -147,7 +187,7 @@ impl AnalysisContext {
     where
         F: FnOnce(&mut VarData),
     {
-        self.variables.entry(id).and_modify(f);
+        self.current_scope_mut().variables.entry(id).and_modify(f);
     }
 
     pub fn mut_struct<F>(&mut self, id: String, f: F)
@@ -168,6 +208,7 @@ impl AnalysisContext {
             return vec![];
         }
         let ptrs = &self
+            .current_scope()
             .variables
             .get(&root)
             .as_ref()
@@ -199,13 +240,15 @@ impl AnalysisContext {
         }
 
         println!();
-        self.variables
+        self.current_scope()
+            .variables
             .iter()
             .for_each(|var_data| println!("{:?}\n", var_data));
         println!();
         println!("root: {root}");
 
         let ptrs = &self
+            .current_scope()
             .variables
             .get(&root)
             .as_ref()

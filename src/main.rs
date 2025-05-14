@@ -41,16 +41,16 @@ fn convert_to_rust_code(mut ast: TokenNode) -> String {
 
     analyzer::determine_var_mutability(&ast, &mut ctx);
 
-    println!("variables: {:?}", ctx.variables);
+    println!("variables: {:?}", ctx.current_scope().variables);
 
     let temp_ctx = ctx.clone();
     let errors = checker::borrow_check(&temp_ctx);
-    adjuster::adjust_ptr_type(errors, &mut ctx, &mut ast);
+    ctx.adjust_ptr_type(errors, &mut ast);
 
-    let annotated_ast = annotater::annotate_ast(&ast, &ctx);
+    let annotated_ast = ast.annotate(&ctx);
     // annotated_ast.print(&mut 0);
 
-    let converted_rust = converter::convert_annotated_ast(&annotated_ast);
+    let converted_rust = annotated_ast.convert();
     println!("\n{converted_rust}");
     converted_rust
 }

@@ -93,6 +93,13 @@ impl VarData {
             .iter_mut()
             .for_each(|reference| reference.borrow_mut().set_raw());
     }
+
+    pub fn set_mut(&mut self) {
+        self.is_mut = true;
+        self.points_to
+            .iter_mut()
+            .for_each(|reference| reference.borrow_mut().set_mut());
+    }
 }
 
 /// Represents a singlular usage of a variable, not including its reference being taken

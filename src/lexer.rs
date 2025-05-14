@@ -20,6 +20,7 @@ impl LineNumHandler {
 
     /// Given a token index, returns the line that token was on
     /// For external use only
+    ///
     pub fn get_line(&self, token_number: usize) -> usize {
         self.token_lines
             .iter()
@@ -565,16 +566,17 @@ pub enum CType {
     Int,
     Char,
     Struct(String),
+    Array(Box<CType>),
 }
 
 impl CType {
     pub fn to_rust_type(&self) -> String {
         match self {
-            CType::Int => "i32",
-            CType::Char => "u8",
-            CType::Void => "()",
-            CType::Struct(id) => id,
+            CType::Int => "i32".into(),
+            CType::Char => "u8".into(),
+            CType::Void => "()".into(),
+            CType::Struct(id) => id.into(),
+            CType::Array(sub_type) => format!("&[{}]", sub_type.to_rust_type()),
         }
-        .to_string()
     }
 }

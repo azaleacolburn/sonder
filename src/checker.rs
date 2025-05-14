@@ -50,18 +50,54 @@ pub enum BorrowError {
     }
 
 }
+impl PartialEq for BorrowError {
+fn eq(&self, other: &Self) -> bool {
+        true
+    }
 
-#[derive(Debug, Clone)]
-struct PtrData<'a> {
-    ptr_id: String,
-    ptr_var_data: &'a VarData,
-    ptr_type: ReferenceType,
+    fn ne(&self, other: &Self) -> bool {
+        false
+    }
+}
+impl Eq for BorrowError {
+    fn assert_receiver_is_total_eq(&self) {
+        
+    }
+    
+}
+impl PartialOrd for BorrowError {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (BorrowError::ValueMutOverlap { ptr_id: _, value_id: _ }, BorrowError::MutConstOverlap {
+                mut_ptr_id: _,
+                imut_ptr_id: _,
+                value_id: _
+            }) => 
+                Some(std::cmp::Ordering::Greater),
+            (BorrowError::MutConstOverlap {
+                mut_ptr_id: _,
+                imut_ptr_id: _,
+                value_id: _
+            },BorrowError::ValueMutOverlap { ptr_id: _, value_id: _ } )  => Some(std::cmp::Ordering::Less),
+            (_, _) => Some(std::cmp::Ordering::Equal)
+            
+        }
+    }
+
+}
+
+
+impl Ord for BorrowError {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+       self.partial_cmp(other).unwrap()
+    }
+
 }
 
 // TODO: Figure out how to include line numbers in error reports
 pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
     // ctx.print_refs();
-    ctx.variables
+    ctx.current_scope().variables
         .iter()
         .flat_map(|(var_id, var_data)| -> Vec<BorrowError> {
             let pointed_to_by: Vec<Reference> = var_data

@@ -1,6 +1,5 @@
 use crate::{
     annotater::AnnotatedNodeT,
-    data_model::Usage,
     lexer::{CType, Token},
 };
 #[derive(Debug, PartialEq, Clone)]
@@ -53,6 +52,15 @@ pub enum NodeType {
     Adr(String),
     DeRef(Box<TokenNode>),
     ArrayDeclaration(String, CType, usize), // id, type, count
+    IndexArray {
+        id: String,
+        expr: Box<TokenNode>,
+    },
+    IndexArrayAssignment {
+        id: String,
+        rside: Box<TokenNode>,
+        lside: Box<TokenNode>,
+    },
     FunctionDeclaration(String, CType),
     Assert,
     Return,
@@ -89,6 +97,7 @@ pub enum AssignmentOpType {
     BOrEq,
     BAndEq,
     BXorEq,
+    AddO,
 }
 
 impl AssignmentOpType {
@@ -97,6 +106,7 @@ impl AssignmentOpType {
             Token::Eq => Ok(AssignmentOpType::Eq),
             Token::SubEq => Ok(AssignmentOpType::SubEq),
             Token::AddEq => Ok(AssignmentOpType::AddEq),
+            Token::AddO => Ok(AssignmentOpType::AddO),
             Token::DivEq => Ok(AssignmentOpType::DivEq),
             Token::MulEq => Ok(AssignmentOpType::MulEq),
             Token::BOrEq => Ok(AssignmentOpType::BOrEq),
@@ -118,6 +128,7 @@ impl std::fmt::Display for AssignmentOpType {
             AssignmentOpType::DivEq => "/=",
             AssignmentOpType::AddEq => "+=",
             AssignmentOpType::MulEq => "*=",
+            AssignmentOpType::AddO => "++",
             AssignmentOpType::BOrEq => "|=",
             AssignmentOpType::BXorEq => "^=",
             AssignmentOpType::BAndEq => "&=",
@@ -193,15 +204,6 @@ impl NodeType {
             NodeType::FunctionCall(s) => AnnotatedNodeT::FunctionCall(s.to_string()),
             NodeType::Scope(s) => AnnotatedNodeT::Scope(s.clone()),
             NodeType::Asm(asm) => AnnotatedNodeT::Asm(asm.to_string()),
-
-            // WARNING Placeholder
-            // TODO Figure out how to make this work
-            NodeType::ArrayDeclaration(id, t, size) => AnnotatedNodeT::ArrayDeclaration {
-                id: id.to_string(),
-                t: t.clone(),
-                size: *size,
-                is_used: true,
-            },
             NodeType::FunctionDeclaration(id, t) => AnnotatedNodeT::FunctionDeclaration {
                 id: id.to_string(),
                 t: t.clone(),

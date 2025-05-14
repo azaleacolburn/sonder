@@ -57,6 +57,9 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             ctx.declaration(id, v);
             ctx.ptr_assignment(&borrowed, id, root.line);
         }
+        NodeType::ArrayDeclaration(id, c_type, count) => {
+            ctx.array_declaration(id, c_type.clone(), *count)
+        }
         NodeType::DerefAssignment(_, l_side) => {
             // determine_var_mutability(&l_side, ctx, parent_children, root_index);
             let deref_ids = find_ids(&l_side);
@@ -203,6 +206,31 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             });
 
             // NOTE We don't need to apply mutability checking to the struct fields themselves
+        }
+        NodeType::FunctionDeclaration(name, t) => {
+            let mut node_args = root
+                .children
+                .as_ref()
+                .unwrap_or(&vec![].into_boxed_slice())
+                .to_vec();
+            let _ = node_args.pop();
+            let args: Vec<String> = node_args
+                .iter()
+                .map(|arg| match &arg.token {
+                    NodeType::Declaration(id, t, _size) => {
+                        let data = VarData::new(t.clone(), false, None, None);
+                        ctx.declaration(id.clone(), data);
+
+                        id.clone()
+                    }
+                    node => panic!("Invalid Function Declaration Node Type: {:?}", node),
+                })
+                .collect();
+            ctx.new_scope(crate::scope::ScopeType::Function {
+                name: name.clone(),
+                ret: t.clone(),
+                args,
+            });
         }
         _ => {}
     };

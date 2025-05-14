@@ -1,4 +1,3 @@
-
 use crate::ast::{AssignmentOpType, NodeType, ScopeType, TokenNode};
 use crate::error::{ErrType as ET, RhErr};
 use crate::lexer::{CType, LineNumHandler, Token};
@@ -38,6 +37,7 @@ pub fn scope(
     let mut scope_children: Vec<TokenNode> = vec![];
     while *token_handler.get_token() != Token::CCurl {
         if token_handler.curr_token > token_handler.len() {
+            println!("Found: {:?}", token_handler.get_token());
             return Err(token_handler.new_err(ET::ExpectedCParen));
         }
 
@@ -66,8 +66,7 @@ pub fn statement(
     match statement_token {
         Token::Type(t) => type_statement(token_handler, t.clone()),
         Token::Id(name) => id_statement(token_handler, name.to_string()),
-        // TODO: Maybe split deref_assignment into two null-terminals
-        Token::Star => deref_assignment(token_handler, None),
+        Token::Star => deref_assignment(token_handler),
         Token::If => if_statement(token_handler),
         Token::While => while_statement(token_handler),
         Token::For => for_statement(token_handler),
@@ -182,28 +181,13 @@ fn arithmetic_factor(token_handler: &mut TokenHandler) -> Result<TokenNode, RhEr
         }
         Token::Id(id) if *token_handler.peek(1) == Token::OSquare => {
             token_handler.next_token();
+            let expr = Box::new(arithmetic_expression(token_handler)?);
             token_handler.next_token();
-            let post_mul = TokenNode::new(
-                NodeType::Mul,
-                Some(Box::new([
-                    arithmetic_expression(token_handler)?,
-                    TokenNode::new(NodeType::NumLiteral(8), None, token_handler.line()),
-                ])),
-                token_handler.line(),
-            );
-            let post_add = TokenNode::new(
-                NodeType::Sub,
-                Some(Box::new([
-                    TokenNode::new(NodeType::Id(id.to_string()), None, token_handler.line()),
-                    post_mul,
-                ])),
-                token_handler.line(),
-            );
             if *token_handler.get_token() != Token::CSquare {
                 return Err(token_handler.new_err(ET::ExpectedCSquare));
             }
             Ok(TokenNode::new(
-                NodeType::DeRef(Box::new(post_add)),
+                NodeType::IndexArray { id, expr },
                 None,
                 token_handler.line(),
             ))
@@ -242,13 +226,10 @@ fn arithmetic_factor(token_handler: &mut TokenHandler) -> Result<TokenNode, RhEr
         Token::OParen => {
             token_handler.next_token();
             match arithmetic_expression(token_handler) {
-                Ok(node) => {
-                    if *token_handler.get_token() == Token::CParen {
-                        Ok(node)
-                    } else {
-                        Err(token_handler.new_err(ET::ExpectedCParen))
-                    }
+                Ok(_) if *token_handler.get_token() != Token::CParen => {
+                    Err(token_handler.new_err(ET::ExpectedCParen))
                 }
+                Ok(node) => Ok(node),
                 Err(err) => Err(err),
             }
         }
@@ -262,16 +243,26 @@ fn assignment(token_handler: &mut TokenHandler, name: String) -> Result<TokenNod
     println!("Assignment token: {:?}", token_handler.get_token());
     if *token_handler.peek(1) == Token::OSquare {
         token_handler.next_token();
-        return deref_assignment(token_handler, Some(name.clone()));
+        return index_array_assignment(token_handler, name.clone());
     }
 
     token_handler.next_token();
-    let assignment_tok = AssignmentOpType::from_token(token_handler.get_token()).unwrap();
+    let mut assignment_tok = AssignmentOpType::from_token(token_handler.get_token()).unwrap();
+    let expr = match assignment_tok == AssignmentOpType::AddO {
+        true => {
+            assignment_tok = AssignmentOpType::AddEq;
+            token_handler.next_token();
+            TokenNode::new(NodeType::NumLiteral(1), None, token_handler.line())
+        }
+        false => {
+            token_handler.next_token();
+            arithmetic_expression(token_handler)?
+        }
+    };
 
-    token_handler.next_token();
     let token = TokenNode::new(
         NodeType::Assignment(assignment_tok, name.clone()),
-        Some(Box::new([arithmetic_expression(token_handler)?])),
+        Some(Box::new([expr])),
         token_handler.line(),
     );
     if *token_handler.get_token() != Token::Semi {
@@ -281,53 +272,42 @@ fn assignment(token_handler: &mut TokenHandler, name: String) -> Result<TokenNod
     Ok(token)
 }
 
+// First token is [
+fn index_array_assignment(
+    token_handler: &mut TokenHandler,
+    id: String,
+) -> Result<TokenNode, RhErr> {
+    token_handler.next_token();
+    let lside = Box::new(arithmetic_expression(token_handler)?);
+    if *token_handler.get_token() != Token::CSquare {
+        return Err(token_handler.new_err(ET::ExpectedCSquare));
+    }
+    token_handler.next_token();
+    let rside = Box::new(condition_expr(token_handler)?);
+    if *token_handler.get_token() != Token::CSquare {
+        return Err(token_handler.new_err(ET::ExpectedSemi));
+    }
+
+    Ok(TokenNode::new(
+        NodeType::IndexArrayAssignment { id, rside, lside },
+        None,
+        token_handler.line(),
+    ))
+}
+
 // Token coming in should be (, id or [
 // if [] => Some(name)
 // else => None
-fn deref_assignment(
-    token_handler: &mut TokenHandler,
-    name: Option<String>,
-) -> Result<TokenNode, RhErr> {
+fn deref_assignment(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
     let first = token_handler.get_token().clone();
     println!("DeRef Assignment First: {:?}", first);
 
-    let token = match first {
-        Token::OSquare => {
-            token_handler.next_token();
-            let post_mul = TokenNode::new(
-                NodeType::Mul,
-                Some(Box::new([
-                    arithmetic_expression(token_handler)?,
-                    TokenNode::new(NodeType::NumLiteral(8), None, token_handler.line()),
-                ])),
-                token_handler.line(),
-            );
-            let post_mul = TokenNode::new(
-                NodeType::Sub,
-                Some(Box::new([
-                    TokenNode::new(
-                        NodeType::Id(
-                            name.expect("Array assignments must have ids with names")
-                                .clone(),
-                        ),
-                        None,
-                        token_handler.line(),
-                    ),
-                    post_mul,
-                ])),
-                token_handler.line(),
-            );
-            if *token_handler.get_token() != Token::CSquare {
-                return Err(token_handler.new_err(ET::ExpectedCSquare));
-            }
-            token_handler.next_token();
-
-            post_mul
-        }
-        _ => arithmetic_expression(token_handler)?,
-    };
-
-    let deref_token = TokenNode::new(NodeType::DeRef(Box::new(token)), None, token_handler.line());
+    let expr_token = arithmetic_expression(token_handler)?;
+    let deref_token = TokenNode::new(
+        NodeType::DeRef(Box::new(expr_token)),
+        None,
+        token_handler.line(),
+    );
     let assignment_tok = AssignmentOpType::from_token(token_handler.get_token()).unwrap();
 
     token_handler.next_token();
@@ -400,8 +380,11 @@ fn function_declare_statement(
             Token::Id(id) => id.clone(),
             _ => return Err(token_handler.new_err(ET::ExpectedId)),
         };
+        token_handler.next_token();
+
         let arg_node = TokenNode::new(NodeType::Declaration(id, t, 0), None, token_handler.line());
         args_scope.push(arg_node);
+
         if *token_handler.get_token() != Token::Comma {
             break;
         }
@@ -465,7 +448,9 @@ fn function_call(token_handler: &mut TokenHandler, name: String) -> Result<Token
         }
         token_handler.next_token();
     }
+    println!("Found: {:?}", token_handler.get_token());
     if *token_handler.get_token() != Token::CParen {
+        println!("Found: {:?}", token_handler.get_token());
         return Err(token_handler.new_err(ET::ExpectedCParen));
     }
     let function_call_node = TokenNode::new(
@@ -481,6 +466,7 @@ fn id_statement(token_handler: &mut TokenHandler, id: String) -> Result<TokenNod
     println!("id statement token: {:?}", token_handler.get_token());
     match token_handler.peek(1) {
         Token::OParen => function_call_statement(token_handler, id),
+        Token::OSquare => index_array_assignment(token_handler, id),
         _ => assignment(token_handler, id),
     }
 }
@@ -494,7 +480,7 @@ fn type_statement(token_handler: &mut TokenHandler, t: CType) -> Result<TokenNod
     token_handler.next_token();
     let mut ptr_cnt = 0;
     let mut ptr_tok = token_handler.get_token();
-    println!("tok: {:?}", ptr_tok);
+    println!("type_statement id_tok: {:?}", ptr_tok);
     while *ptr_tok == Token::Star {
         ptr_cnt += 1;
         token_handler.next_token();
@@ -612,6 +598,7 @@ fn condition_expr(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> 
             token_handler.next_token();
             let expr = condition_expr(token_handler)?;
             if *token_handler.get_token() != Token::CParen {
+                println!("Found: {:?}", token_handler.get_token());
                 return Err(token_handler.new_err(ET::ExpectedCParen));
             }
 

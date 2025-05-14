@@ -2,82 +2,110 @@ use crate::{
     analysis_ctx::AnalysisContext,
     ast::TokenNode as Node,
     checker::BorrowError,
-    data_model::{LineNumber, ReferenceType, Usage, UsageType},
+    data_model::{LineNumber, ReferenceType, UsageType},
 };
 
-pub fn adjust_ptr_type(errors: Vec<BorrowError>, ctx: &mut AnalysisContext, root: &mut Node) {
-    errors.iter().for_each(|error| {
-        match &error {
-            BorrowError::MutMutOverlap {
-                first_ptr_id: _,
-                second_ptr_id: _,
-                value_id,
-            } => set_ptr_rc(value_id, ctx),
-            BorrowError::MutConstOverlap {
-                mut_ptr_id,
-                imut_ptr_id,
-                value_id,
-            } => {
-                if !line_rearrangement_mut_const_overlap(
+impl AnalysisContext {
+    pub fn adjust_ptr_type(&mut self, mut errors: Vec<BorrowError>, root: &mut Node) {
+        println!("{errors:?}");
+        // errors.sort();
+        println!("{errors:?}");
+        // let mut mut_const = None;
+        // let mut value_mut = None;
+        // errors
+        //     .iter()
+        //     .enumerate()
+        //     .for_each(|(i, error)| match error {
+        //         BorrowError::MutConstOverlap {
+        //             mut_ptr_id: _,
+        //             imut_ptr_id: _,
+        //             value_id: _,
+        //         } => mut_const = Some(i),
+        //         BorrowError::ValueMutOverlap {
+        //             ptr_id: _,
+        //             value_id: _,
+        //         } => value_mut = Some(i),
+        //         _ => {}
+        //     });
+        // if let Some(value_mut) = value_mut {
+        //     if let Some(mut_const) = mut_const {
+        //         if value_mut > mut_const {
+        //             errors.remove(value_mut);
+        //         }
+        //     }
+        // }
+        errors.iter().for_each(|error| {
+            match &error {
+                BorrowError::MutMutOverlap {
+                    first_ptr_id: _,
+                    second_ptr_id: _,
+                    value_id,
+                } => set_ptr_rc(value_id, self),
+                BorrowError::MutConstOverlap {
                     mut_ptr_id,
                     imut_ptr_id,
                     value_id,
-                    root,
-                    ctx,
-                ) {
-                    set_ptr_rc(value_id, ctx);
+                } => {
+                    if !line_rearrangement_mut_const_overlap(
+                        mut_ptr_id,
+                        imut_ptr_id,
+                        value_id,
+                        root,
+                        self,
+                    ) {
+                        set_ptr_rc(value_id, self);
+                    }
                 }
-            }
-            BorrowError::MutMutSameLine {
-                first_ptr_id,
-                second_ptr_id,
-                value_id: _,
-            } => {
-                set_ptr_raw(second_ptr_id, ctx);
-                set_ptr_raw(first_ptr_id, ctx);
-            }
+                BorrowError::MutMutSameLine {
+                    first_ptr_id,
+                    second_ptr_id,
+                    value_id: _,
+                } => {
+                    set_ptr_raw(second_ptr_id, self);
+                    set_ptr_raw(first_ptr_id, self);
+                }
 
-            BorrowError::MutConstSameLine {
-                mut_ptr_id,
-                imut_ptr_id,
-                value_id,
-            } => {
-                set_ptr_raw(mut_ptr_id, ctx);
-                set_ptr_raw(imut_ptr_id, ctx);
-            }
-            // TODO: if the id is the value, we can clone
-            BorrowError::ValueMutOverlap { ptr_id, value_id } => {
-                println!("TESTING");
-                if !line_rearrangement_value_ptr_overlap(value_id, ptr_id, root, ctx, false) {
-                    set_ptr_rc(value_id, ctx);
+                BorrowError::MutConstSameLine {
+                    mut_ptr_id,
+                    imut_ptr_id,
+                    value_id,
+                } => {
+                    set_ptr_raw(mut_ptr_id, self);
+                    set_ptr_raw(imut_ptr_id, self);
                 }
-                // clone_solution(ptr_id, value_id, ctx, root)
-            }
-            BorrowError::ValueMutSameLine {
-                ptr_id,
-                value_id,
-                // value_instance_nodes,
-            } => {
-                set_ptr_raw(ptr_id, ctx);
-            }
-            BorrowError::ValueConstOverlap { ptr_id, value_id } => {
-                if !line_rearrangement_value_ptr_overlap(value_id, ptr_id, root, ctx, true) {
-                    set_ptr_rc(value_id, ctx);
+                // TODO: if the id is the value, we can clone
+                BorrowError::ValueMutOverlap { ptr_id, value_id } => {
+                    if !line_rearrangement_value_ptr_overlap(value_id, ptr_id, root, self, false) {
+                        set_ptr_rc(value_id, self);
+                    }
+                    // clone_solution(ptr_id, value_id, ctx, root)
                 }
-                // clone_solution(ptr_id, value_id, ctx, root)
-            }
-            BorrowError::ValueConstSameLine {
-                ptr_id,
-                value_id,
-                // value_instance_nodes,
-            } => {
-                // NOTE This must be rside, so it's fine i think
-                // set_ptr_raw(ptr_id, ctx);
-            }
-        };
+                BorrowError::ValueMutSameLine {
+                    ptr_id,
+                    value_id,
+                    // value_instance_nodes,
+                } => {
+                    set_ptr_raw(ptr_id, self);
+                }
+                BorrowError::ValueConstOverlap { ptr_id, value_id } => {
+                    if !line_rearrangement_value_ptr_overlap(value_id, ptr_id, root, self, true) {
+                        set_ptr_rc(value_id, self);
+                    }
+                    // clone_solution(ptr_id, value_id, self, root)
+                }
+                BorrowError::ValueConstSameLine {
+                    ptr_id,
+                    value_id,
+                    // value_instance_nodes,
+                } => {
+                    // NOTE This must be rside, so it's fine i think
+                    // set_ptr_raw(ptr_id, self);
+                }
+            };
 
-        // TODO: This should actually traverse the pointer chain downwards
-    });
+            // TODO: This should actually traverse the pointer chain downwards
+        });
+    }
 }
 
 fn line_rearrangement_mut_const_overlap(
@@ -129,6 +157,7 @@ fn line_rearrangement_mut_const_overlap(
             if first_const_usage_in_reference.get_line_number()
                 > last_mut_usage_in_reference.get_line_number()
             {
+                println!("Testing");
                 // TODO Iteratively move all overlapped lines
                 rearrange_lines_tree(mut_range.start, const_range.end, root);
                 true
@@ -220,19 +249,22 @@ fn line_rearrangement_value_ptr_overlap(
 
 /// This function assumes that `rearrange_lines_tree` has already been called
 fn rearrange_lines_ctx(pivot: LineNumber, swing: LineNumber, ctx: &mut AnalysisContext) {
-    ctx.variables.iter_mut().for_each(|(_var_id, var_data)| {
-        var_data
-            .usages
-            .iter_mut()
-            .filter(|usage| usage.get_line_number() >= pivot && usage.get_line_number() < swing)
-            .for_each(|usage| usage.set_line_number(usage.get_line_number().clone() + 1));
+    ctx.current_scope_mut()
+        .variables
+        .iter_mut()
+        .for_each(|(_var_id, var_data)| {
+            var_data
+                .usages
+                .iter_mut()
+                .filter(|usage| usage.get_line_number() >= pivot && usage.get_line_number() < swing)
+                .for_each(|usage| usage.set_line_number(usage.get_line_number().clone() + 1));
 
-        var_data
-            .usages
-            .iter_mut()
-            .filter(|usage| usage.get_line_number() == swing)
-            .for_each(|usage| usage.set_line_number(pivot));
-    })
+            var_data
+                .usages
+                .iter_mut()
+                .filter(|usage| usage.get_line_number() == swing)
+                .for_each(|usage| usage.set_line_number(pivot));
+        })
 }
 
 // TODO Call analyzer again or manually go through and change ctx line numbers for both
