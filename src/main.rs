@@ -43,8 +43,8 @@ fn convert_to_rust_code(mut ast: TokenNode) -> String {
 
     println!("variables: {:?}", ctx.current_scope().variables);
 
-    let temp_ctx = ctx.clone();
-    let errors = checker::borrow_check(&temp_ctx);
+    let mut temp_ctx = ctx.clone();
+    let errors = checker::borrow_check(&mut temp_ctx);
     ctx.adjust_ptr_type(errors, &mut ast);
 
     let annotated_ast = ast.annotate(&ctx);

@@ -68,6 +68,7 @@ pub enum AnnotatedNodeT {
         t: CType,
         rc: bool,
         is_used: bool,
+        init_value_unused: bool,
     },
     PtrDeclaration {
         id: String,
@@ -79,6 +80,7 @@ pub enum AnnotatedNodeT {
         // Refers to it being an rc_ptr itself, not a
         rc: bool,
         is_used: bool,
+        init_value_unused: bool,
     },
     Asm(String),
     // This is handled by the ptr declaration for now
@@ -97,6 +99,7 @@ pub enum AnnotatedNodeT {
         is_used: bool,
         is_mut: bool,
         items: Vec<AnnotatedNode>,
+        init_value_unused: bool,
     },
     FunctionDeclaration {
         id: String,
@@ -116,6 +119,7 @@ pub enum AnnotatedNodeT {
         is_mut: bool,
         fields: Vec<(FieldDefinition, AnnotatedNode)>,
         is_used: bool,
+        init_value_unused: bool,
     },
     StructFieldAssignment {
         var_id: String,
@@ -151,6 +155,7 @@ impl Node {
             NodeType::Declaration(id, t, _) => {
                 let declaration_info = ctx.get_var(id);
                 let is_used = declaration_info.usages.len() > 0;
+                let init_value_unused = declaration_info.init_value_unused;
 
                 AnnotatedNodeT::Declaration {
                     id: id.to_string(),
@@ -158,6 +163,7 @@ impl Node {
                     t: t.clone(),
                     rc: declaration_info.rc,
                     is_used,
+                    init_value_unused,
                 }
             }
             NodeType::PtrDeclaration(id, t, adr) => {
@@ -176,6 +182,7 @@ impl Node {
                     .collect();
 
                 let is_used = ptr_var_info.usages.len() > 0;
+                let init_value_unused = ptr_var_info.init_value_unused;
 
                 AnnotatedNodeT::PtrDeclaration {
                     id: id.to_string(),
@@ -186,6 +193,7 @@ impl Node {
                     adr: annotated_adr,
                     rc: ptr_var_info.rc,
                     is_used,
+                    init_value_unused,
                 }
             }
             NodeType::Adr(id) => {
@@ -324,6 +332,7 @@ impl Node {
                     .collect();
 
                 let is_used = var_data.usages.len() > 0;
+                let init_value_unused = var_data.init_value_unused;
 
                 AnnotatedNodeT::StructDeclaration {
                     var_id: var_id.clone(),
@@ -331,16 +340,18 @@ impl Node {
                     is_mut: var_data.is_mut,
                     fields,
                     is_used,
+                    init_value_unused,
                 }
             }
             NodeType::ArrayDeclaration(id, c_type, count) => {
-                let var = ctx.get_var("id");
+                let var = ctx.get_var(id);
                 let is_mut = var.is_mut;
                 let is_used = var.usages.len() != 0;
                 let items: Vec<AnnotatedNode> = match root.children.as_ref() {
                     Some(vec) => vec.iter().map(|node| node.annotate(ctx)).collect(),
                     None => Vec::new(),
                 };
+                let init_value_unused = var.init_value_unused;
 
                 AnnotatedNodeT::ArrayDeclaration {
                     id: id.clone(),
@@ -349,6 +360,7 @@ impl Node {
                     is_used,
                     is_mut,
                     items,
+                    init_value_unused,
                 }
             }
             NodeType::StructFieldAssignment {

@@ -16,6 +16,7 @@ impl AnnotatedNode {
                 adr,
                 rc: _,
                 is_used,
+                init_value_unused,
             } => {
                 let unused = match is_used {
                     true => "",
@@ -38,7 +39,13 @@ impl AnnotatedNode {
                     }
                 };
 
-                format!("let {mut_binding}{unused}{id}: {rust_ref_type} = {rust_reference};")
+                let l_side = if *init_value_unused {
+                    "".into()
+                } else {
+                    format!(" = {rust_reference}")
+                };
+
+                format!("let {mut_binding}{unused}{id}: {rust_ref_type}{l_side};")
             }
             // = &mut {rust_adr}
             // = &{rust_adr}
@@ -91,6 +98,7 @@ impl AnnotatedNode {
                 t,
                 rc,
                 is_used,
+                init_value_unused,
             } => {
                 let unused = match is_used {
                     true => "",
@@ -104,6 +112,11 @@ impl AnnotatedNode {
                     .collect::<Vec<String>>();
                 if expr_children.len() > 0 {
                     let expr_child = expr_children[0].clone();
+                    let l_side = if *init_value_unused {
+                        "".into()
+                    } else {
+                        format!(" = {expr_child}")
+                    };
 
                     if *rc {
                         format!(
@@ -111,7 +124,7 @@ impl AnnotatedNode {
                     )
                     } else {
                         let binding = if *is_mut { "mut " } else { "" };
-                        format!("let {binding}{unused}{id}: {rust_t} = {expr_child};")
+                        format!("let {binding}{unused}{id}: {rust_t}{l_side};")
                     }
                 } else {
                     // NOTE:
@@ -144,6 +157,7 @@ impl AnnotatedNode {
                 is_used,
                 is_mut,
                 items,
+                init_value_unused,
             } => {
                 let rust_t = t.to_rust_type();
                 let used = if *is_used { "" } else { "_" };
@@ -154,7 +168,13 @@ impl AnnotatedNode {
                     .collect::<Vec<String>>()
                     .join(", ");
 
-                format!("let {mut_str}{used}{id}: {rust_t} = &[{size}; {items_str}]")
+                let l_side = if *init_value_unused {
+                    "".into()
+                } else {
+                    format!(" = &[{size}; {items_str}]")
+                };
+
+                format!("let {mut_str}{used}{id}: {rust_t}{l_side};")
             }
             AnnotatedNodeT::NumLiteral(n) => {
                 format!("{n}")
@@ -218,6 +238,7 @@ impl AnnotatedNode {
                 is_mut,
                 fields,
                 is_used,
+                init_value_unused,
             } => {
                 let unused = match is_used {
                     true => "",
@@ -227,12 +248,19 @@ impl AnnotatedNode {
                     true => "mut ",
                     false => "",
                 };
-                let mut ret = format!("let {mut_binding}{unused}{var_id} = {struct_id} {{ ");
-                fields.iter().for_each(|(field, expr)| {
-                    ret.push_str(expr.convert_field_literal(field.clone()).as_str())
-                });
-                ret.push_str("};");
-                ret
+                let l_side = if *init_value_unused {
+                    "".into()
+                } else {
+                    let mut l_side = format!(" = {struct_id} {{");
+                    fields.iter().for_each(|(field, expr)| {
+                        l_side.push_str(expr.convert_field_literal(field.clone()).as_str())
+                    });
+                    l_side.push_str("}");
+
+                    l_side
+                };
+
+                format!("let {mut_binding}{unused}{var_id}{l_side};")
             }
             _ => root.non_ptr_conversion(),
         }
@@ -439,6 +467,7 @@ fn convert_argument(expr: &AnnotatedNode) -> String {
             t,
             rc: _,
             is_used,
+            init_value_unused: _,
         } => {
             let mut_str = if *is_mut { "mut " } else { "" };
             let _used_str = if *is_used { "_" } else { "" };
@@ -453,6 +482,7 @@ fn convert_argument(expr: &AnnotatedNode) -> String {
             points_to: _,
             adr: _,
             ref_type,
+            init_value_unused: _,
         } => {
             let mut_str = if *is_mut { "mut " } else { "" };
             let _used_str = if *is_used { "_" } else { "" };

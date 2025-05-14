@@ -1,6 +1,6 @@
 use crate::{
     analysis_ctx::AnalysisContext,
-    data_model::{LineNumber, Reference, ReferenceType, Usage, UsageType, VarData},
+    data_model::{LineNumber, Reference, ReferenceType, Usage, UsageType},
 };
 use std::ops::Range;
 
@@ -95,10 +95,10 @@ impl Ord for BorrowError {
 }
 
 // TODO: Figure out how to include line numbers in error reports
-pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
+pub fn borrow_check<'a>(ctx: &'a mut AnalysisContext) -> Vec<BorrowError> {
     // ctx.print_refs();
-    ctx.current_scope().variables
-        .iter()
+    ctx.current_scope_mut().variables
+        .iter_mut()
         .flat_map(|(var_id, var_data)| -> Vec<BorrowError> {
             let pointed_to_by: Vec<Reference> = var_data
                 .pointed_to
@@ -134,27 +134,34 @@ pub fn borrow_check<'a>(ctx: &'a AnalysisContext) -> Vec<BorrowError> {
                     }
                 })
                 .collect();
+let rvalue_usages: Vec<Usage> = var_data.usages.clone().into_iter().filter(|usage| *usage.get_usage_type() == UsageType::RValue).collect();
+                    let lvalue_usages: Vec<Usage> = var_data.usages.clone().into_iter().filter(|usage| *usage.get_usage_type() == UsageType::LValue).collect();
+            if rvalue_usages.len() > 0  && lvalue_usages.len() > 0 {
+if rvalue_usages[0].get_line_number() < lvalue_usages[0].get_line_number() {
+                    var_data.set_init_value_unused();
+                }
 
-                let mut value_overlaps_with_const_ptr: Vec<BorrowError> = pointed_to_by.iter().filter_map(|reference_block| {
-                let lvalue_usages: Vec<Usage> = var_data.usages.clone().into_iter().filter(|usage| *usage.get_usage_type() == UsageType::LValue).collect();
-                let overlap_state = var_ptr_range_overlap(
-                    lvalue_usages,
-                        reference_block.get_range()
-                    );
+            }
+                                let mut value_overlaps_with_const_ptr: Vec<BorrowError> = pointed_to_by.iter().filter_map(|reference_block| {
+                    
+                    let overlap_state = var_ptr_range_overlap(
+                        lvalue_usages.clone(),
+                            reference_block.get_range()
+                        );
 
-                let borrower_id = reference_block.get_borrower();
+                    let borrower_id = reference_block.get_borrower();
 
-                    match overlap_state {
-                        OverlapState::Overlap => Some(BorrowError::ValueConstOverlap {
-                            ptr_id: borrower_id.to_string(),
-                            value_id: var_id.clone(),
-                        }),
-                        OverlapState::SameLine => Some(BorrowError::ValueConstSameLine{ ptr_id: borrower_id.to_string(), value_id: var_id.clone()}),
-                        _ => None,
-                    }
+                        match overlap_state {
+                            OverlapState::Overlap => Some(BorrowError::ValueConstOverlap {
+                                ptr_id: borrower_id.to_string(),
+                                value_id: var_id.clone(),
+                            }),
+                            OverlapState::SameLine => Some(BorrowError::ValueConstSameLine{ ptr_id: borrower_id.to_string(), value_id: var_id.clone()}),
+                            _ => None,
+                        }
 
                 
-            }).collect();
+                }).collect();
 
                 let mut mutable_ref_overlaps_with_ptr: Vec<BorrowError> = pointed_to_by_mutably.flat_map(|mut_ref| {
                 pointed_to_by

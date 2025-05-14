@@ -198,6 +198,17 @@ fn simple_multi_ref() {
     );
 }
 
+#[test]
+fn unused_init_value() {
+    validate(
+        "int main() {
+            int n = 0;
+            n = 7;
+        }",
+        "unused_init_value",
+    );
+}
+
 /// This is actually an interesting case
 /// Based on our current assumption, this is illegal, because we're assigning a reference in
 /// something that isn't a ptr declaration
