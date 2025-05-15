@@ -135,7 +135,7 @@ where
                 (ReferenceType::ConstBorrowed, OverlapState::Overlap) => {
                     Some(BorrowError::MutConstOverlap {
                         mut_ptr_id: mut_id.to_string(),
-                        imut_ptr_id: other_id.to_string(),
+                        const_ptr_id: other_id.to_string(),
                         value_id: var_id.to_string(),
                     })
                 }
@@ -149,7 +149,7 @@ where
                         value_id: var_id.to_string(),
                     })
                 }
-                (ReferenceType::ConstBorrowed, OverlapState::SameLine) => panic!("ImutRef on same line, this is fine\n This actually might be a problem if we have a mutable and immutable reference overlapping on the same line"),
+                (ReferenceType::ConstBorrowed, OverlapState::SameLine) => panic!("ConstRef on same line, this is fine\n This actually might be a problem if we have a mutable and immutable reference overlapping on the same line"),
                 (_, OverlapState::NoOverlap) => None,
                 (_, _) => panic!("Basic ref should not have smart ptr type"),
             }
@@ -232,7 +232,7 @@ pub enum BorrowError {
     },
     MutConstOverlap {
         mut_ptr_id: String,
-        imut_ptr_id: String,
+        const_ptr_id: String,
         value_id: String,
     },
     MutMutSameLine {
@@ -242,7 +242,7 @@ pub enum BorrowError {
     },
     MutConstSameLine {
         mut_ptr_id: String,
-        imut_ptr_id: String,
+        const_ptr_id: String,
         value_id: String,
     },
 
@@ -285,14 +285,14 @@ impl PartialOrd for BorrowError {
                 },
                 BorrowError::MutConstOverlap {
                     mut_ptr_id: _,
-                    imut_ptr_id: _,
+                    const_ptr_id: _,
                     value_id: _,
                 },
             ) => Some(std::cmp::Ordering::Greater),
             (
                 BorrowError::MutConstOverlap {
                     mut_ptr_id: _,
-                    imut_ptr_id: _,
+                    const_ptr_id: _,
                     value_id: _,
                 },
                 BorrowError::ValueMutOverlap {

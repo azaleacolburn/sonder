@@ -70,11 +70,11 @@ impl AnalysisContext {
                 } => self.set_ptr_rc(value_id),
                 BorrowError::MutConstOverlap {
                     mut_ptr_id,
-                    imut_ptr_id,
+                    const_ptr_id,
                     value_id,
                 } if !line_rearrangement_mut_const_overlap(
                     mut_ptr_id,
-                    imut_ptr_id,
+                    const_ptr_id,
                     value_id,
                     root,
                     self,
@@ -84,7 +84,7 @@ impl AnalysisContext {
                 }
                 BorrowError::MutConstOverlap {
                     mut_ptr_id: _,
-                    imut_ptr_id: _,
+                    const_ptr_id: _,
                     value_id: _,
                 } => {}
                 BorrowError::MutMutSameLine {
@@ -98,11 +98,11 @@ impl AnalysisContext {
 
                 BorrowError::MutConstSameLine {
                     mut_ptr_id,
-                    imut_ptr_id,
+                    const_ptr_id,
                     value_id: _,
                 } => {
                     self.set_ptr_raw(mut_ptr_id);
-                    self.set_ptr_raw(imut_ptr_id);
+                    self.set_ptr_raw(const_ptr_id);
                 }
                 // TODO: if the id is the value, we can clone
                 BorrowError::ValueMutOverlap { ptr_id, value_id }

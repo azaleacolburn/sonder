@@ -249,17 +249,6 @@ impl Reference {
     }
 }
 
-// #[derive(Debug, Clone, PartialEq)]
-// pub enum PtrType {
-//     Rc,
-//     RcRefClone,
-//     RefCell,
-//     RawPtrMut,
-//     RawPtrImut,
-//     MutRef,
-//     ImutRef,
-// }
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructData {
     pub field_definitions: Vec<FieldDefinition>,
