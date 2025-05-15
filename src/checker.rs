@@ -24,15 +24,8 @@ pub fn borrow_check<'a>(ctx: &'a mut AnalysisContext) -> Vec<BorrowError> {
 
             let rvalue_usages: Vec<Usage> = var_data.usages.clone().into_iter().filter(|usage| *usage.get_usage_type() == UsageType::RValue).collect();
             let lvalue_usages: Vec<Usage> = var_data.usages.clone().into_iter().filter(|usage| *usage.get_usage_type() == UsageType::LValue).collect();
-            if rvalue_usages.len() > 0  {
-                if lvalue_usages.len() > 0 {
-                    if rvalue_usages[0].get_line_number() > lvalue_usages[0].get_line_number() {
-                        var_data.set_init_value_unused();
-                    }
-                } else {
-                    var_data.set_init_value_unused();
-                }
-            }
+            check_unused_init_value(var_data, &rvalue_usages, &lvalue_usages);
+            
 
             let mut value_overlaps_with_mut_ptr: Vec<BorrowError> = check_value_overlaps_with_mut_ptr(var_id, var_data, pointed_to_by_mutably.clone());
             let mut value_overlaps_with_const_ptr: Vec<BorrowError> = check_value_overlaps_with_const_ptr(var_id, lvalue_usages, pointed_to_by.iter());
@@ -164,6 +157,18 @@ where
     }).collect()
 }
 
+fn check_unused_init_value(var_data: &mut VarData, rvalue_usages: &Vec<Usage>, lvalue_usages: &Vec<Usage>) {
+    if rvalue_usages.len() > 0  {
+        if lvalue_usages.len() > 0 {
+            if rvalue_usages[0].get_line_number() > lvalue_usages[0].get_line_number() {
+                var_data.set_init_value_unused();
+            }
+        } else {
+            var_data.set_init_value_unused();
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum OverlapState {
     Overlap,
@@ -173,8 +178,6 @@ pub enum OverlapState {
 
 // TODO: Create more elegant solution than seperate functions for simply changing the exclusively
 // of an inequality
-//
-// Returns the function
 pub fn ptr_range_overlap(l_1: Range<LineNumber>, l_2: Range<LineNumber>) -> OverlapState {
     if l_1.start < l_2.end && l_1.end > l_2.start {
         OverlapState::Overlap
@@ -263,16 +266,14 @@ pub enum BorrowError {
 }
 impl PartialEq for BorrowError {
     fn eq(&self, other: &Self) -> bool {
-        true
+        std::mem::discriminant(self) == std::mem::discriminant(other)
     }
 
     fn ne(&self, other: &Self) -> bool {
-        false
+        std::mem::discriminant(self) != std::mem::discriminant(other)
     }
 }
-impl Eq for BorrowError {
-    fn assert_receiver_is_total_eq(&self) {}
-}
+impl Eq for BorrowError {}
 
 impl PartialOrd for BorrowError {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
