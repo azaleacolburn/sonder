@@ -59,10 +59,7 @@ I'm aware that this includes legal array indexing if foo or bar aren't pointers,
 Any of these will immediantly result in raw pointers being used, although at the moment, they panic
 
 > [!NOTE]
-> Self-referencing structs (when one field is a value and another is a reference to that value) _are_ allowed
-> However, the oroboros crate is required for these, requiring an extra step during transpilation
-> And additional analysis on structs
-> (Not supported yet)
+> Self-referencing structs are not supported at this moment.
 
 ### How to handle usage overlaps on the same line (see above as well)
 
