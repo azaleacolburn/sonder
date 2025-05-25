@@ -63,7 +63,9 @@ pub enum NodeType {
     },
     FunctionDeclaration(String, CType),
     Assert,
-    Return,
+    Return {
+        expr: Box<TokenNode>,
+    },
     PutChar,
     StructDefinition {
         struct_id: String,
@@ -209,7 +211,6 @@ impl NodeType {
                 t: t.clone(),
             },
             NodeType::Assert => AnnotatedNodeT::Assert,
-            NodeType::Return => AnnotatedNodeT::Return,
             NodeType::PutChar => AnnotatedNodeT::PutChar,
             node => {
                 panic!("Should have been caught by parent match: {:?}", node)

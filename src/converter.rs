@@ -218,7 +218,13 @@ impl AnnotatedNode {
                     .map(Self::convert)
                     .collect::<Vec<String>>()
                     .join(", ");
-                format!("{id}({args});")
+                format!("{id}({args})")
+            }
+            AnnotatedNodeT::If => {
+                let condition = root.children[0].convert();
+                let scope = root.children[1].convert();
+
+                format!("if {condition} {{\n{scope}\n}}")
             }
             AnnotatedNodeT::Program { imports } => {
                 let mut t = imports.clone();
@@ -432,6 +438,11 @@ impl AnnotatedNode {
                 .map(Self::convert)
                 .collect::<Vec<String>>()
                 .join("\n\t"),
+            AnnotatedNodeT::Return { expr } => {
+                let expr = expr.convert();
+
+                format!("return({expr});")
+            }
             node => panic!("Unsupported AnnotatedNode: {node:?}"),
         }
     }

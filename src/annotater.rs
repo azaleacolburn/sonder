@@ -106,7 +106,9 @@ pub enum AnnotatedNodeT {
         t: CType,
     },
     Assert,
-    Return,
+    Return {
+        expr: Box<AnnotatedNode>,
+    },
     PutChar,
     StructDefinition {
         struct_id: String,
@@ -155,6 +157,7 @@ impl Node {
             NodeType::Declaration(id, t, _) => {
                 let declaration_info = ctx.get_var(id);
                 let is_used = declaration_info.usages.len() > 0;
+                println!("{id}: {is_used}");
                 let init_value_unused = declaration_info.init_value_unused;
 
                 AnnotatedNodeT::Declaration {
@@ -372,6 +375,9 @@ impl Node {
                 var_id: var_id.clone(),
                 field_id: field_id.clone(),
                 op: assignment_op.clone(),
+                expr: Box::new(expr.annotate(ctx)),
+            },
+            NodeType::Return { expr } => AnnotatedNodeT::Return {
                 expr: Box::new(expr.annotate(ctx)),
             },
             node => node.to_annotated_node(),

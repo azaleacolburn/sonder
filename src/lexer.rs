@@ -161,6 +161,16 @@ pub fn string_to_tokens(
                 i += curr.len() - 1;
                 curr = String::from("");
             }
+            'r' if chars[i + 1] == 'e'
+                && chars[i + 2] == 't'
+                && chars[i + 3] == 'u'
+                && chars[i + 4] == 'r'
+                && chars[i + 5] == 'n'
+                && (chars[i + 6] == ' ' || chars[i + 6] == '(') =>
+            {
+                ret.push(Token::Return);
+                i += 5;
+            }
             'i' if chars[i + 1] == 'n' && chars[i + 2] == 't' && chars[i + 3] == ' ' => {
                 ret.push(Token::Type(CType::Int));
                 i += 3; // NOTE Saves an iteration
@@ -168,6 +178,10 @@ pub fn string_to_tokens(
             'i' if chars[i + 1] == 'n' && chars[i + 2] == 't' && chars[i + 3] == '*' => {
                 ret.push(Token::Type(CType::Int));
                 i += 2; // NOTE Not a bug, don't move past a star
+            }
+            'i' if chars[i + 1] == 'f' && (chars[i + 2] == ' ' || chars[i + 2] == '(') => {
+                ret.push(Token::If);
+                i += 1;
             }
             'w' if chars[i + 1] == 'h'
                 && chars[i + 2] == 'i'

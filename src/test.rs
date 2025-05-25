@@ -420,6 +420,23 @@ fn assignment_function_call() {
     );
 }
 
+#[test]
+fn recursive_function() {
+    validate(
+        "int main() {
+            int i = 0;
+            int g = count_four(i);
+        }
+        int count_four(int i) {
+            if (i == 3) {
+                return 4;
+            }
+            return(count_four(i + 1));
+        }",
+        "recursive_function",
+    )
+}
+
 fn validate(c_code: &str, test_name: &str) {
     let ast = parse_c(c_code.to_string());
     let rust_code = convert_to_rust_code(ast);

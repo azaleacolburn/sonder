@@ -3,7 +3,7 @@ use crate::{
     lexer::CType,
     scope::{ScopeContext, ScopeType},
 };
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, process::id, rc::Rc};
 
 /// The top-level datastructure that stores data about all the variables and referencing
 /// Stores a vector of the instances of addresses being taken, in order
@@ -153,6 +153,12 @@ impl AnalysisContext {
         // (otherwise we'd always get a ValueMutSameLine error)
     }
 
+    pub fn function_call(&mut self, ids_in_args: Vec<String>, line: LineNumber) {
+        ids_in_args
+            .iter()
+            .for_each(|id| self.new_usage(id, line, UsageType::RValue));
+    }
+
     pub fn struct_declaration(&mut self, id: String, struct_data: StructData) {
         self.structs.insert(id, struct_data);
     }
@@ -173,7 +179,7 @@ impl AnalysisContext {
         self.current_scope()
             .variables
             .get(id)
-            .expect("Var not in map")
+            .expect(format!("Var not in ctx: {id}").as_str())
     }
 
     pub fn get_var_mut(&mut self, id: &str) -> &mut VarData {

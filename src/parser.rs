@@ -37,8 +37,8 @@ pub fn scope(
     let mut scope_children: Vec<TokenNode> = vec![];
     while *token_handler.get_token() != Token::CCurl {
         if token_handler.curr_token > token_handler.len() {
-            println!("Found: {:?}", token_handler.get_token());
-            return Err(token_handler.new_err(ET::ExpectedCParen));
+            println!("Expected CCurl Found: {:?}", token_handler.get_token());
+            return Err(token_handler.new_err(ET::ExpectedCCurl));
         }
 
         scope_children.push(statement(token_handler, scope_type.clone())?);
@@ -201,14 +201,13 @@ fn arithmetic_factor(token_handler: &mut TokenHandler) -> Result<TokenNode, RhEr
         // Address of a variable
         Token::BAnd => {
             token_handler.next_token();
-            if let Token::Id(id) = token_handler.get_token() {
-                Ok(TokenNode::new(
+            match &token_handler.get_token() {
+                Token::Id(id) => Ok(TokenNode::new(
                     NodeType::Adr(id.to_string()),
                     None,
                     token_handler.line(),
-                ))
-            } else {
-                Err(token_handler.new_err(ET::ExpectedId))
+                )),
+                _ => Err(token_handler.new_err(ET::ExpectedId)),
             }
         }
 
@@ -450,7 +449,10 @@ fn function_call(token_handler: &mut TokenHandler, name: String) -> Result<Token
     }
     println!("Found: {:?}", token_handler.get_token());
     if *token_handler.get_token() != Token::CParen {
-        println!("Found: {:?}", token_handler.get_token());
+        println!(
+            "Expected CParen Found(function_call): {:?}",
+            token_handler.get_token()
+        );
         return Err(token_handler.new_err(ET::ExpectedCParen));
     }
     let function_call_node = TokenNode::new(
@@ -598,7 +600,7 @@ fn condition_expr(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> 
             token_handler.next_token();
             let expr = condition_expr(token_handler)?;
             if *token_handler.get_token() != Token::CParen {
-                println!("Found: {:?}", token_handler.get_token());
+                println!("Expected CParen Found: {:?}", token_handler.get_token());
                 return Err(token_handler.new_err(ET::ExpectedCParen));
             }
 
@@ -781,22 +783,15 @@ pub fn putchar_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, 
 
 pub fn return_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
     token_handler.next_token();
-    if *token_handler.get_token() != Token::OParen {
-        return Err(token_handler.new_err(ET::ExpectedOParen));
-    }
-    token_handler.next_token();
     let expr_node = condition_expr(token_handler)?;
-    println!("post return {:?}", token_handler.get_token());
-    if *token_handler.get_token() != Token::CParen {
-        return Err(token_handler.new_err(ET::ExpectedCParen));
-    }
-    token_handler.next_token();
     if *token_handler.get_token() != Token::Semi {
         return Err(token_handler.new_err(ET::ExpectedSemi));
     }
     let return_token = TokenNode::new(
-        NodeType::Return,
-        Some(Box::new([expr_node])),
+        NodeType::Return {
+            expr: Box::new(expr_node),
+        },
+        None,
         token_handler.line(),
     );
     return Ok(return_token);

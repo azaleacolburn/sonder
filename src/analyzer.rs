@@ -39,10 +39,9 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             // TODO Determine if this is needed (I think not)
             // determine_var_mutability(expr, ctx, parent_children, root_index);
 
-            let instanceof_struct = if let CType::Struct(struct_id) = c_type {
-                Some(struct_id.clone())
-            } else {
-                None
+            let instanceof_struct = match c_type {
+                CType::Struct(struct_id) => Some(struct_id.clone()),
+                _ => None,
             };
 
             let borrowed = ptr_from_expression(root, ctx, root.line)
@@ -190,6 +189,20 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
 
             // NOTE We don't need to apply mutability checking to the struct fields themselves
         }
+        NodeType::FunctionCall(_name) => {
+            let args = root.children.as_ref().unwrap().to_vec();
+            let c = |node: &Node| match &node.token {
+                NodeType::Id(id) | NodeType::Adr(id) => Some(id.clone()),
+                _ => None,
+            };
+
+            let ids_in_args = args
+                .iter()
+                .flat_map(|arg| filter_map_tree(arg, &c))
+                .collect();
+
+            ctx.function_call(ids_in_args, root.line);
+        }
         NodeType::FunctionDeclaration(name, t) => {
             let mut node_args = root
                 .children
@@ -201,6 +214,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                 .iter()
                 .map(|arg| match &arg.token {
                     NodeType::Declaration(id, t, _size) => {
+                        let id = format!("{id}_{name}");
                         let data = VarData::new(t.clone(), false, None, None);
                         ctx.declaration(id.clone(), data);
 
@@ -214,6 +228,16 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
                 ret: t.clone(),
                 args,
             });
+        }
+        NodeType::Return { expr } => {
+            let ids_in_expr = filter_map_tree(expr, |root| match &root.token {
+                NodeType::Id(id) => Some(id.clone()),
+                _ => None,
+            });
+
+            ids_in_expr
+                .iter()
+                .for_each(|id| ctx.new_usage(id, root.line, UsageType::RValue));
         }
         _ => {}
     };
@@ -377,4 +401,31 @@ fn ptr_from_expression(root: &Node, ctx: &mut AnalysisContext, line: LineNumber)
             None
         }
     }
+}
+
+fn filter_map_tree<T, F>(root: &Node, f: F) -> Vec<T>
+where
+    F: Fn(&Node) -> Option<T> + Clone,
+    T: std::fmt::Debug,
+{
+    // NOTE Dumb binding hack
+    // This is a terrible pattern
+    // TODO impl Default for Node
+    let default = Vec::<Node>::new().into_boxed_slice();
+    let children = root.children.as_ref().unwrap_or(&default);
+    let len = children.len();
+
+    let mut vec: Vec<T> = Vec::with_capacity(len);
+    let mut t: Vec<T> = children
+        .iter()
+        .flat_map(|child| filter_map_tree(child, f.clone()))
+        .collect();
+
+    vec.append(&mut t);
+    println!("V::: {vec:?}");
+    if let Some(x) = f(root) {
+        vec.push(x);
+    }
+
+    vec
 }
