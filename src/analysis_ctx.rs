@@ -3,7 +3,7 @@ use crate::{
     lexer::CType,
     scope::{ScopeContext, ScopeType},
 };
-use std::{cell::RefCell, collections::HashMap, process::id, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 /// The top-level datastructure that stores data about all the variables and referencing
 /// Stores a vector of the instances of addresses being taken, in order
