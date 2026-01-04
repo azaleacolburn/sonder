@@ -116,7 +116,7 @@ impl AssignmentOpType {
             Token::BXorEq => Ok(AssignmentOpType::BXorEq),
             _ => {
                 println!("Oh God No, Not A Valid OpEq Token: {:?}", tok);
-                return Err(());
+                Err(())
             }
         }
     }
@@ -171,7 +171,7 @@ impl NodeType {
             Token::Break => Ok(NodeType::Break),
             _ => {
                 println!("Oh God No, Not A Valid Token");
-                return Err(());
+                Err(())
             }
         }
     }
@@ -241,7 +241,7 @@ impl TokenNode {
         }
     }
     pub fn print(&self, n: &mut i32) {
-        (0..*n).into_iter().for_each(|_| print!("  "));
+        (0..*n).for_each(|_| print!("  "));
         println!("{:?}", self);
         *n += 1;
         if let Some(children) = self.children.as_ref() {

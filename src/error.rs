@@ -1,4 +1,5 @@
 /// Each variant wraps the line numberi the error was found on
+#[allow(unused)]
 #[derive(Debug, Clone)]
 pub enum ErrType {
     ExpectedColon,
@@ -26,6 +27,7 @@ pub enum ErrType {
     ExpectedComma,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct RhErr {
     pub err: ErrType,

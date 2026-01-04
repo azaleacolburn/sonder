@@ -14,6 +14,12 @@ pub struct AnalysisContext {
     pub structs: HashMap<String, StructData>,
 }
 
+impl Default for AnalysisContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AnalysisContext {
     pub fn new() -> AnalysisContext {
         AnalysisContext {
@@ -179,7 +185,7 @@ impl AnalysisContext {
         self.current_scope()
             .variables
             .get(id)
-            .expect(format!("Var not in ctx: {id}").as_str())
+            .unwrap_or_else(|| panic!("Var not in ctx: {id}"))
     }
 
     pub fn get_var_mut(&mut self, id: &str) -> &mut VarData {

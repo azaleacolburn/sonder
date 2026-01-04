@@ -20,8 +20,7 @@ impl LineNumHandler {
 
     /// Given a token index, returns the line that token was on
     /// For external use only
-    ///
-    pub fn get_line(&self, token_number: usize) -> usize {
+    pub fn _get_line(&self, token_number: usize) -> usize {
         self.token_lines
             .iter()
             .position(|n| *n < token_number)
@@ -44,14 +43,14 @@ pub fn string_to_tokens(
         if chars[i].is_numeric() {
             let mut is_dec = true;
             let mut num = String::from("");
-            for j in i..chars.len() {
-                if !chars[j].is_alphanumeric() {
+            for c in chars.iter().skip(i) {
+                if !c.is_alphanumeric() {
                     break;
                 }
-                if chars[j].is_alphabetic() && chars[j].is_uppercase() {
+                if c.is_alphabetic() && c.is_uppercase() {
                     is_dec = false;
                 }
-                num.push(chars[j]);
+                num.push(*c);
             }
             if chars[i] == '0' {
                 // handles literals // TODO: DO LITERAL SHIT
@@ -139,11 +138,11 @@ pub fn string_to_tokens(
                 && chars[i + 4] == 'L'
                 && chars[i + 5] == ':' =>
             {
-                for j in i..chars.len() {
-                    if !chars[j].is_alphabetic() && chars[j] != '_' {
+                for c in chars.iter().skip(i) {
+                    if !c.is_alphabetic() && *c != '_' {
                         break;
                     }
-                    curr.push(chars[j]);
+                    curr.push(*c);
                 }
                 ret.push(Token::Label(curr.clone()));
                 i += curr.len() - 1;
@@ -151,11 +150,11 @@ pub fn string_to_tokens(
             }
             'g' if chars[i + 1] == 'o' && chars[i + 2] == 't' && chars[i + 3] == 'o' => {
                 i += 4;
-                for j in i..chars.len() {
-                    if !chars[j].is_alphabetic() && chars[j] != '_' {
+                for c in chars.iter().skip(i) {
+                    if !c.is_alphabetic() && *c != '_' {
                         break;
                     }
-                    curr.push(chars[j]);
+                    curr.push(*c);
                 }
                 ret.push(Token::Goto(curr.clone()));
                 i += curr.len() - 1;
@@ -235,14 +234,14 @@ pub fn string_to_tokens(
                 let mut is_dec = true;
                 // chars.into_iter().for_each(|x| if !x.is_numeric() { is_dec = false; });
                 let mut num = String::from("-");
-                for j in i..chars.len() {
-                    if !chars[j].is_alphanumeric() {
+                for c in chars.iter().skip(i) {
+                    if !c.is_alphanumeric() {
                         break;
                     }
-                    if chars[j].is_alphabetic() && chars[j].is_uppercase() {
+                    if c.is_alphabetic() && c.is_uppercase() {
                         is_dec = false;
                     }
-                    num.push(chars[j]);
+                    num.push(*c);
                 }
                 if chars[i + 1] == '0' {
                     i += 1;
@@ -380,9 +379,9 @@ pub fn string_to_tokens(
             }
             '<' if chars[i + 1] == '<' => {
                 if chars[i + 2] == '=' {
-                    ret.push(Token::BLSEq);
+                    ret.push(Token::BlsEq);
                 } else {
-                    ret.push(Token::BLS);
+                    ret.push(Token::Bls);
                 }
             }
             '<' => {
@@ -394,9 +393,9 @@ pub fn string_to_tokens(
             }
             '>' if chars[i + 1] == '>' => {
                 if chars[i + 2] == '=' {
-                    ret.push(Token::BRSEq);
+                    ret.push(Token::BrsEq);
                 } else {
-                    ret.push(Token::BRS);
+                    ret.push(Token::Brs);
                 }
             }
             '>' => {
@@ -447,41 +446,16 @@ pub fn string_to_tokens(
             ' ' => {}
             _ => {
                 // NOTE if we'e here it's an identifier
-                // println!(
-                //     "{}",
-                //     chars
-                //         .clone()
-                //         .into_iter()
-                //         .skip(i)
-                //         .map(|c| c.to_string())
-                //         .collect::<Vec::<String>>()
-                //         .join("")
-                // );
 
-                for j in i..chars.len() {
-                    println!("chars[j]: {}", chars[j]);
-                    if !chars[j].is_alphanumeric() && chars[j] != '_' {
-                        break;
-                    }
-
-                    curr.push(chars[j]);
-                }
-
-                i += curr.len();
+                lex_id(&chars, &mut curr, &mut i);
                 println!("curr: {}\npost {}", curr, chars[i]);
+
                 if chars[i] == '.' {
                     i += 1;
                     let struct_id = curr.clone();
                     curr = String::new();
 
-                    for j in i..chars.len() {
-                        if !chars[j].is_alphanumeric() && chars[j] != '_' {
-                            break;
-                        }
-
-                        curr.push(chars[j]);
-                    }
-                    i += curr.len();
+                    lex_id(&chars, &mut curr, &mut i);
 
                     let field_id = curr.clone();
                     ret.push(Token::StructFieldId {
@@ -498,6 +472,17 @@ pub fn string_to_tokens(
         i += 1;
     }
     Ok((ret, line_tracker))
+}
+
+fn lex_id(chars: &[char], curr: &mut String, i: &mut usize) {
+    for c in chars.iter().skip(*i) {
+        if !c.is_alphanumeric() && *c != '_' {
+            break;
+        }
+
+        curr.push(*c);
+    }
+    *i += curr.len();
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -547,12 +532,12 @@ pub enum Token {
     Ls,
     Gr,
     GrEq,
-    BLS,
-    BLSU,
-    BLSEq,
-    BRS,
-    BRSU,
-    BRSEq,
+    Bls,
+    Blsu,
+    BlsEq,
+    Brs,
+    Brsu,
+    BrsEq,
     OParen,
     CParen,
     OCurl,

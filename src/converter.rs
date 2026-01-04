@@ -26,7 +26,7 @@ impl AnnotatedNode {
                 let rust_adr = adr.convert();
                 let mut_binding = if *is_mut { "mut " } else { "" };
 
-                let ref_type_iter = &mut ref_type.into_iter().cloned();
+                let ref_type_iter = &mut ref_type.iter().cloned();
                 let rust_ref_type = construct_ptr_type(ref_type_iter, &rust_t);
 
                 let rust_reference = match points_to[0].borrow().get_reference_type() {
@@ -68,24 +68,21 @@ impl AnnotatedNode {
                 let mut l_side = id.clone();
                 let is_rc_clone = ref_types.contains(&ReferenceType::RcRefClone);
 
-                ref_types
-                    .into_iter()
-                    .inspect(|t| println!("{:?}", t))
-                    .for_each(|deref_type| match deref_type {
-                        ReferenceType::RcRefClone => l_side = format!("{l_side}.borrow_mut()"),
-                        ReferenceType::MutBorrowed if !is_rc_clone => l_side = format!("*{l_side}"),
-                        ReferenceType::MutBorrowed => {
-                            println!("DEREFFED PTR BOTH MutBorrowed and is_rc_clone");
-                        }
-                        ReferenceType::MutPtr => {
-                            l_side = format!("unsafe {{ *{l_side}");
-                            expr_child.push_str(" }");
-                        }
-                        t => panic!(
+                ref_types.iter().for_each(|deref_type| match deref_type {
+                    ReferenceType::RcRefClone => l_side = format!("{l_side}.borrow_mut()"),
+                    ReferenceType::MutBorrowed if !is_rc_clone => l_side = format!("*{l_side}"),
+                    ReferenceType::MutBorrowed => {
+                        println!("DEREFFED PTR BOTH MutBorrowed and is_rc_clone");
+                    }
+                    ReferenceType::MutPtr => {
+                        l_side = format!("unsafe {{ *{l_side}");
+                        expr_child.push_str(" }");
+                    }
+                    t => panic!(
                         "Invalid Ptr Type being Derefferenced on lside of deref assignment: {:?}",
                         t
                     ),
-                    });
+                });
                 if is_rc_clone {
                     l_side = format!("*{l_side}");
                 }
@@ -110,7 +107,7 @@ impl AnnotatedNode {
                     .iter()
                     .map(Self::convert)
                     .collect::<Vec<String>>();
-                if expr_children.len() > 0 {
+                if !expr_children.is_empty() {
                     let expr_child = expr_children[0].clone();
                     let l_side = if *init_value_unused {
                         "".into()
@@ -134,13 +131,10 @@ impl AnnotatedNode {
                 }
             }
             AnnotatedNodeT::DeRef { id, rc, count } => {
-                let derefs: String =
-                    (0..count.clone())
-                        .into_iter()
-                        .fold(String::new(), |mut acc, _| {
-                            acc.push_str("*");
-                            acc
-                        });
+                let derefs: String = (0..*count).fold(String::new(), |mut acc, _| {
+                    acc.push('*');
+                    acc
+                });
                 if *rc {
                     format!("{derefs}{id}.borrow()")
                 } else {
@@ -148,7 +142,7 @@ impl AnnotatedNode {
                 }
             }
             AnnotatedNodeT::Adr { id } => {
-                format!("{id}") // NOTE This isnt' a bug, just cursed
+                id.to_string() // NOTE This isnt' a bug, just cursed
             }
             AnnotatedNodeT::ArrayDeclaration {
                 id,
@@ -261,7 +255,7 @@ impl AnnotatedNode {
                     fields.iter().for_each(|(field, expr)| {
                         l_side.push_str(expr.convert_field_literal(field.clone()).as_str())
                     });
-                    l_side.push_str("}");
+                    l_side.push('}');
 
                     l_side
                 };
@@ -291,7 +285,7 @@ impl AnnotatedNode {
         // shouldn't worry about them for now
         let mut converted_expr: String = self.convert();
         // let rust_type = field.c_type.to_rust_type();
-        if field.ptr_type.len() > 0 {
+        if !field.ptr_type.is_empty() {
             // NOTE If it's a ptr, only one factor, an adr
             // The reference taking is handled by the statement node
             // let reference_type = construct_ptr_type(&mut field.ptr_type.into_iter(), &rust_type);
@@ -332,9 +326,7 @@ impl AnnotatedNode {
             AnnotatedNodeT::Div => {
                 format!("{} / {}", left.unwrap(), right.unwrap())
             }
-            AnnotatedNodeT::Eq => {
-                format!("=")
-            }
+            AnnotatedNodeT::Eq => "=".to_string(),
             AnnotatedNodeT::EqCmp => {
                 format!("{} == {}", left.unwrap(), right.unwrap())
             }
@@ -342,7 +334,7 @@ impl AnnotatedNode {
                 if *rc {
                     format!("*{id}.borrow()")
                 } else {
-                    format!("{id}")
+                    id.to_string()
                 }
             }
             AnnotatedNodeT::NumLiteral(n) => {
@@ -497,7 +489,7 @@ fn convert_argument(expr: &AnnotatedNode) -> String {
         } => {
             let mut_str = if *is_mut { "mut " } else { "" };
             let _used_str = if *is_used { "_" } else { "" };
-            let ref_type_iter = &mut ref_type.into_iter().cloned();
+            let ref_type_iter = &mut ref_type.iter().cloned();
             let ptr_type = construct_ptr_type(ref_type_iter, &t.to_rust_type());
 
             format!("{mut_str}{id}: {ptr_type}")

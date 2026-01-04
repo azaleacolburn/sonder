@@ -139,7 +139,7 @@ impl Display for AnnotatedNode {
 
 impl AnnotatedNode {
     pub fn print(&self, n: &mut i32) {
-        (0..*n).into_iter().for_each(|_| print!("\t"));
+        (0..*n).for_each(|_| print!("\t"));
         println!("{}", self);
         *n += 1;
         self.children.iter().for_each(|node| {
@@ -150,13 +150,13 @@ impl AnnotatedNode {
 }
 
 impl Node {
-    pub fn annotate<'a>(&self, ctx: &AnalysisContext) -> AnnotatedNode {
+    pub fn annotate(&self, ctx: &AnalysisContext) -> AnnotatedNode {
         let root = self;
 
         let token = match &root.token {
             NodeType::Declaration(id, t, _) => {
                 let declaration_info = ctx.get_var(id);
-                let is_used = declaration_info.usages.len() > 0;
+                let is_used = !declaration_info.usages.is_empty();
                 println!("{id}: {is_used}");
                 let init_value_unused = declaration_info.init_value_unused;
 
@@ -184,7 +184,7 @@ impl Node {
                     .map(Reference::get_reference_type)
                     .collect();
 
-                let is_used = ptr_var_info.usages.len() > 0;
+                let is_used = !ptr_var_info.usages.is_empty();
                 let init_value_unused = ptr_var_info.init_value_unused;
 
                 AnnotatedNodeT::PtrDeclaration {
@@ -212,7 +212,7 @@ impl Node {
             NodeType::DerefAssignment(op, adr) => {
                 let count = count_derefs(adr); // TODO Maybe fix function
 
-                let derefed_id = find_ids(&adr)[0].clone();
+                let derefed_id = find_ids(adr)[0].clone();
                 let ptr_data = ctx.get_var(&derefed_id);
 
                 let reference = ptr_data
@@ -239,7 +239,7 @@ impl Node {
             NodeType::DeRef(expr) => {
                 let count = count_derefs(expr) + 1;
 
-                let ids = find_ids(&expr);
+                let ids = find_ids(expr);
                 let derefed_id = ids[0].clone();
 
                 let var_data = ctx.get_var(&derefed_id);
@@ -250,7 +250,7 @@ impl Node {
                 let b = reference.borrow();
                 let sub_id = b.get_reference_to();
 
-                let rc = ctx.get_var(&sub_id).rc;
+                let rc = ctx.get_var(sub_id).rc;
                 AnnotatedNodeT::DeRef {
                     id: derefed_id.clone(),
                     rc,
@@ -271,11 +271,10 @@ impl Node {
                 let mut rcclone = false;
                 ctx.current_scope().variables.iter().for_each(|(_, data)| {
                     data.points_to.iter().for_each(|reference_block| {
-                        match reference_block.as_ref().borrow().get_reference_type() {
-                            ReferenceType::RcRefClone => rcclone = true,
-                            // PtrType::RefCell => refcell = true,
-                            // PtrType::RcRefClone => rcclone = true,
-                            _ => {}
+                        if reference_block.as_ref().borrow().get_reference_type()
+                            == ReferenceType::RcRefClone
+                        {
+                            rcclone = true
                         }
                     })
                 });
@@ -309,7 +308,7 @@ impl Node {
                     ctx.get_struct(struct_id).field_definitions.clone();
                 let has_ref = analyzed_field_definitions
                     .iter()
-                    .any(|field| field.ptr_type.len() > 0);
+                    .any(|field| !field.ptr_type.is_empty());
 
                 AnnotatedNodeT::StructDefinition {
                     struct_id: struct_id.clone(),
@@ -323,7 +322,7 @@ impl Node {
                 exprs,
             } => {
                 let var_data = ctx.get_var(var_id);
-                let field_definitions = ctx.get_struct(&struct_id).field_definitions.clone();
+                let field_definitions = ctx.get_struct(struct_id).field_definitions.clone();
                 // TODO: Annotate node properly for ptrs
                 // NOTE: Will panic is invalid compound literal
                 // TODO: Add checks for compound literal
@@ -334,7 +333,7 @@ impl Node {
                     .map(|(i, node)| (field_definitions[i].clone(), node.annotate(ctx)))
                     .collect();
 
-                let is_used = var_data.usages.len() > 0;
+                let is_used = !var_data.usages.is_empty();
                 let init_value_unused = var_data.init_value_unused;
 
                 AnnotatedNodeT::StructDeclaration {
@@ -349,7 +348,7 @@ impl Node {
             NodeType::ArrayDeclaration(id, c_type, count) => {
                 let var = ctx.get_var(id);
                 let is_mut = var.is_mut;
-                let is_used = var.usages.len() != 0;
+                let is_used = !var.usages.is_empty();
                 let items: Vec<AnnotatedNode> = match root.children.as_ref() {
                     Some(vec) => vec.iter().map(|node| node.annotate(ctx)).collect(),
                     None => Vec::new(),

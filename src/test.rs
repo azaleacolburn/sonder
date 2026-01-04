@@ -455,6 +455,6 @@ fn validate(c_code: &str, test_name: &str) {
     {
         Ok(o) if o.success() => println!("Test passed!"),
         Ok(_) => panic!("Compilation Failed"),
-        Err(err) => panic!("RustC Panicked, {err}"),
+        Err(err) => panic!("Rustc Panicked, {err}"),
     };
 }

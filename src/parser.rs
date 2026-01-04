@@ -235,7 +235,7 @@ fn arithmetic_factor(token_handler: &mut TokenHandler) -> Result<TokenNode, RhEr
         _ => Err(token_handler.new_err(ET::ExpectedExpression)),
     };
     token_handler.next_token();
-    return ret;
+    ret
 }
 
 fn assignment(token_handler: &mut TokenHandler, name: String) -> Result<TokenNode, RhErr> {
@@ -369,11 +369,7 @@ fn function_declare_statement(
 ) -> Result<TokenNode, RhErr> {
     token_handler.next_token();
     let mut args_scope = Vec::with_capacity(4);
-    loop {
-        let t = match token_handler.get_token() {
-            Token::Type(t) => t.clone(),
-            _ => break,
-        };
+    while let Token::Type(t) = token_handler.get_token().clone() {
         token_handler.next_token();
         let id = match token_handler.get_token() {
             Token::Id(id) => id.clone(),
@@ -510,7 +506,7 @@ fn array_declare_statement(
 ) -> Result<TokenNode, RhErr> {
     token_handler.next_token(); // Already checked open square bracket
     let alloc_count = match token_handler.get_token() {
-        Token::NumLiteral(n) => *n as usize,
+        Token::NumLiteral(n) => *n,
         _ => return Err(token_handler.new_err(ET::ExpectedNumLiteral)),
     };
 
@@ -673,13 +669,13 @@ fn asm_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
                 println!("TOKEN: {:?}", token_handler.get_token());
                 return Err(token_handler.new_err(ET::ExpectedSemi));
             }
-            return Ok(TokenNode::new(
+            Ok(TokenNode::new(
                 NodeType::Asm(str.to_string()),
                 None,
                 token_handler.line(),
-            ));
+            ))
         }
-        _ => return Err(token_handler.new_err(ET::ExpectedStrLiteral)),
+        _ => Err(token_handler.new_err(ET::ExpectedStrLiteral)),
     }
 }
 
@@ -720,7 +716,7 @@ fn for_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
 
     let children: Box<[TokenNode]> = [iterator_init, condition_expr, assignment_token]
         .into_iter()
-        .filter_map(|n| n)
+        .flatten()
         .collect();
 
     Ok(TokenNode::new(
@@ -753,7 +749,7 @@ pub fn assert_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, R
         return Err(token_handler.new_err(ET::ExpectedSemi));
     }
 
-    return Ok(node);
+    Ok(node)
 }
 
 pub fn putchar_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {
@@ -776,7 +772,7 @@ pub fn putchar_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, 
     if *token_handler.get_token() != Token::Semi {
         return Err(token_handler.new_err(ET::ExpectedSemi));
     }
-    return Ok(putchar_node);
+    Ok(putchar_node)
 }
 
 // pub fn print_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, RhErr> {}
@@ -794,7 +790,7 @@ pub fn return_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, R
         None,
         token_handler.line(),
     );
-    return Ok(return_token);
+    Ok(return_token)
 }
 
 pub fn compound_literal(token_handler: &mut TokenHandler) -> Result<Vec<TokenNode>, RhErr> {
@@ -834,7 +830,7 @@ pub fn struct_statement(token_handler: &mut TokenHandler) -> Result<TokenNode, R
     match token_handler.get_token() {
         Token::OCurl => struct_definition(struct_id, token_handler),
         Token::Id(var_id) => struct_variable_declaration(struct_id, var_id.clone(), token_handler),
-        _ => return Err(token_handler.new_err(ET::ExpectedId)),
+        _ => Err(token_handler.new_err(ET::ExpectedId)),
     }
 }
 
@@ -949,10 +945,10 @@ pub fn get_type_name(token_handler: &mut TokenHandler) -> Result<CType, RhErr> {
             token_handler.next_token();
             match token_handler.get_token() {
                 Token::Id(id) => Ok(CType::Struct(id.clone())),
-                _ => return Err(token_handler.new_err(ET::ExpectedType)),
+                _ => Err(token_handler.new_err(ET::ExpectedType)),
             }
         }
         Token::Type(t) => Ok(t.clone()),
-        _ => return Err(token_handler.new_err(ET::ExpectedType)),
+        _ => Err(token_handler.new_err(ET::ExpectedType)),
     }
 }

@@ -50,22 +50,14 @@ impl VarData {
     /// Returns the outstanding reference held by this variable
     /// TODO Check if the last reference in the list is always the current reference
     pub fn current_reference_held(&self) -> Option<Rc<RefCell<Reference>>> {
-        match self.points_to.last() {
-            // Some(reference) if reference.borrow().start > line || reference.borrow().end > line => None,
-            Some(reference) => Some(reference.clone()),
-            None => None,
-        }
+        self.points_to.last().cloned()
     }
 
     pub fn reference_at_line(&self, line: LineNumber) -> Option<Rc<RefCell<Reference>>> {
-        match self
+        self
             .points_to
             .iter()
-            .find(|t| t.borrow().within_current_range(line))
-        {
-            Some(reference) => Some(reference.clone()),
-            None => None,
-        }
+            .find(|t| t.borrow().within_current_range(line)).cloned()
     }
 
     pub fn reference_to_var(&self, var_id: &str) -> Option<&Rc<RefCell<Reference>>> {
@@ -85,7 +77,7 @@ impl VarData {
     }
 
     pub fn is_ptr(&self) -> bool {
-        self.points_to.len() > 0
+        !self.points_to.is_empty()
     }
 
     pub fn set_raw(&mut self) {
@@ -195,10 +187,10 @@ impl Reference {
             let b = reference.borrow();
             sub_id = b.get_reference_to();
 
-            maybe_reference = ctx.get_var(&sub_id).reference_at_line(line);
+            maybe_reference = ctx.get_var(sub_id).reference_at_line(line);
         }
 
-        return points_to;
+        points_to
     }
 
     // Inclusive on both ends

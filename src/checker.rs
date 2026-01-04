@@ -5,7 +5,7 @@ use crate::{
 use std::ops::Range;
 
 // TODO: Figure out how to include line numbers in error reports
-pub fn borrow_check<'a>(ctx: &'a mut AnalysisContext) -> Vec<BorrowError> {
+pub fn borrow_check(ctx: &mut AnalysisContext) -> Vec<BorrowError> {
     // ctx.print_refs();
     ctx.current_scope_mut().variables
         .iter_mut()
@@ -25,7 +25,7 @@ pub fn borrow_check<'a>(ctx: &'a mut AnalysisContext) -> Vec<BorrowError> {
             let rvalue_usages: Vec<Usage> = var_data.usages.clone().into_iter().filter(|usage| *usage.get_usage_type() == UsageType::RValue).collect();
             let lvalue_usages: Vec<Usage> = var_data.usages.clone().into_iter().filter(|usage| *usage.get_usage_type() == UsageType::LValue).collect();
             check_unused_init_value(var_data, &rvalue_usages, &lvalue_usages);
-            
+
 
             let mut value_overlaps_with_mut_ptr: Vec<BorrowError> = check_value_overlaps_with_mut_ptr(var_id, var_data, pointed_to_by_mutably.clone());
             let mut value_overlaps_with_const_ptr: Vec<BorrowError> = check_value_overlaps_with_const_ptr(var_id, lvalue_usages, pointed_to_by.iter());
@@ -139,7 +139,7 @@ where
                         value_id: var_id.to_string(),
                     })
                 }
-                // NOTE The solution won't work in these case, since the borrow 
+                // NOTE The solution won't work in these case, since the borrow
                 // will be made on the same line,violating borrow checking
                 // rules at runtime. Doing so causes the Rc to panic
                 (ReferenceType::MutBorrowed, OverlapState::SameLine) => {
@@ -157,9 +157,13 @@ where
     }).collect()
 }
 
-fn check_unused_init_value(var_data: &mut VarData, rvalue_usages: &Vec<Usage>, lvalue_usages: &Vec<Usage>) {
-    if rvalue_usages.len() > 0  {
-        if lvalue_usages.len() > 0 {
+fn check_unused_init_value(
+    var_data: &mut VarData,
+    rvalue_usages: &[Usage],
+    lvalue_usages: &[Usage],
+) {
+    if !rvalue_usages.is_empty() {
+        if !lvalue_usages.is_empty() {
             if rvalue_usages[0].get_line_number() > lvalue_usages[0].get_line_number() {
                 var_data.set_init_value_unused();
             }
@@ -268,15 +272,17 @@ impl PartialEq for BorrowError {
     fn eq(&self, other: &Self) -> bool {
         std::mem::discriminant(self) == std::mem::discriminant(other)
     }
-
-    fn ne(&self, other: &Self) -> bool {
-        std::mem::discriminant(self) != std::mem::discriminant(other)
-    }
 }
 impl Eq for BorrowError {}
 
 impl PartialOrd for BorrowError {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for BorrowError {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
             (
                 BorrowError::ValueMutOverlap {
@@ -288,7 +294,7 @@ impl PartialOrd for BorrowError {
                     const_ptr_id: _,
                     value_id: _,
                 },
-            ) => Some(std::cmp::Ordering::Greater),
+            ) => std::cmp::Ordering::Greater,
             (
                 BorrowError::MutConstOverlap {
                     mut_ptr_id: _,
@@ -299,14 +305,8 @@ impl PartialOrd for BorrowError {
                     ptr_id: _,
                     value_id: _,
                 },
-            ) => Some(std::cmp::Ordering::Less),
-            (_, _) => Some(std::cmp::Ordering::Equal),
+            ) => std::cmp::Ordering::Less,
+            (_, _) => std::cmp::Ordering::Equal,
         }
-    }
-}
-
-impl Ord for BorrowError {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap()
     }
 }

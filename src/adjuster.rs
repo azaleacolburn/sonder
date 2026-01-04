@@ -191,7 +191,7 @@ fn line_rearrangement_mut_const_overlap(
                         .borrow()
                         .contained_within_current_range(mut_usage.get_line_number())
                 })
-                .last()
+                .next_back()
                 .unwrap();
 
             if first_const_usage_in_reference.get_line_number()
@@ -211,7 +211,7 @@ fn line_rearrangement_mut_const_overlap(
                         .borrow()
                         .contained_within_current_range(const_usage.get_line_number())
                 })
-                .last()
+                .next_back()
                 .unwrap();
 
             let first_mut_usage_in_reference = mut_ptr_usages
@@ -257,7 +257,7 @@ fn line_rearrangement_value_ptr_overlap(
         .iter()
         .filter(|usage| *usage.get_usage_type() == UsageType::LValue || !const_ptr);
 
-    let last_var_usage = var_mut_usages.clone().last().unwrap();
+    let last_var_usage = var_mut_usages.clone().next_back().unwrap();
     let first_ptr_usage = ptr_data
         .usages
         .iter()
@@ -284,6 +284,7 @@ fn line_rearrangement_value_ptr_overlap(
     false
 }
 
+#[allow(unused)]
 /// This function assumes that `rearrange_lines_tree` has already been called
 fn rearrange_lines_ctx(pivot: LineNumber, swing: LineNumber, ctx: &mut AnalysisContext) {
     ctx.current_scope_mut()
@@ -294,7 +295,7 @@ fn rearrange_lines_ctx(pivot: LineNumber, swing: LineNumber, ctx: &mut AnalysisC
                 .usages
                 .iter_mut()
                 .filter(|usage| usage.get_line_number() >= pivot && usage.get_line_number() < swing)
-                .for_each(|usage| usage.set_line_number(usage.get_line_number().clone() + 1));
+                .for_each(|usage| usage.set_line_number(usage.get_line_number() + 1));
 
             var_data
                 .usages

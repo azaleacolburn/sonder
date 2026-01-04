@@ -7,17 +7,16 @@ use crate::{
     lexer::CType,
 };
 
-pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
-    // NOTE Let nodes handle their own children
+pub fn determine_var_mutability(root: &Node, ctx: &mut AnalysisContext) {
+    // NOTE
+    // Let nodes handle their own children
     // This is going to introduce a few bugs were I forget to recurse, but is necessary for
     // ancestors to have access to child reference information and to avoid traversing pointer
     // chains and pointer counting along nodes
-    //
-    //
     if let Some(children) = root.children.as_ref() {
         children.iter().for_each(|node| {
             // WARNING This assumes that
-            // an rc can be cloned while the refcell is borrowed
+            // an Rc can be cloned while the RefCell is borrowed
 
             determine_var_mutability(node, ctx);
         })
@@ -36,7 +35,8 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
         }
         NodeType::Assignment(_, id) => handle_assignment_analysis(ctx, id, root),
         NodeType::PtrDeclaration(id, c_type, expr) => {
-            // TODO Determine if this is needed (I think not)
+            // TODO
+            // Determine if this is needed (I think not)
             // determine_var_mutability(expr, ctx, parent_children, root_index);
 
             let instanceof_struct = match c_type {
@@ -61,7 +61,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
         }
         NodeType::DerefAssignment(_, l_side) => {
             // determine_var_mutability(&l_side, ctx, parent_children, root_index);
-            let deref_ids = find_ids(&l_side);
+            let deref_ids = find_ids(l_side);
             // NOTE `*(t + s) = bar` is not allowed
             // However, ``**m` is fine
             if deref_ids.len() > 1 {
@@ -69,7 +69,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             } else if deref_ids.len() != 1 {
                 panic!("Unsupported: no_ids being dereffed")
             }
-            let number_of_derefs = count_derefs(&l_side) + 1;
+            let number_of_derefs = count_derefs(l_side) + 1;
 
             let mut ptr_chain = ctx
                 .construct_ptr_chain_downwards(deref_ids[0].clone(), 0, number_of_derefs)
@@ -89,7 +89,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             ctx.new_usage(id, root.line, UsageType::RValue);
         }
         NodeType::DeRef(adr) => {
-            let ids = find_ids(&adr);
+            let ids = find_ids(adr);
 
             // TODO Make raw ptr instead
             assert_eq!(ids.len(), 1, "more than one or 0 ids derefed");
@@ -104,7 +104,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
             field_definitions,
         } => {
             let field_definitions: Vec<FieldDefinition> = field_definitions
-                .into_iter()
+                .iter()
                 .map(|(id, ptr_count, c_type)| {
                     // TODO: Update according to corresponding variables as we analyze
                     let ptr_type = (0..*ptr_count)
@@ -178,7 +178,7 @@ pub fn determine_var_mutability<'a>(root: &'a Node, ctx: &mut AnalysisContext) {
         } => {
             let field_var_id = format!("{var_id}.{field_id}");
             // Handle the field as a variable itself
-            handle_assignment_analysis(ctx, field_var_id.as_str(), &root);
+            handle_assignment_analysis(ctx, field_var_id.as_str(), root);
 
             // Apply mutability checking to the struct instance itself as well
             let _field_data = ctx.get_var(format!("{var_id}.{field_id}").as_str());
@@ -249,9 +249,8 @@ pub fn find_addresses(root: &Node) -> Vec<String> {
         Some(children) => children.iter().flat_map(find_addresses).collect(),
         None => vec![],
     };
-    match &root.token {
-        NodeType::Adr(id) => vec.push(id.to_string()),
-        _ => {}
+    if let NodeType::Adr(id) = &root.token {
+        vec.push(id.to_string())
     }
     vec
 }
@@ -262,21 +261,19 @@ pub fn count_derefs(root: &Node) -> u8 {
     if let Some(children) = children {
         count += children.iter().map(count_derefs).sum::<u8>();
     }
-    match &root.token {
-        NodeType::DeRef(expr) => count += count_derefs(&expr) + 1,
-        _ => {}
+    if let NodeType::DeRef(expr) = &root.token {
+        count += count_derefs(expr) + 1
     };
     count
 }
 
-pub fn find_type_ids<'a>(root: &'a Node) -> Vec<(String, CType)> {
+pub fn find_type_ids(root: &Node) -> Vec<(String, CType)> {
     let mut type_ids: Vec<(String, CType)> = match root.children.as_ref() {
         Some(children) => children.iter().flat_map(find_type_ids).collect(),
         None => vec![],
     };
-    match &root.token {
-        NodeType::Declaration(id, c_type, _size) => type_ids.push((id.clone(), c_type.clone())),
-        _ => {}
+    if let NodeType::Declaration(id, c_type, _size) = &root.token {
+        type_ids.push((id.clone(), c_type.clone()))
     };
     type_ids
 }
@@ -291,7 +288,7 @@ pub fn find_ids(root: &Node) -> Vec<String> {
         NodeType::Id(id) => ids.push(id.to_string()),
         NodeType::StructFieldId { var_id, field_id } => ids.push(format!("{var_id}.{field_id}")),
         NodeType::Adr(id) => ids.push(id.to_string()),
-        NodeType::DeRef(node) => ids.append(&mut find_ids(&*node)),
+        NodeType::DeRef(node) => ids.append(&mut find_ids(node)),
         _ => {}
     }
 
@@ -305,15 +302,12 @@ pub fn count_declaration_ref(root: &Node) -> Vec<ReferenceType> {
         None => vec![],
     };
 
-    match &root.token {
-        NodeType::PtrDeclaration(_id, _c_type, _expr) => {
-            // TODO
-            // This will be edited as we go by the analyzer
-            // Ideally, struct declarations will be handled first
-            // Meaning they'll be placed first in the ast by the parser
-            ptr_types.push(ReferenceType::ConstBorrowed);
-        }
-        _ => {}
+    if let NodeType::PtrDeclaration(_id, _c_type, _expr) = &root.token {
+        // TODO
+        // This will be edited as we go by the analyzer
+        // Ideally, struct declarations will be handled first
+        // Meaning they'll be placed first in the ast by the parser
+        ptr_types.push(ReferenceType::ConstBorrowed);
     };
     ptr_types
 }
@@ -335,7 +329,7 @@ pub fn handle_assignment_analysis(ctx: &mut AnalysisContext, id: &str, root: &No
 }
 
 // All Refs are Adr
-fn ptr_type_chain(rvalue_ptrs: &Vec<String>, ctx: &mut AnalysisContext) -> Vec<ReferenceType> {
+fn ptr_type_chain(rvalue_ptrs: &[String], ctx: &mut AnalysisContext) -> Vec<ReferenceType> {
     match rvalue_ptrs.len() {
         1 => ctx
             .construct_ptr_chain_downwards(rvalue_ptrs[0].clone(), 0, u8::MAX)
@@ -408,9 +402,10 @@ where
     F: Fn(&Node) -> Option<T> + Clone,
     T: std::fmt::Debug,
 {
+    // TODO impl Default for Node
+    //
     // NOTE Dumb binding hack
     // This is a terrible pattern
-    // TODO impl Default for Node
     let default = Vec::<Node>::new().into_boxed_slice();
     let children = root.children.as_ref().unwrap_or(&default);
     let len = children.len();
